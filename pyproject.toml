@@ -5,7 +5,7 @@ description = "Read-only localhost board that inventories a dev machine's ecosys
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [
-    { name = "Everett Toews", email = "everett.toews@gmail.com" }
+    { name = "Everett Toews" }
 ]
 dependencies = [
     "fastapi>=0.141.1",
