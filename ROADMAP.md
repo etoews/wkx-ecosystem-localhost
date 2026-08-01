@@ -1,0 +1,175 @@
+# WKX Ecosystem localhost Roadmap
+
+Build order, deliverables, and a hands-on artefact at every milestone for the
+read-only localhost board that inventories this dev machine's ecosystem.
+
+The ubiquitous language lives in [CONTEXT.md](CONTEXT.md). The principles below
+are the cross-cutting decisions every milestone inherits.
+
+## Principles
+
+- **Inventory, not conformance.** The board shows facts. It never judges the
+  machine against a written ruleset.
+- **Observer, never operator.** Loopback-bound (`127.0.0.1`), read-only, no auth.
+  Every Collector is a probe; the one write we allow is a non-interactive
+  background `git fetch` (bounded, timed out, no working-tree effect).
+- **Machine-neutral repo.** The live UI shows this machine's specifics, but the
+  committed code and docs reference nothing machine-specific: inputs come from
+  typed config with computed (never literal) defaults, example data is synthetic,
+  and the UI relativises paths and redacts remotes by default.
+- **`wkx-namespace` for look only.** Palette, typography, theme toggle, panels,
+  and fluid grid are borrowed; its `Status` vocabulary and `/wkx/<service>/<env>`
+  addressing are not (see [CONTEXT.md](CONTEXT.md), _Flag_).
+- **Stack per the standards.** uv, ruff, ty, pytest, stdlib logging,
+  pydantic-settings, Typer, `src/` layout. FastAPI + a static HTML/JS frontend;
+  htmx unused. The standards ride along as a submodule at `standards/python/`
+  pinned to release `1.0.0`.
+
+## Contents
+
+| Milestone | Size | Status |
+|-----------|------|--------|
+| [M0: Scaffold](#m0-scaffold) | S | ⬜ Next |
+| [M1: Workspace slice](#m1-workspace-slice) | M | ⬜ Not started |
+| [M2: Background fetch + SSE](#m2-background-fetch--sse) | M | ⬜ Not started |
+| [M3: Toolchains + System tools](#m3-toolchains--system-tools) | M | ⬜ Not started |
+| [M4: Claude environment](#m4-claude-environment) | M | ⬜ Not started |
+| [M5: Homebrew + Docker](#m5-homebrew--docker) | S | ⬜ Not started |
+| [M6: Flag layer](#m6-flag-layer) | M | ⬜ Not started |
+| [M7: Deferred additions](#m7-deferred-additions) | M | ⬜ Deferred |
+| [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
+| [M9: GitHub Releases API](#m9-github-releases-api) | S | ⬜ Deferred |
+
+**Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
+
+**Critical path:** M0 → M1 → M2 is sequential. M3, M4, M5 parallelise after M1.
+M6 needs the collectors it flags. M7–M9 are opt-in.
+
+---
+
+## M0: Scaffold
+
+**Deliverables**
+- [ ] `uv init --app`, `src/wkx_ecosystem_localhost/` layout per `standards/python/PROJECT.md`.
+- [ ] `pyproject.toml` with ruff (`E,F,I,UP,B,SIM,RUF`), ty, pytest; Python 3.14 pin.
+- [ ] `standards/python/` git submodule (HTTPS URL, pinned to release `1.0.0`, commit `9909b8e`).
+- [ ] `CLAUDE.md` from the §15 template, with the playbook line rewritten to `./standards/python/PROJECT.md`.
+- [ ] `config.py` (`pydantic-settings`): repo scan roots (default `Path.home()/"dev"`, never a literal path), port (default `8787`), all machine inputs typed and defaulted by computation. `.env.example` documents the contract with placeholders only.
+- [ ] `_logging.py` (stdlib) and `exceptions.py` hierarchy.
+- [ ] `app.py`: FastAPI serving the static board; Typer entry point `wkx-ecosystem-localhost serve` (`--open-browser`) binding uvicorn to `127.0.0.1`.
+- [ ] `static/`: `index.html` + `styles.css` + `app.js`, vendoring the `wkx-namespace` palette, type stack, theme toggle (`auto/light/dark`, `localStorage`), panel/`signage` components, and fluid grid, with a provenance comment. Masthead "WKX Ecosystem" + "localhost" tag.
+- [ ] `README.md` noting `git clone --recurse-submodules`.
+
+**Hands-on artefact**
+- [ ] `uv run wkx-ecosystem-localhost serve` starts on `127.0.0.1:8787`; the page loads with masthead, theme toggle, and empty panels.
+- [ ] `curl` from another host on the LAN is refused (proves loopback binding).
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+
+---
+
+## M1: Workspace slice
+
+The tracer bullet: one Collector wired end-to-end (Collector → pydantic model → JSON API → styled panel) to prove the whole pipeline.
+
+**Deliverables**
+- [ ] Repo discovery: recurse each configured root, **stop descending at the first `.git`**, skip `node_modules`/`.venv`/hidden, generous safety depth cap.
+- [ ] Per-repo status via `git status --porcelain=v2 --branch` + `git stash list`: branch (or `detached @ <sha>`), upstream, staged/unstaged/untracked counts, dirty/clean, stash count. **ahead/behind deferred to M2** (shown as "pending").
+- [ ] Git config: scope-labelled whitelist of safe keys; `user.email` masked by default (raw on demand); credentials stripped from remote URLs; no key material.
+- [ ] Relativise paths to `~` in the UI.
+- [ ] `/api/workspace` returns the typed model; the Workspace panel renders it.
+- [ ] Collectors are pure functions over synthetic fixtures in tests (no captured machine data).
+
+**Hands-on artefact**
+- [ ] Board shows discovered repos with branch and dirty/clean state.
+- [ ] A README screenshot uses the synthetic fixture, not real repos.
+
+---
+
+## M2: Background fetch + SSE
+
+**Deliverables**
+- [ ] Non-interactive background `git fetch` (`GIT_TERMINAL_PROMPT=0`, per-fetch timeout, no submodule recursion, no gc) on a bounded thread pool.
+- [ ] ahead/behind computed from local refs after fetch, labelled "since last fetch".
+- [ ] SSE endpoint streams `{repo, ahead, behind}` as each fetch lands; `app.js` fills the fields in via `EventSource` (native, no library).
+- [ ] Submodules: `git ls-remote --tags <url>` + semver (no `v` prefix required, pre-releases excluded), `git describe --tags` for the pinned version, shown as "pinned · latest · N tags behind".
+
+**Hands-on artefact**
+- [ ] Open the board; ahead/behind fields fill in progressively.
+- [ ] This repo's own `standards/python/` submodule reports `pinned 1.0.0`.
+
+---
+
+## M3: Toolchains + System tools
+
+**Deliverables**
+- [ ] Python: `uv python list`, global pin (`~/.config/uv/.python-version`), per-repo `.python-version`, system `python3`.
+- [ ] TypeScript/Node: global `tsc`/`node`/`npm` (+ `pnpm`/`bun` if present); per-repo TypeScript from `package.json` and installed `node_modules/typescript`.
+- [ ] System tools: configurable list with a generic default (`git`, `gh`, `uv`, `ruff`, `ty`, `pre-commit`, `docker`, `terraform`, `aws`, `code`, `node`); present-or-missing + version each.
+
+**Hands-on artefact**
+- [ ] Toolchains and System panels populate for the real machine.
+
+---
+
+## M4: Claude environment
+
+**Deliverables**
+- [ ] Skills: user (`~/.claude/skills/`) + plugin skills, each with Origin; all shown, enabled/disabled badged.
+- [ ] Plugins: from `installed_plugins.json` + `known_marketplaces.json` + `settings.json` enabled state; Origin as marketplace → GitHub repo, plus version. installPaths relativised.
+- [ ] MCPs: plugin-provided + user/project + built-in, with Origin and auth-needed state (`mcp-needs-auth-cache.json`).
+- [ ] **Narrow read** of `~/.claude.json`: only `mcpServers` and per-project `mcpServers`; never userID/machineID/oauth/telemetry.
+
+**Hands-on artefact**
+- [ ] Skills, Plugins, MCPs panels populate with correct Origins.
+
+---
+
+## M5: Homebrew + Docker
+
+**Deliverables**
+- [ ] Homebrew: `brew outdated` (formulae + casks), list + count.
+- [ ] Docker: daemon reachable (`docker info`), running/total containers, image count, reclaimable disk (`docker system df`). Read-only.
+
+**Hands-on artefact**
+- [ ] Homebrew and Docker panels populate; daemon-down renders gracefully.
+
+---
+
+## M6: Flag layer
+
+**Deliverables**
+- [ ] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
+- [ ] Cross-item flags: tool version drift across repos, `.python-version` drift, skill-name shadowing across Origins, MCP configured in two scopes.
+- [ ] Inline amber (attention) / red (problem) badges on affected rows, reusing `--chg` / `--del` colours but not the `Status` words.
+- [ ] Single header tally ("N want attention"). No dedicated flags panel.
+
+**Hands-on artefact**
+- [ ] Dirty a repo → amber badge appears and the header tally increments.
+
+---
+
+## M7: Deferred additions
+
+The single bundled roadmap item for the remaining resources.
+
+**Deliverables**
+- [ ] Dev disk footprint (`.venv`s, `node_modules`, Docker disk).
+- [ ] Shell + env health (presence, never values, of `PIP_REQUIRE_VIRTUALENV`, `~/.config/uv/uv.toml`, the global pin).
+- [ ] Editor: VS Code + installed extensions.
+- [ ] Commit-signing / SSH: presence only, never key material.
+- [ ] Dotfiles repo status alongside the other repos.
+
+---
+
+## M8: Token-highlighting
+
+**Deliverables**
+- [ ] The `wkx-namespace` signature interaction repurposed: hover/focus a repo, tool, or version to light up every other occurrence; click to pin; Esc to release.
+
+---
+
+## M9: GitHub Releases API
+
+**Deliverables**
+- [ ] Optional precise submodule "latest release" via `/repos/{owner}/{repo}/releases/latest`, for repos where GitHub's release differs from the highest tag.
+- [ ] Gated on an optional token (`SecretStr` in config, masked, never committed); tag-based comparison stays the default.
