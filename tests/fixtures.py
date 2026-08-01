@@ -370,6 +370,168 @@ def build_system_workspace() -> tuple[FakeMachine, list[ToolSpec]]:
     return machine, SYSTEM_TOOLS
 
 
+# ------------------------- claude environment fixtures -------------------------
+# The skills, plugins, and MCP servers of a synthetic Claude environment. Every
+# name, version, marketplace, and path is invented, never captured from a real
+# machine. The user config deliberately carries account, machine, and telemetry
+# fields that the narrow MCP-only read must never surface, plus a token in a
+# server's own config that must never leave the parser.
+
+CLAUDE = HOME / ".claude"
+CLAUDE_SKILLS = CLAUDE / "skills"
+CLAUDE_PLUGINS = CLAUDE / "plugins"
+_CACHE = CLAUDE_PLUGINS / "cache"
+
+# Plugin install paths. tidy and cloudkit are enabled; sketch is disabled but
+# still shown; gizmo comes from a non-GitHub marketplace so it has no repo, and it
+# is enabled only in settings.local.json to exercise the settings merge.
+TIDY_PATH = _CACHE / "studio-official" / "tidy" / "2.3.0"
+SKETCH_PATH = _CACHE / "studio-official" / "sketch" / "unknown"
+CLOUDKIT_PATH = _CACHE / "studio-official" / "cloudkit" / "1.5.0"
+GIZMO_PATH = _CACHE / "local-shelf" / "gizmo" / "1.0.0"
+
+# A user skill with full front matter, and one with none so its name falls back to
+# the directory name and its description is left empty.
+SKILL_TIDY_REPO = (
+    "---\n"
+    "name: tidy-repo\n"
+    "description: Use when a working tree needs a quick, safe tidy-up.\n"
+    "---\n\n"
+    "# tidy-repo\n\nBody prose with a colon: not front matter.\n"
+)
+SKILL_SCRATCH_NO_FM = "# scratch\n\nA skill file with no front matter block.\n"
+# Plugin skills: one from an enabled plugin, one from a disabled plugin.
+SKILL_LAYOUT = "---\nname: layout\ndescription: Lay out a page grid.\n---\n\n# layout\n"
+SKILL_WIREFRAME = (
+    "---\nname: wireframe\ndescription: Sketch a low-fi wireframe.\n---\n\n# wireframe\n"
+)
+
+INSTALLED_PLUGINS_JSON = f"""\
+{{
+  "version": 2,
+  "plugins": {{
+    "tidy@studio-official": [
+      {{"scope": "user", "installPath": "{TIDY_PATH}", "version": "2.3.0"}}
+    ],
+    "sketch@studio-official": [
+      {{"scope": "user", "installPath": "{SKETCH_PATH}", "version": "unknown"}}
+    ],
+    "cloudkit@studio-official": [
+      {{"scope": "user", "installPath": "{CLOUDKIT_PATH}", "version": "1.5.0"}}
+    ],
+    "gizmo@local-shelf": [
+      {{"scope": "user", "installPath": "{GIZMO_PATH}", "version": "1.0.0"}}
+    ]
+  }}
+}}
+"""
+
+KNOWN_MARKETPLACES_JSON = """\
+{
+  "studio-official": {
+    "source": {"source": "github", "repo": "acme/studio-official"}
+  },
+  "local-shelf": {
+    "source": {"source": "directory", "path": "/home/shelf"}
+  }
+}
+"""
+
+# settings.json enables all but sketch; settings.local.json adds gizmo, so the
+# merge (local over base) is exercised.
+SETTINGS_JSON = """\
+{
+  "model": "claude-opus-4-8",
+  "enabledPlugins": {
+    "tidy@studio-official": true,
+    "sketch@studio-official": false,
+    "cloudkit@studio-official": true
+  }
+}
+"""
+SETTINGS_LOCAL_JSON = '{"enabledPlugins": {"gizmo@local-shelf": true}}\n'
+
+# cloudkit ships two MCP servers; cloud-mcp needs auth (recorded in the cache),
+# local-mcp does not.
+CLOUDKIT_MCP_JSON = """\
+{
+  "mcpServers": {
+    "cloud-mcp": {"type": "http", "url": "https://cloud.test/mcp"},
+    "local-mcp": {"command": "uvx", "args": ["local-server@1.0.0"]}
+  }
+}
+"""
+
+# The auth cache: a plugin server keyed "plugin:<plugin>:<server>", and a user
+# server keyed by its bare name.
+AUTH_CACHE_JSON = (
+    '{"plugin:cloudkit:cloud-mcp": {"timestamp": 1, "id": "aaa"}, '
+    '"vault-mcp": {"timestamp": 2, "id": "bbb"}}'
+)
+
+# The token that must never survive the narrow read, for a "no leak" assertion.
+CLAUDE_SECRET = "tok-should-never-appear"
+
+# The Claude user config. Only mcpServers and per-project mcpServers may be read;
+# the account, machine, and telemetry fields must never be surfaced, and neither
+# may the bearer token embedded in a server's own headers.
+USER_CONFIG_JSON = """\
+{
+  "userID": "u-should-never-appear",
+  "oauthAccount": {"emailAddress": "secret@should-not-leak.test"},
+  "machineID": "m-should-never-appear",
+  "telemetry": {"enabled": true, "token": "tel-should-never-appear"},
+  "mcpServers": {
+    "notes-mcp": {"command": "uvx", "args": ["notes@2.0.0"]},
+    "vault-mcp": {
+      "type": "http",
+      "url": "https://vault.test/mcp",
+      "headers": {"Authorization": "Bearer tok-should-never-appear"}
+    }
+  },
+  "projects": {
+    "/home/dev/acme": {"mcpServers": {"repo-mcp": {"command": "node", "args": ["s.js"]}}},
+    "/home/dev/quiet": {"allowedTools": ["Bash"]}
+  }
+}
+"""
+
+
+def build_claude_workspace() -> tuple[FakeMachine, Path]:
+    """Build a fake machine exercising the claude Collector end to end.
+
+    Two user skills (one with front matter, one without), four installed plugins
+    (tidy and cloudkit enabled, sketch disabled but shown, gizmo enabled only in
+    settings.local.json and from a non-GitHub marketplace so it has no repo),
+    plugin skills from an enabled and a disabled plugin, and MCP servers from a
+    plugin (one needing auth), from the user config, and from a project. The user
+    config carries account, machine, and telemetry fields plus a bearer token that
+    the narrow read must never surface. Returns the machine and its home.
+    """
+    machine = FakeMachine(
+        dirs={
+            CLAUDE_SKILLS / "tidy-repo",
+            CLAUDE_SKILLS / "scratch",
+            TIDY_PATH / "skills" / "layout",
+            SKETCH_PATH / "skills" / "wireframe",
+        },
+        files={
+            CLAUDE_SKILLS / "tidy-repo" / "SKILL.md": SKILL_TIDY_REPO,
+            CLAUDE_SKILLS / "scratch" / "SKILL.md": SKILL_SCRATCH_NO_FM,
+            TIDY_PATH / "skills" / "layout" / "SKILL.md": SKILL_LAYOUT,
+            SKETCH_PATH / "skills" / "wireframe" / "SKILL.md": SKILL_WIREFRAME,
+            CLAUDE_PLUGINS / "installed_plugins.json": INSTALLED_PLUGINS_JSON,
+            CLAUDE_PLUGINS / "known_marketplaces.json": KNOWN_MARKETPLACES_JSON,
+            CLAUDE / "settings.json": SETTINGS_JSON,
+            CLAUDE / "settings.local.json": SETTINGS_LOCAL_JSON,
+            CLAUDE / "mcp-needs-auth-cache.json": AUTH_CACHE_JSON,
+            CLOUDKIT_PATH / ".mcp.json": CLOUDKIT_MCP_JSON,
+            HOME / ".claude.json": USER_CONFIG_JSON,
+        },
+    )
+    return machine, HOME
+
+
 def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine for the SSE background-fetch tests.
 

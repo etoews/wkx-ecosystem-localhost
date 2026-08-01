@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from wkx_ecosystem_localhost import sse
+from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
 from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
@@ -20,6 +21,7 @@ from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, disc
 from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
+    ClaudeSection,
     SubmoduleSection,
     SystemToolsSection,
     ToolchainsSection,
@@ -160,6 +162,16 @@ def create_app(
         Section by naming more tools in its configuration, not by changing code.
         """
         return collect_system_tools(app.state.machine, settings.system_tools)
+
+    @app.get("/api/claude")
+    def claude() -> ClaudeSection:
+        """Skills, plugins, and MCP servers with their Origins for the claude Section.
+
+        The Claude user config is read narrowly (only the MCP server subset), and no
+        MCP server carries its command, URL, headers, or environment, so account,
+        machine, telemetry, and credential fields never reach the board.
+        """
+        return collect_claude(app.state.machine, home=app.state.home)
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

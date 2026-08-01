@@ -653,3 +653,195 @@
       note("Could not load system tools. Check that the board is still running.");
     });
 })();
+
+// Claude Section: fetch /api/claude and render skills, plugins, and MCP servers,
+// each grouped by the one fact that ties this Section together — its Origin. Every
+// asset installed is shown; enabled/disabled and auth-needed are quiet facts told
+// apart by weight, an eyebrow, and a muted tag, never by hue, which stays reserved
+// for the M6 Flag layer. Values arrive already home-relative and carry no secrets:
+// an MCP server is a name, an Origin, a transport, and an auth flag, never its
+// command, URL, headers, or environment.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("claude");
+  if (!mount) return;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "cl-note", message));
+  }
+
+  function count(n, ...rest) {
+    const p = el("p", "cl-lane-count");
+    p.append(el("span", "cl-count", String(n)), " " + rest.join(""));
+    return p;
+  }
+
+  function lane(title, subtitle) {
+    const wrap = el("div", "cl-lane");
+    const head = el("div", "cl-lane-head");
+    head.append(el("span", "cl-lane-name", title));
+    wrap.append(head, subtitle);
+    return wrap;
+  }
+
+  // The Origin is the structural spine: an eyebrow that reads "user", "project",
+  // or the "<plugin>@<marketplace>" pair verbatim.
+  function origin(text) {
+    return el("span", "cl-origin", text);
+  }
+
+  function tag(label, muted) {
+    return el("span", "cl-tag" + (muted ? " cl-tag--muted" : ""), label);
+  }
+
+  // Group a list by a key so each Origin's assets cluster under one heading.
+  function groupBy(items, keyOf) {
+    const order = [];
+    const map = new Map();
+    items.forEach(function (item) {
+      const key = keyOf(item);
+      if (!map.has(key)) {
+        map.set(key, []);
+        order.push(key);
+      }
+      map.get(key).push(item);
+    });
+    return order.map(function (key) {
+      return { key: key, items: map.get(key) };
+    });
+  }
+
+  function skillsLane(skills) {
+    const body = el("div", "cl-groups");
+    groupBy(skills, function (s) {
+      return s.origin;
+    }).forEach(function (grp) {
+      const block = el("div", "cl-group");
+      const head = el("div", "cl-group-head");
+      head.append(origin(grp.key));
+      // Skills share their owning plugin's enabled state, so a disabled origin is
+      // marked once on the group rather than on every skill.
+      if (grp.items.length > 0 && !grp.items[0].enabled) head.append(tag("disabled", true));
+      block.append(head);
+      const names = el("div", "cl-chips");
+      grp.items.forEach(function (skill) {
+        const chip = el("span", "cl-chip", skill.name);
+        if (skill.description) chip.title = skill.description;
+        names.append(chip);
+      });
+      block.append(names);
+      body.append(block);
+    });
+    const enabled = skills.filter(function (s) {
+      return s.enabled;
+    }).length;
+    const summary =
+      enabled === skills.length
+        ? count(skills.length, skills.length === 1 ? " skill" : " skills")
+        : count(enabled, " of " + skills.length + " active");
+    const wrap = lane("skills", summary);
+    wrap.append(body);
+    return wrap;
+  }
+
+  function pluginRow(plugin) {
+    const row = el("div", "cl-row");
+    const line = el("div", "cl-row-main");
+    line.append(el("span", "cl-name", plugin.name));
+    line.append(el("span", "cl-ver", plugin.version));
+    if (!plugin.enabled) line.append(tag("disabled", true));
+    row.append(line);
+    const meta = el("div", "cl-row-meta");
+    meta.append(origin(plugin.marketplace));
+    if (plugin.repo) {
+      const repo = el("span", "cl-repo", plugin.repo);
+      repo.title = "Marketplace GitHub repo";
+      meta.append(repo);
+    }
+    row.append(meta);
+    return row;
+  }
+
+  function pluginsLane(plugins) {
+    const body = el("div", "cl-rows");
+    plugins.forEach(function (plugin) {
+      body.append(pluginRow(plugin));
+    });
+    const enabled = plugins.filter(function (p) {
+      return p.enabled;
+    }).length;
+    const wrap = lane("plugins", count(enabled, " of " + plugins.length + " enabled"));
+    wrap.append(body);
+    return wrap;
+  }
+
+  function mcpRow(server) {
+    const row = el("div", "cl-row");
+    const line = el("div", "cl-row-main");
+    line.append(el("span", "cl-name", server.name));
+    line.append(el("span", "cl-transport", server.transport));
+    if (server.needs_auth) line.append(tag("auth needed", true));
+    row.append(line);
+    const meta = el("div", "cl-row-meta");
+    meta.append(origin(server.origin));
+    row.append(meta);
+    return row;
+  }
+
+  function mcpLane(servers) {
+    const body = el("div", "cl-rows");
+    servers.forEach(function (server) {
+      body.append(mcpRow(server));
+    });
+    const auth = servers.filter(function (s) {
+      return s.needs_auth;
+    }).length;
+    const summary =
+      auth > 0
+        ? count(servers.length, servers.length === 1 ? " server, " : " servers, ", auth + " need auth")
+        : count(servers.length, servers.length === 1 ? " server" : " servers");
+    const wrap = lane("mcp servers", summary);
+    wrap.append(body);
+    return wrap;
+  }
+
+  function emptyLane(title, message) {
+    const wrap = lane(title, el("p", "cl-muted", message));
+    return wrap;
+  }
+
+  function render(data) {
+    const skills = data.skills || [];
+    const plugins = data.plugins || [];
+    const servers = data.mcp_servers || [];
+    if (skills.length === 0 && plugins.length === 0 && servers.length === 0) {
+      note("No Claude skills, plugins, or MCP servers found.");
+      return;
+    }
+    const lanes = el("div", "cl-lanes");
+    lanes.append(
+      skills.length > 0 ? skillsLane(skills) : emptyLane("skills", "No skills installed."),
+      plugins.length > 0 ? pluginsLane(plugins) : emptyLane("plugins", "No plugins installed."),
+      servers.length > 0 ? mcpLane(servers) : emptyLane("mcp servers", "No MCP servers configured."),
+    );
+    mount.replaceChildren(lanes);
+  }
+
+  fetch("/api/claude")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load the Claude environment. Check that the board is still running.");
+    });
+})();

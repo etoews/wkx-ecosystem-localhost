@@ -76,6 +76,21 @@ def system_client() -> TestClient:
 
 
 @pytest.fixture
+def claude_client() -> TestClient:
+    """A client wired to a fake machine loaded with a synthetic Claude environment.
+
+    Drives the real app and Collector over HTTP: user and plugin skills, plugins
+    joined with their marketplace repos and enabled state, plugin and user and
+    project MCP servers with their auth-needed state, and the narrow MCP-only read
+    of the user config are all produced exactly as production would, only the
+    machine seam faked.
+    """
+    machine, home = fixtures.build_claude_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 

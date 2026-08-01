@@ -458,6 +458,117 @@ footer {
 .sy-chip--muted { color: var(--fog); }
 .sy-chip--muted .num { color: var(--fog); font-weight: 400; }
 
+/* Claude Section: skills, plugins, and MCP servers in one wide panel, split into
+ * three lanes. Origin is the structural spine — an eyebrow that clusters skills
+ * and labels every plugin and server. Reuses the vendored palette, mono type, and
+ * chip idiom so it reads as one system with the toolchains panel. Colour stays
+ * reserved for the M6 Flag layer, so enabled/disabled and auth-needed are told
+ * apart by weight and a muted tag, never by hue. */
+.cl-note { font-size: .82rem; color: var(--fog); }
+
+.cl-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: .8rem;
+  margin-top: .3rem;
+}
+.cl-lane {
+  background: var(--deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .7rem .8rem .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+.cl-lane-head {
+  display: flex;
+  align-items: baseline;
+  gap: .5rem;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--line);
+}
+.cl-lane-name {
+  font-family: var(--mono);
+  font-size: .74rem;
+  letter-spacing: .04em;
+  color: var(--text);
+}
+.cl-lane-count { font-size: .68rem; color: var(--fog); }
+.cl-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.cl-muted { font-family: var(--mono); font-size: .66rem; color: var(--fog); }
+
+/* skills: grouped by Origin, each group a heading plus a wrap of name chips. */
+.cl-groups { display: flex; flex-direction: column; gap: .55rem; }
+.cl-group { display: flex; flex-direction: column; gap: .3rem; }
+.cl-group-head { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
+
+.cl-origin {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fog);
+  overflow-wrap: anywhere;
+}
+
+.cl-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.cl-chip {
+  font-family: var(--mono);
+  font-size: .67rem;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .04rem .45rem;
+  white-space: nowrap;
+}
+
+/* plugins and MCP servers: one row each, a loud name line over a quiet meta line. */
+.cl-rows { display: flex; flex-direction: column; gap: .5rem; }
+.cl-row { display: flex; flex-direction: column; gap: .2rem; }
+.cl-row-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: .35rem; }
+.cl-row-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem; }
+
+.cl-name {
+  font-family: var(--mono);
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.cl-ver {
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--fog);
+  font-variant-numeric: tabular-nums;
+}
+.cl-transport {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fog);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 .25rem;
+}
+.cl-repo { font-family: var(--mono); font-size: .64rem; color: var(--fog); overflow-wrap: anywhere; }
+
+/* A quiet tag for an installed-but-disabled or auth-needed fact. Told apart by
+ * weight and the label, not colour, which stays reserved for the M6 Flag layer. */
+.cl-tag {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fog);
+  border: 1px dashed var(--line);
+  border-radius: 3px;
+  padding: 0 .25rem;
+}
+.cl-tag--muted { color: var(--fog); }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

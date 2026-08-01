@@ -204,6 +204,75 @@ class ToolchainsSection(BaseModel):
     node: NodeToolchain
 
 
+class Skill(BaseModel):
+    """One skill on this machine, with the Origin it came from.
+
+    ``origin`` is the single word (or ``<plugin>@<marketplace>`` pair) that answers
+    where the skill came from: ``user`` for one authored locally under
+    ``~/.claude/skills``, or the plugin pair for one a plugin ships. ``enabled`` is
+    always True for a user skill and mirrors the owning plugin's enabled state for a
+    plugin skill, so an installed-but-disabled skill is shown and badged, never
+    filtered out. ``description`` is the one-line summary from the skill's front
+    matter, or None when it declares none.
+    """
+
+    name: str
+    origin: str
+    description: str | None = None
+    enabled: bool
+
+
+class Plugin(BaseModel):
+    """One installed plugin, joined across the manifest, marketplace, and settings.
+
+    ``name`` and ``marketplace`` are the two halves of the ``<name>@<marketplace>``
+    key. ``repo`` is the marketplace's GitHub ``owner/repo`` from the known
+    marketplaces map, or None when the marketplace is not a GitHub source.
+    ``version`` is the installed version verbatim (``unknown`` when the manifest
+    records no version). ``enabled`` is the settings enabled state, so a disabled
+    plugin is shown and badged rather than filtered. ``install_path`` is the
+    home-relative install location, or None when the manifest records none.
+    """
+
+    name: str
+    marketplace: str
+    repo: str | None = None
+    version: str
+    enabled: bool
+    install_path: str | None = None
+
+
+class McpServer(BaseModel):
+    """One MCP server on this machine, as a bare fact with its Origin.
+
+    ``origin`` is where the server is configured: ``user`` or ``project`` for one
+    in the Claude user config, or the ``<plugin>@<marketplace>`` pair for one a
+    plugin ships. ``transport`` is the connection kind (``stdio``, ``http``, or
+    ``sse``), derived from the config shape, never carrying the command, URL,
+    headers, or environment, so no secret rides along. ``needs_auth`` is True when
+    the server is recorded in the auth-needed cache, so the board shows a server
+    that still needs authenticating without ever touching a credential.
+    """
+
+    name: str
+    origin: str
+    transport: str
+    needs_auth: bool
+
+
+class ClaudeSection(BaseModel):
+    """The claude Section: skills, plugins, and MCP servers, each with its Origin.
+
+    Everything installed is present; enabled or disabled is a badge on the row, not
+    a filter. Only the MCP server subset of the Claude user config is ever read;
+    account, machine, and telemetry fields are never touched.
+    """
+
+    skills: list[Skill]
+    plugins: list[Plugin]
+    mcp_servers: list[McpServer]
+
+
 class FetchEvent(BaseModel):
     """One repo's ahead/behind, streamed over SSE as its background fetch lands.
 
