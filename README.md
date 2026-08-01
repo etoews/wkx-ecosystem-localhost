@@ -54,3 +54,24 @@ uv run wkx-ecosystem-localhost serve
 ```
 
 Then open `http://127.0.0.1:8787`.
+
+## Workflow
+
+How this board was built with Claude Code: design on a fast model, then
+implementation on a strong one. Edit the block as the process evolves.
+
+```text
+# Design phase (fast model)
+/model fable
+/grill-with-docs <product brief>      # ideate and stress-test the idea against the docs
+/mattpocock-skills:to-spec            # turn the grilled idea into a spec
+architecture review                   # e.g. "show me the architecture in an html file with diagrams"
+/mattpocock-skills:to-tickets         # spec into GitHub tickets; UI tickets call for the frontend-design and dataviz skills
+
+# Implement phase (strong model)
+/clear
+/model claude-opus-4-8
+/mattpocock-skills:implement <first issue>   # prove the loop by hand; tick acceptance criteria as you go
+/clear
+/goal use workflows to run the implement skill on the rest of the gh issues. do not stop until all gh issues are complete.
+```
