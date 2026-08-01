@@ -5,8 +5,9 @@ repos and their git status, language toolchains, the Claude environment,
 system tools, Homebrew, and Docker. It shows facts, lights up data-evident
 anomalies inline, and never changes the machine.
 
-Nothing is built yet. [ROADMAP.md](ROADMAP.md) is the build order;
-[CONTEXT.md](CONTEXT.md) is the glossary.
+The board is built end to end, from the workspace slice to the flag layer.
+[ROADMAP.md](ROADMAP.md) is the build order; [CONTEXT.md](CONTEXT.md) is the
+glossary.
 
 ## The board
 
