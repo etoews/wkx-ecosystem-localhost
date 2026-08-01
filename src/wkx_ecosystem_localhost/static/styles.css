@@ -109,7 +109,30 @@ a { color: var(--add); }
   border-radius: 999px;
   padding: .1rem .6rem;
 }
-.masthead .controls { margin-left: auto; }
+.masthead .controls { margin-left: auto; display: inline-flex; align-items: center; gap: .5rem; }
+
+/* ---------- Flag layer (M6) header tally ----------
+ * The one place the open-Flag count reads: a single masthead pill. It reuses the
+ * design-system --chg (amber, attention) and --del (red, problem) and the level
+ * is carried by a word ("want attention") and the count as well as the hue, so it
+ * never rests on colour alone. At zero it reads "all clear" in the quiet fog ink. */
+.tally {
+  font-family: var(--mono);
+  font-size: .72rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: .3rem;
+  color: var(--fog);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+}
+.tally .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tally--clear { color: var(--fog); border-color: var(--line); }
+.tally--attention { color: var(--chg); border-color: var(--chg); }
+.tally--attention .num { color: var(--chg); }
+.tally--problem { color: var(--del); border-color: var(--del); }
+.tally--problem .num { color: var(--del); }
 button.theme {
   font-family: var(--mono);
   font-size: .72rem;
@@ -452,6 +475,9 @@ footer {
   border-radius: 999px;
   padding: .04rem .45rem;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: baseline;
+  gap: .3rem;
 }
 .sy-chip .lbl { color: var(--fog); }
 .sy-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
@@ -675,6 +701,41 @@ footer {
   text-transform: uppercase;
   color: var(--fog);
 }
+
+/* ---------- Flag layer (M6) inline badges ----------
+ * The cross-cutting anomaly layer's one visible mark: an inline badge on the row
+ * carrying the fact, in the same pill idiom as every Section chip so it reads as
+ * one system. Amber (attention) and red (problem) reuse the design-system --chg
+ * and --del. The level never rests on colour alone: each badge carries a word for
+ * the fact, and the leading marker is a round dot for attention and a square for a
+ * problem, a shape cue that survives when hue does not. */
+.flag {
+  font-family: var(--mono);
+  font-size: .6rem;
+  letter-spacing: .03em;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: .02rem .42rem;
+  white-space: nowrap;
+  align-self: center;
+  animation: ws-ab-in .3s ease-out;
+}
+.flag::before {
+  content: "";
+  width: .4rem;
+  height: .4rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.flag--attention { color: var(--chg); border-color: var(--chg); }
+.flag--problem { color: var(--del); border-color: var(--del); }
+/* A problem's marker is a square, so attention and problem stay distinct without
+ * relying on the amber/red hue alone. */
+.flag--problem::before { border-radius: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }

@@ -12,6 +12,7 @@ from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.docker import collect_docker
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
+from wkx_ecosystem_localhost.collectors.flags import collect_flags
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
@@ -25,6 +26,7 @@ from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
     DockerSection,
+    FlagsSection,
     HomebrewSection,
     SubmoduleSection,
     SystemToolsSection,
@@ -194,6 +196,18 @@ def create_app(
         on the board, never an error page; the counts stay at their empty defaults.
         """
         return collect_docker(app.state.machine)
+
+    @app.get("/api/flags")
+    def flags() -> FlagsSection:
+        """Data-evident anomalies derived from the Sections, badged inline on the board.
+
+        The cross-cutting Flag layer, not a panel: it runs the Collectors whose
+        facts a Flag can be derived from and returns the open Flags, each naming the
+        Section and row it badges. Flags that need a background fetch to be known
+        (behind remote, submodule tags behind) are not here; the board raises those
+        as its SSE events land.
+        """
+        return collect_flags(app.state.machine, settings, home=app.state.home)
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

@@ -143,6 +143,20 @@ def docker_down_client() -> TestClient:
 
 
 @pytest.fixture
+def flags_client() -> TestClient:
+    """A client wired to a fake machine that lights up the whole at-rest Flag layer.
+
+    Drives the real app and the real Collectors over HTTP: the workspace, system,
+    Claude, Homebrew, and Docker per-item Flags and the cross-item drift and
+    shadowing Flags are all derived from a multi-repo, multi-Origin fake exactly as
+    production would, only the machine seam faked.
+    """
+    machine, home, roots, tools = fixtures.build_flags_workspace()
+    settings = Settings(_env_file=None, scan_roots=roots, system_tools=tools)
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 

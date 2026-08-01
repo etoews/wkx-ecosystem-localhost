@@ -636,6 +636,160 @@ def build_docker_down() -> FakeMachine:
     )
 
 
+# ------------------------- flag-layer fixtures -------------------------
+# A machine that lights up the whole Flag layer at once: per-item Flags across the
+# workspace, system, Claude, Homebrew, and Docker Sections, and cross-item drift
+# Flags across multiple repos and Origins. Every string is invented, never captured
+# from a real machine. The at-rest Flags (everything but behind-remote and
+# submodule-tags-behind, which arrive over SSE) all fire here so the /api/flags
+# contract is exercised exactly as production would produce it.
+
+# cli is a third repo: on a branch with no upstream, clean, and carrying a newer
+# installed TypeScript than web so the two drift.
+FLAGS_CLI_PACKAGE_JSON = (
+    '{\n  "name": "cli",\n  "devDependencies": {\n    "typescript": "^5.4.0"\n  }\n}\n'
+)
+FLAGS_CLI_INSTALLED_TS = '{\n  "name": "typescript",\n  "version": "5.4.5"\n}\n'
+
+# tidy is an enabled plugin shipping a skill named "layout" (which a user skill of
+# the same name shadows across Origins) and an MCP server that needs auth. sketch
+# is a disabled plugin whose "wireframe" skill is therefore a disabled skill.
+FLAGS_INSTALLED_PLUGINS_JSON = f"""\
+{{
+  "version": 2,
+  "plugins": {{
+    "tidy@studio-official": [
+      {{"scope": "user", "installPath": "{TIDY_PATH}", "version": "2.3.0"}}
+    ],
+    "sketch@studio-official": [
+      {{"scope": "user", "installPath": "{SKETCH_PATH}", "version": "unknown"}}
+    ]
+  }}
+}}
+"""
+FLAGS_KNOWN_MARKETPLACES_JSON = """\
+{
+  "studio-official": {
+    "source": {"source": "github", "repo": "acme/studio-official"}
+  }
+}
+"""
+FLAGS_SETTINGS_JSON = """\
+{
+  "enabledPlugins": {
+    "tidy@studio-official": true,
+    "sketch@studio-official": false
+  }
+}
+"""
+# tidy ships one MCP server that needs auth.
+FLAGS_TIDY_MCP_JSON = (
+    '{\n  "mcpServers": {\n'
+    '    "cloud-mcp": {"type": "http", "url": "https://cloud.test/mcp"}\n'
+    "  }\n}\n"
+)
+FLAGS_AUTH_CACHE_JSON = '{"plugin:tidy:cloud-mcp": {"timestamp": 1, "id": "aaa"}}'
+
+# A user skill named "layout" shadows tidy's plugin skill of the same name; a
+# unique user skill sits alongside so only the shared name is flagged.
+FLAGS_SKILL_USER_LAYOUT = "---\nname: layout\ndescription: A user layout skill.\n---\n\n# layout\n"
+FLAGS_SKILL_USER_UNIQUE = (
+    "---\nname: tidy-repo\ndescription: A unique user skill.\n---\n\n# tidy-repo\n"
+)
+
+# The user config: repo-mcp is configured under the user scope and again under a
+# project scope, so it is the MCP-in-two-scopes case; notes-mcp is user-only.
+FLAGS_USER_CONFIG_JSON = """\
+{
+  "mcpServers": {
+    "repo-mcp": {"command": "node", "args": ["s.js"]},
+    "notes-mcp": {"command": "uvx", "args": ["notes@2.0.0"]}
+  },
+  "projects": {
+    "/home/dev/acme": {"mcpServers": {"repo-mcp": {"command": "node", "args": ["s.js"]}}}
+  }
+}
+"""
+
+# A trimmed system-tools probe: git is present, ty is deliberately absent so the
+# missing-configured-tool Flag fires.
+FLAGS_SYSTEM_TOOLS = [
+    ToolSpec(name="git"),
+    ToolSpec(name="ty"),
+]
+
+
+def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpec]]:
+    """Build a fake machine that lights up the whole at-rest Flag layer.
+
+    Three repos under ``~/dev/acme``: ``web`` is dirty on a tracked branch,
+    ``api`` is detached, and ``cli`` is on a branch with no upstream. ``web`` pins
+    Python 3.14.4 and ``api`` pins 3.13.13 (pin drift); ``web`` has TypeScript
+    5.3.3 installed and ``cli`` has 5.4.5 (version drift). One configured tool
+    (``ty``) is missing. The Claude environment carries a disabled plugin and its
+    disabled skill, an MCP server that needs auth, a user skill whose name shadows
+    a plugin skill across Origins, and an MCP configured under both a user and a
+    project scope. Homebrew reports outdated packages and the Docker daemon is
+    unreachable. Returns the machine, its home, the scan roots, and the configured
+    tool list.
+    """
+    machine = FakeMachine(
+        dirs={
+            DEV,
+            DEV / "acme",
+            WEB,
+            API,
+            CLI,
+            CLAUDE_SKILLS / "layout",
+            CLAUDE_SKILLS / "tidy-repo",
+            TIDY_PATH / "skills" / "layout",
+            SKETCH_PATH / "skills" / "wireframe",
+        },
+        repos={WEB, API, CLI},
+        files={
+            # toolchain pins and manifests
+            HOME / ".config" / "uv" / ".python-version": UV_GLOBAL_PIN,
+            WEB / ".python-version": WEB_PYTHON_PIN,
+            WEB / "package.json": WEB_PACKAGE_JSON,
+            WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
+            API / ".python-version": API_PYTHON_PIN,
+            CLI / "package.json": FLAGS_CLI_PACKAGE_JSON,
+            CLI / "node_modules" / "typescript" / "package.json": FLAGS_CLI_INSTALLED_TS,
+            # Claude environment
+            CLAUDE_SKILLS / "layout" / "SKILL.md": FLAGS_SKILL_USER_LAYOUT,
+            CLAUDE_SKILLS / "tidy-repo" / "SKILL.md": FLAGS_SKILL_USER_UNIQUE,
+            TIDY_PATH / "skills" / "layout" / "SKILL.md": SKILL_LAYOUT,
+            SKETCH_PATH / "skills" / "wireframe" / "SKILL.md": SKILL_WIREFRAME,
+            CLAUDE_PLUGINS / "installed_plugins.json": FLAGS_INSTALLED_PLUGINS_JSON,
+            CLAUDE_PLUGINS / "known_marketplaces.json": FLAGS_KNOWN_MARKETPLACES_JSON,
+            CLAUDE / "settings.json": FLAGS_SETTINGS_JSON,
+            CLAUDE / "mcp-needs-auth-cache.json": FLAGS_AUTH_CACHE_JSON,
+            TIDY_PATH / ".mcp.json": FLAGS_TIDY_MCP_JSON,
+            HOME / ".claude.json": FLAGS_USER_CONFIG_JSON,
+        },
+        commands={
+            (WEB, STATUS_ARGV): _ok(STATUS_DIRTY),
+            (WEB, STASH_ARGV): _ok(STASH_EMPTY),
+            (WEB, CONFIG_ARGV): _ok(""),
+            (API, STATUS_ARGV): _ok(STATUS_DETACHED),
+            (API, STASH_ARGV): _ok(STASH_EMPTY),
+            (API, CONFIG_ARGV): _ok(""),
+            (CLI, STATUS_ARGV): _ok(STATUS_NO_UPSTREAM),
+            (CLI, STASH_ARGV): _ok(STASH_EMPTY),
+            (CLI, CONFIG_ARGV): _ok(""),
+            (None, UV_PYTHON_LIST_ARGV): _ok(UV_PYTHON_LIST),
+            (None, PYTHON3_VERSION_ARGV): _ok("Python 3.14.5\n"),
+            (None, NODE_VERSION_ARGV): _ok("v24.15.0\n"),
+            (None, NPM_VERSION_ARGV): _ok("11.12.1\n"),
+            (None, ("git", "--version")): _ok(GIT_VERSION),
+            (None, BREW_OUTDATED_ARGV): _ok(BREW_OUTDATED_JSON),
+            (None, DOCKER_INFO_ARGV): CommandResult(1, "", DOCKER_DAEMON_DOWN_STDERR),
+            # ty is deliberately unregistered: the fake returns 127 (not installed).
+        },
+    )
+    return machine, HOME, [DEV], FLAGS_SYSTEM_TOOLS
+
+
 def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine for the SSE background-fetch tests.
 

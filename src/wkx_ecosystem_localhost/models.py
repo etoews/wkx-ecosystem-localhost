@@ -320,6 +320,40 @@ class DockerSection(BaseModel):
     reclaimable: str | None = None
 
 
+class Flag(BaseModel):
+    """A data-evident anomaly, badged inline on the row carrying the fact.
+
+    Derived purely from facts a Collector already gathered, with no external
+    ruleset. ``section`` and ``target`` address the exact row the badge lands on
+    (for example ``workspace`` and a repo's home-relative path); the board keys its
+    rows by the same pair, so a Flag settles onto the right row without the layer
+    knowing anything about how that row is drawn. ``level`` is ``attention``
+    (amber) or ``problem`` (red), the two levels from CONTEXT.md. ``code`` is the
+    stable machine name of the anomaly (so the board can style or de-duplicate by
+    it) and ``message`` its short, display-ready phrasing.
+    """
+
+    section: str
+    target: str
+    level: str
+    code: str
+    message: str
+
+
+class FlagsSection(BaseModel):
+    """The Flag layer: every open Flag derivable from the Sections at rest.
+
+    A cross-cutting layer, not a panel: the board badges each Flag onto the row it
+    names and tallies the open count in the masthead, with no Flags Section of its
+    own. Two Flags need a background fetch to know they are open (a repo behind its
+    remote, a submodule behind its tags); those arrive over SSE and are raised by
+    the board as those events land, so they are deliberately absent from this
+    at-rest list.
+    """
+
+    flags: list[Flag]
+
+
 class FetchEvent(BaseModel):
     """One repo's ahead/behind, streamed over SSE as its background fetch lands.
 

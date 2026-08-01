@@ -31,6 +31,138 @@
   button.textContent = "theme: " + current();
 })();
 
+// Flag layer (M6): the cross-cutting anomaly layer. It gathers no facts of its
+// own — the server derives the at-rest Flags over /api/flags — but it owns the one
+// place a Flag ever shows: an inline amber (attention) or red (problem) badge on
+// the row carrying the fact, plus the single masthead tally of the open count.
+// Every flaggable row stamps a data-flag-key of "<section>:<target>", so a Flag
+// settles onto its row without this layer knowing how the row is drawn; a
+// MutationObserver re-decorates as panels and SSE updates land. Two Flags need a
+// background fetch to be known open (a repo behind its remote, a submodule behind
+// its tags); the workspace and submodule streams raise those through the small
+// add/clear API this exposes, so they badge their rows progressively.
+(function () {
+  "use strict";
+
+  const board = document.querySelector(".board");
+  const tally = document.getElementById("flag-tally");
+  if (!board || !tally) return;
+
+  // Open Flags keyed by section|target|code, so a repeated add or an SSE re-fire
+  // stays idempotent and the size is the true open count.
+  const registry = new Map();
+  let decorating = false;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function keyOf(flag) {
+    return flag.section + "|" + flag.target + "|" + flag.code;
+  }
+
+  function rowKey(flag) {
+    return flag.section + ":" + flag.target;
+  }
+
+  function badge(flag) {
+    const level = flag.level === "problem" ? "problem" : "attention";
+    const node = el("span", "flag flag--" + level, flag.message);
+    node.dataset.flagCode = flag.code;
+    node.title = flag.message;
+    // The level is spoken as well as coloured, so it never rests on hue alone.
+    node.setAttribute("aria-label", level + ": " + flag.message);
+    return node;
+  }
+
+  function updateTally() {
+    let problems = 0;
+    registry.forEach(function (flag) {
+      if (flag.level === "problem") problems++;
+    });
+    const n = registry.size;
+    tally.classList.toggle("tally--clear", n === 0);
+    tally.classList.toggle("tally--problem", problems > 0);
+    tally.classList.toggle("tally--attention", n > 0 && problems === 0);
+    if (n === 0) {
+      tally.textContent = "all clear";
+    } else {
+      tally.replaceChildren(
+        el("span", "num", String(n)),
+        document.createTextNode(" " + (n === 1 ? "wants attention" : "want attention")),
+      );
+    }
+    tally.hidden = false;
+  }
+
+  function decorate() {
+    // Guard re-entry: decorate mutates the board (adding/removing badges), which
+    // the observer notices; because every pass is idempotent, the follow-up pass
+    // finds nothing to change and the cycle settles at once.
+    if (decorating) return;
+    decorating = true;
+    try {
+      registry.forEach(function (flag) {
+        const hosts = board.querySelectorAll('[data-flag-key="' + rowKey(flag) + '"]');
+        hosts.forEach(function (host) {
+          if (host.querySelector(':scope > .flag[data-flag-code="' + flag.code + '"]')) return;
+          host.appendChild(badge(flag));
+        });
+      });
+      board.querySelectorAll(".flag").forEach(function (node) {
+        const host = node.closest("[data-flag-key]");
+        if (!host) {
+          node.remove();
+          return;
+        }
+        const key = host.getAttribute("data-flag-key");
+        const code = node.dataset.flagCode;
+        let live = false;
+        registry.forEach(function (flag) {
+          if (rowKey(flag) === key && flag.code === code) live = true;
+        });
+        if (!live) node.remove();
+      });
+    } finally {
+      decorating = false;
+    }
+    updateTally();
+  }
+
+  // Public API for the SSE-delivered Flags the server cannot know at rest.
+  window.wkxFlags = {
+    add: function (flag) {
+      registry.set(keyOf(flag), flag);
+      decorate();
+    },
+    clear: function (section, target, code) {
+      registry.delete(section + "|" + target + "|" + code);
+      decorate();
+    },
+  };
+
+  // Re-decorate whenever a panel renders or an SSE update reshapes a row.
+  new MutationObserver(decorate).observe(board, { childList: true, subtree: true });
+
+  fetch("/api/flags")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(function (data) {
+      (data.flags || []).forEach(function (flag) {
+        registry.set(keyOf(flag), flag);
+      });
+      decorate();
+    })
+    .catch(function () {
+      // Leave the tally hidden rather than assert a false "all clear".
+    });
+})();
+
 // Workspace Section: fetch /api/workspace and render the discovered repos, then
 // open an SSE stream that fills each repo's ahead/behind in as its background
 // fetch lands. Values arrive already redacted and home-relative; the only
@@ -102,6 +234,25 @@
     chip.replaceChildren(el("span", "num", glyph), " ", el("span", "lbl", label));
   }
 
+  function raiseBehind(repo, behind) {
+    // The behind-remote Flag can only be known once the background fetch lands, so
+    // the workspace stream raises it here rather than the server at rest. It is
+    // cleared whenever the repo is level, ahead-only, or its fetch is unknown, so a
+    // re-fetch never leaves a stale badge.
+    if (!window.wkxFlags) return;
+    if (behind > 0) {
+      window.wkxFlags.add({
+        section: "workspace",
+        target: repo,
+        level: "attention",
+        code: "behind-remote",
+        message: behind === 1 ? "1 commit behind remote" : behind + " commits behind remote",
+      });
+    } else {
+      window.wkxFlags.clear("workspace", repo, "behind-remote");
+    }
+  }
+
   function fillAheadBehind(event) {
     const chip = abChips.get(event.repo);
     if (!chip) return;
@@ -109,13 +260,16 @@
     if (event.unknown) {
       setChip(chip, "↕", "fetch unknown", true);
       chip.title = "The background fetch could not reach the remote; it may need credentials.";
+      raiseBehind(event.repo, 0);
       return;
     }
     if (event.ahead == null && event.behind == null) {
       setChip(chip, "↕", "no upstream", true);
       chip.title = "This branch has no upstream to compare against.";
+      raiseBehind(event.repo, 0);
       return;
     }
+    raiseBehind(event.repo, event.behind);
     if (event.ahead === 0 && event.behind === 0) {
       setChip(chip, "↕", "level since last fetch", false);
     } else {
@@ -197,6 +351,9 @@
   function repoCard(repo) {
     const card = el("div", "ws-card");
     card.dataset.repo = repo.path;
+    // The row the M6 Flag layer badges: dirty tree, detached HEAD, no upstream
+    // (from /api/flags), and behind-remote (raised below as the fetch lands).
+    card.dataset.flagKey = "workspace:" + repo.path;
     const head = el("div", "ws-head");
     head.append(
       el("span", "ws-dot " + (repo.dirty ? "ws-dot--dirty" : "ws-dot--clean")),
@@ -301,6 +458,25 @@
     chip.title = title;
   }
 
+  function raiseBehind(path, behind) {
+    // The tags-behind Flag is only known once the remote tag listing lands, so the
+    // submodule stream raises it here. It is cleared for an unknown listing, a
+    // remote with no releases, an untagged pin, or a pin on the latest, so a
+    // re-fired event never leaves a stale badge.
+    if (!window.wkxFlags) return;
+    if (behind > 0) {
+      window.wkxFlags.add({
+        section: "submodules",
+        target: path,
+        level: "attention",
+        code: "submodule-tags-behind",
+        message: behind === 1 ? "1 release behind" : behind + " releases behind",
+      });
+    } else {
+      window.wkxFlags.clear("submodules", path, "submodule-tags-behind");
+    }
+  }
+
   function fill(event) {
     const row = rows.get(event.submodule);
     if (!row) return;
@@ -311,18 +487,22 @@
 
     if (event.unknown) {
       setLatest(row.latest, "listing unknown", true, "The remote tags could not be listed; it may need credentials.");
+      raiseBehind(event.submodule, 0);
       return;
     }
     if (event.latest == null) {
       setLatest(row.latest, "no releases", true, "The remote lists no version tags.");
+      raiseBehind(event.submodule, 0);
       return;
     }
     setLatest(row.latest, event.latest, false, "The highest stable release the remote lists.");
 
     if (event.behind == null) {
       // Latest is known, but the pin is untagged so a distance cannot be computed.
+      raiseBehind(event.submodule, 0);
       return;
     }
+    raiseBehind(event.submodule, event.behind);
     if (event.behind === 0) {
       row.behind = el("span", "sm-chip sm-chip--behind sm-chip--muted");
       row.behind.append(el("span", "num", "on latest"));
@@ -339,6 +519,9 @@
   function subCard(sub) {
     const card = el("div", "sm-card");
     card.dataset.sub = sub.path;
+    // The row the M6 Flag layer badges: submodule-tags-behind, raised in fill()
+    // once the remote tag listing lands over SSE.
+    card.dataset.flagKey = "submodules:" + sub.path;
     const head = el("div", "sm-head");
     head.append(el("span", "sm-name", sub.name), el("span", "sm-path", sub.path));
     const ctx = el("div", "sm-ctx");
@@ -474,6 +657,8 @@
     const rows = el("div", "tc-rows");
     pins.forEach(function (pin) {
       const row = el("div", "tc-row");
+      // The row the M6 Flag layer badges when the Python pin drifts across repos.
+      row.dataset.flagKey = "toolchains:pin:" + pin.repo;
       row.append(el("span", "tc-repo", pin.repo), valueChip("pin", pin.version, { labelFirst: true }));
       rows.append(row);
     });
@@ -484,6 +669,9 @@
     const rows = el("div", "tc-rows");
     repos.forEach(function (repo) {
       const row = el("div", "tc-row");
+      // The row the M6 Flag layer badges when the installed TypeScript version
+      // drifts across repos.
+      row.dataset.flagKey = "toolchains:ts:" + repo.repo;
       row.append(el("span", "tc-repo", repo.repo));
       const chips = el("span", "tc-chips");
       chips.append(
@@ -608,6 +796,8 @@
   function toolChip(tool) {
     const present = tool.present && tool.version;
     const chip = el("span", "sy-chip");
+    // The row the M6 Flag layer badges when a configured tool is not installed.
+    chip.dataset.flagKey = "system:" + tool.name;
     if (!present) chip.classList.add("sy-chip--muted");
     chip.append(
       el("span", "lbl", tool.name),
@@ -734,6 +924,9 @@
       const names = el("div", "cl-chips");
       grp.items.forEach(function (skill) {
         const chip = el("span", "cl-chip", skill.name);
+        // The row the M6 Flag layer badges: a disabled skill, or a name that
+        // shadows the same skill under another Origin.
+        chip.dataset.flagKey = "claude:skill:" + skill.name;
         if (skill.description) chip.title = skill.description;
         names.append(chip);
       });
@@ -755,6 +948,8 @@
   function pluginRow(plugin) {
     const row = el("div", "cl-row");
     const line = el("div", "cl-row-main");
+    // The row the M6 Flag layer badges when a plugin is installed but disabled.
+    line.dataset.flagKey = "claude:plugin:" + plugin.name;
     line.append(el("span", "cl-name", plugin.name));
     line.append(el("span", "cl-ver", plugin.version));
     if (!plugin.enabled) line.append(tag("disabled", true));
@@ -786,6 +981,9 @@
   function mcpRow(server) {
     const row = el("div", "cl-row");
     const line = el("div", "cl-row-main");
+    // The row the M6 Flag layer badges: a server needing auth, or one configured
+    // under more than one scope.
+    line.dataset.flagKey = "claude:mcp:" + server.name;
     line.append(el("span", "cl-name", server.name));
     line.append(el("span", "cl-transport", server.transport));
     if (server.needs_auth) line.append(tag("auth needed", true));
@@ -871,8 +1069,11 @@
   // One outdated package: its name, then the bump from the installed version to
   // the current one. The current version is the loud element (the target of the
   // upgrade); the installed version stays recessive.
-  function pkgRow(pkg) {
+  function pkgRow(kind, pkg) {
     const row = el("div", "hb-row");
+    // The row the M6 Flag layer badges when the package is outdated. The kind
+    // prefixes the key so a formula and a cask of the same name never collide.
+    row.dataset.flagKey = "homebrew:" + kind + ":" + pkg.name;
     row.append(el("span", "hb-name", pkg.name));
     const bump = el("span", "hb-bump");
     bump.append(
@@ -884,14 +1085,14 @@
     return row;
   }
 
-  function group(label, packages) {
+  function group(kind, label, packages) {
     const wrap = el("div", "hb-group");
     const head = el("p", "hb-group-head");
     head.append(el("span", "hb-count", String(packages.length)), " " + label);
     wrap.append(head);
     const rows = el("div", "hb-rows");
     packages.forEach(function (pkg) {
-      rows.append(pkgRow(pkg));
+      rows.append(pkgRow(kind, pkg));
     });
     wrap.append(rows);
     return wrap;
@@ -906,7 +1107,7 @@
     const casks = data.casks || [];
     const total = formulae.length + casks.length;
     if (total === 0) {
-      note("Every formula and cask is up to date.");
+      note("Every formula and cask is current.");
       return;
     }
     const summary = el("p", "hb-note");
@@ -915,8 +1116,8 @@
       total === 1 ? " package outdated" : " packages outdated",
     );
     const groups = el("div", "hb-groups");
-    if (formulae.length > 0) groups.append(group("formulae", formulae));
-    if (casks.length > 0) groups.append(group("casks", casks));
+    if (formulae.length > 0) groups.append(group("formula", "formulae", formulae));
+    if (casks.length > 0) groups.append(group("cask", "casks", casks));
     mount.replaceChildren(summary, groups);
   }
 
@@ -977,6 +1178,8 @@
   function render(data) {
     const reachable = data.daemon_reachable;
     const wrap = el("div", "dk-wrap");
+    // The row the M6 Flag layer badges when the daemon cannot be reached.
+    wrap.dataset.flagKey = "docker:daemon";
     wrap.append(daemon(reachable));
     if (!reachable) {
       wrap.append(
