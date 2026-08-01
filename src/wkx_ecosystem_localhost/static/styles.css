@@ -359,6 +359,78 @@ footer {
 .sm-chips--filled .sm-chip--latest,
 .sm-chip--behind { animation: ws-ab-in .3s ease-out; }
 
+/* Toolchains Section: the whole language story in one wide panel, split into a
+ * python lane and a node/typescript lane. Reuses the vendored palette and the
+ * stat-tile chip idiom so it reads as one system with the other panels. Colour
+ * stays reserved for the M6 Flag layer, so versions, drift, and absent tools are
+ * told apart by weight and adjacency, never by hue. */
+.tc-note { font-size: .82rem; color: var(--fog); }
+
+.tc-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: .8rem;
+  margin-top: .3rem;
+}
+.tc-lane {
+  background: var(--deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .7rem .8rem .75rem;
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+}
+.tc-lane-head {
+  font-family: var(--mono);
+  font-size: .74rem;
+  letter-spacing: .04em;
+  color: var(--text);
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.tc-group { display: flex; flex-direction: column; gap: .35rem; }
+.tc-group-head {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+
+.tc-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.tc-chip {
+  font-family: var(--mono);
+  font-size: .67rem;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .04rem .45rem;
+  white-space: nowrap;
+}
+.tc-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.tc-chip .lbl { color: var(--fog); }
+.tc-chip--muted { color: var(--fog); }
+.tc-chip--muted .num { color: var(--fog); font-weight: 400; }
+
+.tc-rows { display: flex; flex-direction: column; gap: .3rem; }
+.tc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .3rem .45rem;
+}
+.tc-repo {
+  font-family: var(--mono);
+  font-size: .68rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.tc-row .tc-chips { margin-left: auto; }
+
+.tc-muted { font-family: var(--mono); font-size: .66rem; color: var(--fog); }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

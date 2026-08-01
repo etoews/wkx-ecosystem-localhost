@@ -402,3 +402,180 @@
       note("Could not load submodules. Check that the board is still running.");
     });
 })();
+
+// Toolchains Section: fetch /api/toolchains and render the Python and the
+// Node/TypeScript facts side by side. Facts only, no judgement: drift between a
+// declared and an installed version reads by weight and adjacency, and an absent
+// tool reads as a plain "absent" fact. Colour stays reserved for the M6 Flag
+// layer, so nothing here is told apart by hue.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("toolchains");
+  if (!mount) return;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "tc-note", message));
+  }
+
+  // Stat-tile idiom (dataviz skill): the version is the loud element and its
+  // label stays recessive. No hue is spent — that channel is the M6 Flag layer's.
+  function valueChip(label, value, opts) {
+    const options = opts || {};
+    const chip = el("span", "tc-chip");
+    if (options.muted) chip.classList.add("tc-chip--muted");
+    if (options.labelFirst) {
+      chip.append(el("span", "lbl", label), " ", el("span", "num", value));
+    } else {
+      chip.append(el("span", "num", value), " ", el("span", "lbl", label));
+    }
+    if (options.title) chip.title = options.title;
+    return chip;
+  }
+
+  function toolChip(tool) {
+    if (tool.present && tool.version) {
+      return valueChip(tool.name, tool.version, { labelFirst: true });
+    }
+    return valueChip(tool.name, "absent", {
+      labelFirst: true,
+      muted: true,
+      title: tool.name + " is not installed on this machine.",
+    });
+  }
+
+  function group(title, body) {
+    const wrap = el("div", "tc-group");
+    wrap.append(el("p", "tc-group-head", title));
+    wrap.append(body);
+    return wrap;
+  }
+
+  function chipRow(children) {
+    const row = el("div", "tc-chips");
+    children.forEach(function (child) {
+      row.append(child);
+    });
+    return row;
+  }
+
+  function mutedLine(text) {
+    return el("p", "tc-muted", text);
+  }
+
+  function pinRows(pins) {
+    const rows = el("div", "tc-rows");
+    pins.forEach(function (pin) {
+      const row = el("div", "tc-row");
+      row.append(el("span", "tc-repo", pin.repo), valueChip("pin", pin.version, { labelFirst: true }));
+      rows.append(row);
+    });
+    return rows;
+  }
+
+  function tsRows(repos) {
+    const rows = el("div", "tc-rows");
+    repos.forEach(function (repo) {
+      const row = el("div", "tc-row");
+      row.append(el("span", "tc-repo", repo.repo));
+      const chips = el("span", "tc-chips");
+      chips.append(
+        repo.declared
+          ? valueChip("declared", repo.declared, { labelFirst: true })
+          : valueChip("declared", "none", { labelFirst: true, muted: true }),
+      );
+      chips.append(
+        repo.installed
+          ? valueChip("installed", repo.installed, { labelFirst: true })
+          : valueChip("installed", "not installed", {
+              labelFirst: true,
+              muted: true,
+              title: "This repo declares TypeScript but has not installed it.",
+            }),
+      );
+      row.append(chips);
+      rows.append(row);
+    });
+    return rows;
+  }
+
+  function pythonLane(python) {
+    const lane = el("div", "tc-lane");
+    lane.append(el("p", "tc-lane-head", "python"));
+
+    const interpreters =
+      python.interpreters.length > 0
+        ? chipRow(
+            python.interpreters.map(function (interp) {
+              return valueChip(interp.implementation, interp.version, {
+                title: interp.path || undefined,
+              });
+            }),
+          )
+        : mutedLine("No uv-managed interpreters.");
+    lane.append(group("uv interpreters", interpreters));
+
+    const pins = chipRow([
+      python.global_pin
+        ? valueChip("global pin", python.global_pin, { labelFirst: true })
+        : valueChip("global pin", "unset", { labelFirst: true, muted: true }),
+      toolChip(python.system),
+    ]);
+    lane.append(group("global pin · system", pins));
+
+    lane.append(
+      group(
+        "repo pins",
+        python.repo_pins.length > 0 ? pinRows(python.repo_pins) : mutedLine("No repo pins a version."),
+      ),
+    );
+    return lane;
+  }
+
+  function nodeLane(node) {
+    const lane = el("div", "tc-lane");
+    lane.append(el("p", "tc-lane-head", "node · typescript"));
+
+    lane.append(group("global", chipRow([toolChip(node.node), toolChip(node.npm), toolChip(node.tsc)])));
+
+    lane.append(
+      group(
+        "package managers",
+        node.package_managers.length > 0
+          ? chipRow(node.package_managers.map(toolChip))
+          : mutedLine("None present besides npm."),
+      ),
+    );
+
+    lane.append(
+      group(
+        "typescript per repo",
+        node.repos.length > 0 ? tsRows(node.repos) : mutedLine("No repo declares TypeScript."),
+      ),
+    );
+    return lane;
+  }
+
+  function render(data) {
+    const lanes = el("div", "tc-lanes");
+    lanes.append(pythonLane(data.python), nodeLane(data.node));
+    mount.replaceChildren(lanes);
+  }
+
+  fetch("/api/toolchains")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load toolchains. Check that the board is still running.");
+    });
+})();

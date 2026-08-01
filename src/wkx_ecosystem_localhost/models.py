@@ -101,6 +101,97 @@ class SubmoduleEvent(BaseModel):
     unknown: bool = False
 
 
+class UvPython(BaseModel):
+    """One interpreter uv knows about, from ``uv python list``.
+
+    ``installed`` distinguishes an interpreter present on this machine from one uv
+    merely offers to download; only installed interpreters reach the board.
+    ``path`` is the home-relative path uv reports for it, or None when uv gives no
+    path.
+    """
+
+    implementation: str
+    version: str
+    installed: bool
+    path: str | None = None
+
+
+class RepoPin(BaseModel):
+    """One repo's Python pin, read from its ``.python-version``.
+
+    ``repo`` is the home-relative repo path and ``version`` is the pinned
+    interpreter version verbatim.
+    """
+
+    repo: str
+    version: str
+
+
+class Tool(BaseModel):
+    """A command-line tool's presence and version, as a bare fact.
+
+    ``present`` is False and ``version`` None when the tool is not on this
+    machine: an absent toolchain is a fact to show, never an error. When present,
+    ``version`` is the reported version with any leading ``v`` stripped.
+    """
+
+    name: str
+    version: str | None = None
+    present: bool
+
+
+class RepoTypeScript(BaseModel):
+    """A repo's declared versus installed TypeScript, so drift reads at a glance.
+
+    ``declared`` is the spec from the repo's ``package.json`` (for example
+    ``^5.3.3``) and ``installed`` is the concrete version resolved under
+    ``node_modules/typescript``. Either is None when that fact is absent: a repo
+    can declare TypeScript without having installed it, or carry an installed copy
+    it no longer declares.
+    """
+
+    repo: str
+    declared: str | None = None
+    installed: str | None = None
+
+
+class PythonToolchain(BaseModel):
+    """The Python side of the toolchains Section, all facts side by side.
+
+    ``interpreters`` are the installed interpreters uv manages, ``global_pin`` is
+    the uv global ``.python-version`` (None when unset), ``repo_pins`` are the
+    per-repo pins, and ``system`` is the ``python3`` found on the path.
+    """
+
+    interpreters: list[UvPython]
+    global_pin: str | None = None
+    repo_pins: list[RepoPin]
+    system: Tool
+
+
+class NodeToolchain(BaseModel):
+    """The Node and TypeScript side of the toolchains Section.
+
+    ``node``, ``npm``, and ``tsc`` are the global tools; ``package_managers``
+    lists pnpm and bun but only the ones actually present, so an absent one is
+    simply not shown. ``repos`` carries the per-repo declared-versus-installed
+    TypeScript for every repo that declares or installs it.
+    """
+
+    node: Tool
+    npm: Tool
+    tsc: Tool
+    package_managers: list[Tool]
+    repos: list[RepoTypeScript]
+
+
+class ToolchainsSection(BaseModel):
+    """The toolchains Section: the whole language story in one panel."""
+
+    python: PythonToolchain
+    node: NodeToolchain
+
+
 class FetchEvent(BaseModel):
     """One repo's ahead/behind, streamed over SSE as its background fetch lands.
 

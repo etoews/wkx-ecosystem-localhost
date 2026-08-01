@@ -14,10 +14,15 @@ from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
     stream_submodule_probes,
 )
+from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
 from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
 from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
-from wkx_ecosystem_localhost.models import SubmoduleSection, WorkspaceSection
+from wkx_ecosystem_localhost.models import (
+    SubmoduleSection,
+    ToolchainsSection,
+    WorkspaceSection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +137,18 @@ def create_app(
             media_type=sse.EVENT_STREAM,
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/toolchains")
+    def toolchains() -> ToolchainsSection:
+        """The Python and Node/TypeScript toolchain facts for the toolchains Section.
+
+        Reuses the same repo discovery as the workspace so the per-repo Python
+        pins and per-repo TypeScript line up with the repos already on the board.
+        """
+        repo_paths = discover_repos(
+            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+        )
+        return collect_toolchains(app.state.machine, repo_paths, home=app.state.home)
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

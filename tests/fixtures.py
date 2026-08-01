@@ -22,6 +22,13 @@ from wkx_ecosystem_localhost.collectors.submodules import (
     GITMODULES,
     ls_remote_tags_argv,
 )
+from wkx_ecosystem_localhost.collectors.toolchains import (
+    NODE_VERSION_ARGV,
+    NPM_VERSION_ARGV,
+    PNPM_VERSION_ARGV,
+    PYTHON3_VERSION_ARGV,
+    UV_PYTHON_LIST_ARGV,
+)
 from wkx_ecosystem_localhost.collectors.workspace import (
     CONFIG_ARGV,
     STASH_ARGV,
@@ -213,6 +220,82 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (GONE, DESCRIBE_ARGV): _ok("0.4.0\n"),
             (None, ls_remote_tags_argv(WIDGETS_URL)): _ok(LS_REMOTE_WIDGETS),
             (None, ls_remote_tags_argv(KIT_URL)): _ok(LS_REMOTE_KIT),
+        },
+    )
+    return machine, HOME, [DEV]
+
+
+# ------------------------- toolchains fixtures -------------------------
+# The Python and Node/TypeScript facts. Every version, pin, and manifest is
+# invented, never captured from a real machine.
+
+CLI = DEV / "acme" / "cli"
+
+# uv python list output: a download-available line (excluded), the installed
+# 3.14.4 listed twice as uv does (a bin symlink and its target, de-duplicated to
+# one), an installed 3.13.13, and a download-available pypy (excluded). The
+# home-prefixed paths exercise relativisation and the "A -> B" symlink split.
+UV_PYTHON_LIST = (
+    "cpython-3.15.0a8-macos-aarch64-none    <download available>\n"
+    "cpython-3.14.4-macos-aarch64-none      "
+    "/home/.local/bin/python3.14 -> "
+    "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14\n"
+    "cpython-3.14.4-macos-aarch64-none      "
+    "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14\n"
+    "cpython-3.13.13-macos-aarch64-none     "
+    "/home/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13\n"
+    "pypy-3.11.11-macos-aarch64-none        <download available>\n"
+)
+
+# The uv global pin file and per-repo pins.
+UV_GLOBAL_PIN = "3.14.4\n"
+WEB_PYTHON_PIN = "3.14.4\n"
+API_PYTHON_PIN = "3.13.13\n"
+
+# Per-repo package.json manifests. web declares TypeScript ^5.4.0 but has 5.3.3
+# installed (visible drift); api declares ~5.2.0 with nothing installed; cli has
+# a manifest but no TypeScript at all, so it drops out of the TypeScript story.
+WEB_PACKAGE_JSON = (
+    '{\n  "name": "web",\n  "devDependencies": {\n'
+    '    "typescript": "^5.4.0",\n    "vite": "^5.0.0"\n  }\n}\n'
+)
+WEB_INSTALLED_TS = '{\n  "name": "typescript",\n  "version": "5.3.3"\n}\n'
+API_PACKAGE_JSON = '{\n  "name": "api",\n  "dependencies": {\n    "typescript": "~5.2.0"\n  }\n}\n'
+CLI_PACKAGE_JSON = '{\n  "name": "cli",\n  "dependencies": {\n    "chalk": "^5.3.0"\n  }\n}\n'
+
+
+def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
+    """Build a fake machine exercising the toolchains Collector.
+
+    uv manages two installed interpreters (3.14.4 and 3.13.13) with a download
+    line excluded; the uv global pin is 3.14.4. Three repos under ``~/dev/acme``:
+    ``web`` pins 3.14.4 and declares TypeScript ^5.4.0 with 5.3.3 installed
+    (drift), ``api`` pins 3.13.13 and declares ~5.2.0 with nothing installed, and
+    ``cli`` carries a manifest without TypeScript so it drops from the TypeScript
+    rows and, lacking a ``.python-version``, from the pins. Globally node and npm
+    are present, pnpm is present, and tsc and bun are absent, so an absent tool
+    lands as an absent fact. Returns the machine plus the home and roots.
+    """
+    machine = FakeMachine(
+        dirs={DEV, DEV / "acme", WEB, API, CLI},
+        repos={WEB, API, CLI},
+        files={
+            HOME / ".config" / "uv" / ".python-version": UV_GLOBAL_PIN,
+            WEB / ".python-version": WEB_PYTHON_PIN,
+            WEB / "package.json": WEB_PACKAGE_JSON,
+            WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
+            API / ".python-version": API_PYTHON_PIN,
+            API / "package.json": API_PACKAGE_JSON,
+            CLI / "package.json": CLI_PACKAGE_JSON,
+        },
+        commands={
+            (None, UV_PYTHON_LIST_ARGV): _ok(UV_PYTHON_LIST),
+            (None, PYTHON3_VERSION_ARGV): _ok("Python 3.14.5\n"),
+            (None, NODE_VERSION_ARGV): _ok("v24.15.0\n"),
+            (None, NPM_VERSION_ARGV): _ok("11.12.1\n"),
+            (None, PNPM_VERSION_ARGV): _ok("9.1.0\n"),
+            # tsc and bun are deliberately unregistered: the fake returns 127,
+            # standing in for a tool that is not installed.
         },
     )
     return machine, HOME, [DEV]

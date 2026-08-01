@@ -46,6 +46,21 @@ def submodule_client() -> TestClient:
 
 
 @pytest.fixture
+def toolchains_client() -> TestClient:
+    """A client wired to a fake machine loaded with synthetic toolchain facts.
+
+    Drives the real app and Collector over HTTP: uv interpreters, the global and
+    per-repo Python pins, the system python3, the global node/npm/tsc, the
+    present-only package managers, and the per-repo declared-versus-installed
+    TypeScript are all produced exactly as production would, only the machine seam
+    faked.
+    """
+    machine, home, roots = fixtures.build_toolchains_workspace()
+    settings = Settings(_env_file=None, scan_roots=roots)
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 
