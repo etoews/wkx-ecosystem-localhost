@@ -57,6 +57,50 @@ class WorkspaceSection(BaseModel):
     repos: list[Repo]
 
 
+class Submodule(BaseModel):
+    """One submodule of a discovered repo, versioned against its remote tags.
+
+    ``pinned`` is the version the parent repo pins the submodule at, read from
+    tags via ``git describe`` (None when the commit is not on or after any tag).
+    ``latest`` and ``behind`` stay None until the remote tag listing lands over
+    SSE, exactly as ahead/behind does for a repo; the board renders that as
+    "pending". ``latest`` is the highest stable remote release and ``behind`` is
+    how many releases the pinned commit sits below it. ``unknown`` is True when
+    the remote could not be listed at all, so the row shows a labelled unknown
+    state rather than an invented count.
+    """
+
+    name: str
+    repo: str
+    path: str
+    pinned: str | None
+    latest: str | None = None
+    behind: int | None = None
+    unknown: bool = False
+
+
+class SubmoduleSection(BaseModel):
+    """The submodules Section: every submodule of every discovered repo."""
+
+    submodules: list[Submodule]
+
+
+class SubmoduleEvent(BaseModel):
+    """One submodule's remote-tag result, streamed over SSE as its listing lands.
+
+    ``submodule`` is the home-relative path, matching ``Submodule.path`` so the
+    board fills the right row. ``latest`` is the highest stable remote release and
+    ``behind`` the number of releases the pinned commit is below it; both are None
+    when the remote has no usable version tags. ``unknown`` is True when the remote
+    could not be reached, so the row shows a labelled unknown state.
+    """
+
+    submodule: str
+    latest: str | None = None
+    behind: int | None = None
+    unknown: bool = False
+
+
 class FetchEvent(BaseModel):
     """One repo's ahead/behind, streamed over SSE as its background fetch lands.
 

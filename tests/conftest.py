@@ -32,6 +32,20 @@ def workspace_client() -> TestClient:
 
 
 @pytest.fixture
+def submodule_client() -> TestClient:
+    """A client wired to a fake machine whose repos carry submodules.
+
+    Drives the real app end to end over the fake seam: two submodules list their
+    remote tags and one cannot reach its remote, so the pins, the latest-release
+    ranking, the tags-behind counts, and the unknown state are all produced
+    exactly as production would.
+    """
+    machine, home, roots = fixtures.build_submodule_workspace()
+    settings = Settings(_env_file=None, scan_roots=roots)
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 

@@ -239,3 +239,166 @@
       note("Could not load the workspace. Check that the board is still running.");
     });
 })();
+
+// Submodules Section: fetch /api/submodules and render each submodule with its
+// locally-resolved pin, then open an SSE stream that fills each row's latest
+// release and tags-behind as its remote tag listing lands. Values arrive
+// home-relative; drift reads by weight and count, never colour, which stays
+// reserved for the M6 Flag layer.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("submodules");
+  if (!mount) return;
+
+  // Per submodule, the chips the SSE probe fills, keyed by home-relative path so
+  // an event settles into the right row once its remote tag listing lands.
+  const rows = new Map();
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "sm-note", message));
+  }
+
+  function countChip(n, label) {
+    // Stat-tile idiom (dataviz skill): the magnitude is the loud element, the
+    // label stays recessive, and no hue is spent here.
+    const chip = el("span", "sm-chip");
+    chip.append(el("span", "num", String(n)), " ", el("span", "lbl", label));
+    return chip;
+  }
+
+  function pinnedChip(sub) {
+    const chip = el("span", "sm-chip");
+    if (sub.pinned) {
+      chip.append(el("span", "lbl", "pinned"), " ", el("span", "num", sub.pinned));
+      chip.title = "The version the parent repo pins this submodule at.";
+    } else {
+      chip.classList.add("sm-chip--muted");
+      chip.append(el("span", "lbl", "pinned"), " ", el("span", "num", "untagged"));
+      chip.title = "The pinned commit is not on or after any tag.";
+    }
+    return chip;
+  }
+
+  function latestChip() {
+    // Quiet placeholder until the remote tag listing lands over SSE.
+    const chip = el("span", "sm-chip sm-chip--latest sm-chip--muted");
+    chip.append(el("span", "lbl", "latest"), " ", el("span", "num", "listing…"));
+    chip.title = "The latest release arrives from a remote tag listing, streamed over SSE.";
+    return chip;
+  }
+
+  function setLatest(chip, value, muted, title) {
+    chip.classList.toggle("sm-chip--muted", muted);
+    chip.replaceChildren(el("span", "lbl", "latest"), " ", el("span", "num", value));
+    chip.title = title;
+  }
+
+  function fill(event) {
+    const row = rows.get(event.submodule);
+    if (!row) return;
+    row.chips.classList.add("sm-chips--filled");
+    // Drop any prior drift chip so a repeated event stays idempotent.
+    if (row.behind && row.behind.parentNode) row.behind.remove();
+    row.behind = null;
+
+    if (event.unknown) {
+      setLatest(row.latest, "listing unknown", true, "The remote tags could not be listed; it may need credentials.");
+      return;
+    }
+    if (event.latest == null) {
+      setLatest(row.latest, "no releases", true, "The remote lists no version tags.");
+      return;
+    }
+    setLatest(row.latest, event.latest, false, "The highest stable release the remote lists.");
+
+    if (event.behind == null) {
+      // Latest is known, but the pin is untagged so a distance cannot be computed.
+      return;
+    }
+    if (event.behind === 0) {
+      row.behind = el("span", "sm-chip sm-chip--behind sm-chip--muted");
+      row.behind.append(el("span", "num", "on latest"));
+      row.behind.title = "The pinned commit is the latest release.";
+    } else {
+      const label = event.behind === 1 ? "release behind" : "releases behind";
+      row.behind = countChip(event.behind, label);
+      row.behind.classList.add("sm-chip--behind");
+      row.behind.title = "How many releases the pinned commit sits below the latest.";
+    }
+    row.chips.append(row.behind);
+  }
+
+  function subCard(sub) {
+    const card = el("div", "sm-card");
+    card.dataset.sub = sub.path;
+    const head = el("div", "sm-head");
+    head.append(el("span", "sm-name", sub.name), el("span", "sm-path", sub.path));
+    const ctx = el("div", "sm-ctx");
+    ctx.append(el("span", "sm-eyebrow", "in"), el("span", "sm-repo", sub.repo));
+    const chips = el("div", "sm-chips");
+    const latest = latestChip();
+    chips.append(pinnedChip(sub), latest);
+    rows.set(sub.path, { chips: chips, latest: latest, behind: null });
+    card.append(head, ctx, chips);
+    return card;
+  }
+
+  function startProbeStream() {
+    // Native EventSource only, matching the workspace fetch stream. The server
+    // closes with a "done" event once every submodule has reported, so this runs
+    // once per load rather than reconnecting.
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/submodules/probe");
+    source.addEventListener("message", function (message) {
+      try {
+        fill(JSON.parse(message.data));
+      } catch (_err) {
+        // Ignore a stray or malformed frame rather than tearing down the stream.
+      }
+    });
+    source.addEventListener("done", function () {
+      source.close();
+    });
+    source.addEventListener("error", function () {
+      source.close();
+    });
+  }
+
+  function render(data) {
+    const subs = data.submodules;
+    if (!subs || subs.length === 0) {
+      note("No submodules in the discovered repositories.");
+      return;
+    }
+    rows.clear();
+    const summary = el("p", "sm-note");
+    summary.append(
+      el("span", "sm-count", String(subs.length)),
+      subs.length === 1 ? " submodule across the workspace" : " submodules across the workspace",
+    );
+    const grid = el("div", "sm-grid");
+    subs.forEach(function (sub) {
+      grid.append(subCard(sub));
+    });
+    mount.replaceChildren(summary, grid);
+    startProbeStream();
+  }
+
+  fetch("/api/submodules")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load submodules. Check that the board is still running.");
+    });
+})();

@@ -286,6 +286,79 @@ footer {
 }
 .ws-reveal:hover { color: var(--text); }
 
+/* Submodules Section: one card per submodule, mirroring the workspace card so
+ * the two wide panels read as one system. The pin lands with the first render;
+ * latest and tags-behind settle in over SSE. */
+.sm-note { font-size: .82rem; color: var(--fog); }
+.sm-count { color: var(--text); font-family: var(--mono); }
+
+.sm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: .6rem;
+  margin-top: .55rem;
+}
+.sm-card {
+  background: var(--deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .6rem .7rem .5rem;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.sm-head { display: flex; align-items: baseline; gap: .5rem; }
+.sm-name {
+  font-family: var(--mono);
+  font-size: .86rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.sm-path {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .64rem;
+  color: var(--fog);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.sm-ctx {
+  font-family: var(--mono);
+  font-size: .68rem;
+  display: flex;
+  align-items: baseline;
+  gap: .35rem;
+}
+.sm-eyebrow {
+  font-size: .58rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+.sm-repo { color: var(--fog); overflow-wrap: anywhere; }
+
+.sm-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.sm-chip {
+  font-family: var(--mono);
+  font-size: .67rem;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .04rem .45rem;
+  white-space: nowrap;
+}
+.sm-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.sm-chip .lbl { color: var(--fog); }
+.sm-chip--muted { color: var(--fog); }
+.sm-chip--muted .num { color: var(--fog); font-weight: 400; }
+
+/* latest and behind settle in when the remote tag listing lands over SSE. Drift
+ * is announced by weight and the count, not colour, which stays reserved for the
+ * M6 Flag layer. Reuses the workspace fade keyframe. */
+.sm-chips--filled .sm-chip--latest,
+.sm-chip--behind { animation: ws-ab-in .3s ease-out; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

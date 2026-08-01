@@ -10,10 +10,14 @@ from fastapi.staticfiles import StaticFiles
 
 from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
+from wkx_ecosystem_localhost.collectors.submodules import (
+    collect_submodules,
+    stream_submodule_probes,
+)
 from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
 from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
-from wkx_ecosystem_localhost.models import WorkspaceSection
+from wkx_ecosystem_localhost.models import SubmoduleSection, WorkspaceSection
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +81,48 @@ def create_app(
                 home=app.state.home,
                 max_workers=settings.fetch_workers,
                 timeout=settings.fetch_timeout,
+            ):
+                yield sse.pack(event)
+            yield sse.done()
+
+        return StreamingResponse(
+            events(),
+            media_type=sse.EVENT_STREAM,
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/api/submodules")
+    def submodules() -> SubmoduleSection:
+        """Each discovered repo's submodules with pins resolved for the submodules Section.
+
+        ``latest`` and ``behind`` arrive over the SSE probe below; this returns the
+        pins straight away so the page renders without waiting on any network.
+        """
+        repo_paths = discover_repos(
+            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+        )
+        return collect_submodules(app.state.machine, repo_paths, home=app.state.home)
+
+    @app.get("/api/submodules/probe")
+    def submodules_probe() -> StreamingResponse:
+        """Stream each submodule's latest release and tags-behind as its listing lands (SSE).
+
+        The board opens this with a native ``EventSource`` after the pins render.
+        Each submodule's remote tags are listed on a bounded pool and its numbers
+        are pushed the moment they are ready, so the network truth fills in
+        progressively without blocking the board. No submodule objects are fetched.
+        """
+        repo_paths = discover_repos(
+            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+        )
+
+        def events() -> Iterator[str]:
+            for event in stream_submodule_probes(
+                app.state.machine,
+                repo_paths,
+                home=app.state.home,
+                max_workers=settings.fetch_workers,
+                ls_remote_timeout=settings.fetch_timeout,
             ):
                 yield sse.pack(event)
             yield sse.done()

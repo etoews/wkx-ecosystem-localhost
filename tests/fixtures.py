@@ -17,6 +17,11 @@ from pathlib import Path
 from fakes import FakeMachine
 
 from wkx_ecosystem_localhost.collectors.fetch import AHEAD_BEHIND_ARGV, FETCH_ARGV
+from wkx_ecosystem_localhost.collectors.submodules import (
+    DESCRIBE_ARGV,
+    GITMODULES,
+    ls_remote_tags_argv,
+)
 from wkx_ecosystem_localhost.collectors.workspace import (
     CONFIG_ARGV,
     STASH_ARGV,
@@ -134,6 +139,82 @@ def build_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (API, STATUS_ARGV): _ok(STATUS_DETACHED),
             (API, STASH_ARGV): _ok(STASH_EMPTY),
             (API, CONFIG_ARGV): _ok(""),
+        },
+    )
+    return machine, HOME, [DEV]
+
+
+# ------------------------- submodule drift fixtures -------------------------
+# Two repos with submodules. All tags, paths, and urls are invented.
+
+APP = DEV / "acme" / "app"
+
+# APP's two submodules and their remote urls.
+WIDGETS = APP / "libs" / "widgets"
+KIT = APP / "tools" / "kit"
+WIDGETS_URL = "https://example.com/acme/widgets.git"
+KIT_URL = "https://example.com/acme/kit.git"
+
+# API's one submodule, whose remote cannot be reached (no ls-remote registered).
+GONE = API / "vendor" / "remote-gone"
+GONE_URL = "https://example.com/acme/gone.git"
+
+GITMODULES_APP = (
+    '[submodule "libs/widgets"]\n'
+    "\tpath = libs/widgets\n"
+    f"\turl = {WIDGETS_URL}\n"
+    '[submodule "tools/kit"]\n'
+    "\tpath = tools/kit\n"
+    f"\turl = {KIT_URL}\n"
+)
+GITMODULES_API = (
+    '[submodule "vendor/remote-gone"]\n'
+    "\tpath = vendor/remote-gone\n"
+    f"\turl = {GONE_URL}\n"
+)
+
+# git ls-remote --tags output: "<sha>\trefs/tags/<tag>", with an annotated tag's
+# peeled "^{}" duplicate that must be de-duplicated, a bare (no v) stable ladder,
+# and a trailing pre-release that must be excluded while a stable tag exists.
+LS_REMOTE_WIDGETS = (
+    "1111111111111111111111111111111111111111\trefs/tags/1.0.0\n"
+    "2222222222222222222222222222222222222222\trefs/tags/1.2.0\n"
+    "3333333333333333333333333333333333333333\trefs/tags/1.3.0\n"
+    "4444444444444444444444444444444444444444\trefs/tags/2.0.0\n"
+    "4444444444444444444444444444444444444444\trefs/tags/2.0.0^{}\n"
+    "5555555555555555555555555555555555555555\trefs/tags/2.1.0-rc.1\n"
+)
+# A v-prefixed ladder with the pin sitting on the highest tag: latest v3.1.0,
+# nothing behind.
+LS_REMOTE_KIT = (
+    "6666666666666666666666666666666666666666\trefs/tags/v3.0.0\n"
+    "7777777777777777777777777777777777777777\trefs/tags/v3.1.0\n"
+)
+
+
+def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
+    """Build a fake machine whose repos exercise the submodule-drift Collector.
+
+    ``app`` has two submodules: ``libs/widgets`` is pinned at 1.2.0 with two
+    stable releases beyond it (latest 2.0.0, two behind, the trailing pre-release
+    excluded), and ``tools/kit`` is pinned on the highest v-prefixed tag (latest
+    v3.1.0, nothing behind). ``api`` has one submodule whose remote cannot be
+    reached, so it lands unknown. Returns the machine plus the home and roots to
+    construct the app with.
+    """
+    machine = FakeMachine(
+        dirs={DEV, DEV / "acme", APP, API, WIDGETS, KIT, GONE},
+        repos={APP, API},
+        files={
+            APP / GITMODULES: GITMODULES_APP,
+            API / GITMODULES: GITMODULES_API,
+        },
+        commands={
+            (WIDGETS, DESCRIBE_ARGV): _ok("1.2.0\n"),
+            (KIT, DESCRIBE_ARGV): _ok("v3.1.0\n"),
+            (GONE, DESCRIBE_ARGV): _ok("0.4.0\n"),
+            (None, ls_remote_tags_argv(WIDGETS_URL)): _ok(LS_REMOTE_WIDGETS),
+            (None, ls_remote_tags_argv(KIT_URL)): _ok(LS_REMOTE_KIT),
         },
     )
     return machine, HOME, [DEV]
