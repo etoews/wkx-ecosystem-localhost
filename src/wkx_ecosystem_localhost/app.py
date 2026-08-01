@@ -1,13 +1,16 @@
 """FastAPI application factory serving the board shell and the JSON API."""
 
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from wkx_ecosystem_localhost.collectors.workspace import collect_workspace
+from wkx_ecosystem_localhost import sse
+from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
+from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
 from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import WorkspaceSection
@@ -51,6 +54,37 @@ def create_app(
             settings.scan_roots,
             home=app.state.home,
             max_depth=settings.scan_depth,
+        )
+
+    @app.get("/api/workspace/fetch")
+    def workspace_fetch() -> StreamingResponse:
+        """Stream each repo's ahead/behind as its background fetch lands (SSE).
+
+        The board opens this with a native ``EventSource`` on load. Each repo is
+        fetched on a bounded pool and its counts are pushed the moment they are
+        ready, so the one slow truth fills in progressively without blocking the
+        rest of the board. This is the only write the app performs, and it
+        touches remote-tracking refs only.
+        """
+        repo_paths = discover_repos(
+            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+        )
+
+        def events() -> Iterator[str]:
+            for event in stream_fetches(
+                app.state.machine,
+                repo_paths,
+                home=app.state.home,
+                max_workers=settings.fetch_workers,
+                timeout=settings.fetch_timeout,
+            ):
+                yield sse.pack(event)
+            yield sse.done()
+
+        return StreamingResponse(
+            events(),
+            media_type=sse.EVENT_STREAM,
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")

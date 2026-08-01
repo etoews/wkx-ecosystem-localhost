@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fakes import FakeMachine
 
+from wkx_ecosystem_localhost.collectors.fetch import AHEAD_BEHIND_ARGV, FETCH_ARGV
 from wkx_ecosystem_localhost.collectors.workspace import (
     CONFIG_ARGV,
     STASH_ARGV,
@@ -100,6 +101,10 @@ CONFIG_MIXED = (
 # The token that must never survive redaction, for a "no leak" assertion.
 SECRET_TOKEN = "ghp_secrettoken"
 
+# git rev-list --left-right --count @{upstream}...HEAD output: "<behind>\t<ahead>".
+# web sits 1 behind and 3 ahead of its upstream after the fetch.
+AHEAD_BEHIND_WEB = "1\t3\n"
+
 # Synthetic home and scan tree for the HTTP-level tests. All paths are invented.
 HOME = Path("/home")
 DEV = HOME / "dev"
@@ -129,6 +134,26 @@ def build_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (API, STATUS_ARGV): _ok(STATUS_DETACHED),
             (API, STASH_ARGV): _ok(STASH_EMPTY),
             (API, CONFIG_ARGV): _ok(""),
+        },
+    )
+    return machine, HOME, [DEV]
+
+
+def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
+    """Build a fake machine for the SSE background-fetch tests.
+
+    Two repos: ``web`` fetches cleanly and lands 3 ahead / 1 behind its upstream;
+    ``api`` cannot reach its remote (no fetch command is registered, so the fake
+    returns a non-zero result, standing in for a credential-gated remote) and so
+    falls to the unknown state. Returns the machine plus the home and roots to
+    construct the app with.
+    """
+    machine = FakeMachine(
+        dirs={DEV, DEV / "acme", WEB, API},
+        repos={WEB, API},
+        commands={
+            (WEB, FETCH_ARGV): _ok(""),
+            (WEB, AHEAD_BEHIND_ARGV): _ok(AHEAD_BEHIND_WEB),
         },
     )
     return machine, HOME, [DEV]

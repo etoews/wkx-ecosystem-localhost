@@ -33,3 +33,9 @@ class Settings(BaseSettings):
     scan_roots: list[Path] = Field(default_factory=_default_scan_roots)
     scan_depth: int = 8
     port: int = 8787
+
+    # Background-fetch pool: how many repos are fetched at once, and the
+    # per-fetch wall-clock ceiling. Bounded so the one write the board performs
+    # can never swamp the machine or hang on an unreachable remote.
+    fetch_workers: int = 4
+    fetch_timeout: float = 10.0

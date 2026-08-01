@@ -31,14 +31,19 @@
   button.textContent = "theme: " + current();
 })();
 
-// Workspace Section: fetch /api/workspace and render the discovered repos.
-// Values arrive already redacted and home-relative; the only sensitive value
-// on the page is each email's raw form, revealed on demand from repo.config.
+// Workspace Section: fetch /api/workspace and render the discovered repos, then
+// open an SSE stream that fills each repo's ahead/behind in as its background
+// fetch lands. Values arrive already redacted and home-relative; the only
+// sensitive value on the page is each email's raw form, revealed on demand.
 (function () {
   "use strict";
 
   const mount = document.getElementById("workspace");
   if (!mount) return;
+
+  // Each repo's ahead/behind chip, keyed by its home-relative path, so an SSE
+  // event can fill the right row once its background fetch lands.
+  const abChips = new Map();
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -77,10 +82,70 @@
     }
     if (repo.stashes > 0) row.append(countChip(repo.stashes, "stash"));
 
-    const pending = el("span", "ws-chip ws-chip--pending", "↕ ahead/behind pending");
-    pending.title = "Computed after a background fetch, arriving over SSE in M2.";
-    row.append(pending);
+    row.append(aheadBehindChip(repo));
     return row;
+  }
+
+  function aheadBehindChip(repo) {
+    // Starts as a quiet placeholder and is filled when the repo's background
+    // fetch lands over SSE. Colour stays reserved for M6 Flags, so the counts
+    // read by glyph and weight (the stat-tile idiom), never by hue.
+    const chip = el("span", "ws-chip ws-chip--ab ws-chip--muted");
+    chip.append(el("span", "num", "↕"), " ", el("span", "lbl", "fetching…"));
+    chip.title = "Ahead/behind arrives from a background fetch, streamed over SSE.";
+    abChips.set(repo.path, chip);
+    return chip;
+  }
+
+  function setChip(chip, glyph, label, muted) {
+    chip.classList.toggle("ws-chip--muted", muted);
+    chip.replaceChildren(el("span", "num", glyph), " ", el("span", "lbl", label));
+  }
+
+  function fillAheadBehind(event) {
+    const chip = abChips.get(event.repo);
+    if (!chip) return;
+    chip.classList.add("ws-chip--filled");
+    if (event.unknown) {
+      setChip(chip, "↕", "fetch unknown", true);
+      chip.title = "The background fetch could not reach the remote; it may need credentials.";
+      return;
+    }
+    if (event.ahead == null && event.behind == null) {
+      setChip(chip, "↕", "no upstream", true);
+      chip.title = "This branch has no upstream to compare against.";
+      return;
+    }
+    if (event.ahead === 0 && event.behind === 0) {
+      setChip(chip, "↕", "level since last fetch", false);
+    } else {
+      const parts = [];
+      if (event.ahead > 0) parts.push("↑" + event.ahead);
+      if (event.behind > 0) parts.push("↓" + event.behind);
+      setChip(chip, parts.join(" "), "since last fetch", false);
+    }
+    chip.title = "Commits ahead of and behind the upstream, since the last background fetch.";
+  }
+
+  function startFetchStream() {
+    // Native EventSource only: no library. The server closes the stream with a
+    // "done" event once every repo has reported, so this runs exactly once per
+    // load rather than reconnecting in a loop.
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/workspace/fetch");
+    source.addEventListener("message", function (message) {
+      try {
+        fillAheadBehind(JSON.parse(message.data));
+      } catch (_err) {
+        // Ignore a stray or malformed frame rather than tearing down the stream.
+      }
+    });
+    source.addEventListener("done", function () {
+      source.close();
+    });
+    source.addEventListener("error", function () {
+      source.close();
+    });
   }
 
   function refLine(repo) {
@@ -131,6 +196,7 @@
 
   function repoCard(repo) {
     const card = el("div", "ws-card");
+    card.dataset.repo = repo.path;
     const head = el("div", "ws-head");
     head.append(
       el("span", "ws-dot " + (repo.dirty ? "ws-dot--dirty" : "ws-dot--clean")),
@@ -148,6 +214,7 @@
       note("No git repositories found under " + roots + ".");
       return;
     }
+    abChips.clear();
     const summary = el("p", "ws-note");
     summary.append(
       el("span", "ws-count", String(data.repos.length)),
@@ -159,6 +226,7 @@
       grid.append(repoCard(repo));
     });
     mount.replaceChildren(summary, grid);
+    startFetchStream();
   }
 
   fetch("/api/workspace")

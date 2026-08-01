@@ -29,3 +29,16 @@ def workspace_client() -> TestClient:
     machine, home, roots = fixtures.build_workspace()
     settings = Settings(_env_file=None, scan_roots=roots)
     return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
+def fetch_client() -> TestClient:
+    """A client wired to a fake machine whose repos exercise the fetch stream.
+
+    One repo fetches cleanly with ahead/behind counts, the other cannot reach its
+    remote and lands unknown, so the SSE endpoint is driven end to end over the
+    fake seam exactly as production would produce it.
+    """
+    machine, home, roots = fixtures.build_fetch_workspace()
+    settings = Settings(_env_file=None, scan_roots=roots)
+    return TestClient(create_app(settings, machine=machine, home=home))

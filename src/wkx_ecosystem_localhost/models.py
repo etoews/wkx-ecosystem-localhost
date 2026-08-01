@@ -55,3 +55,19 @@ class WorkspaceSection(BaseModel):
 
     roots: list[str]
     repos: list[Repo]
+
+
+class FetchEvent(BaseModel):
+    """One repo's ahead/behind, streamed over SSE as its background fetch lands.
+
+    ``repo`` is the home-relative path, matching ``Repo.path`` so the board fills
+    the right row. ``ahead`` and ``behind`` are counts since the fetch that just
+    completed; both are None when the repo has no upstream to compare against.
+    ``unknown`` is True when the fetch could not reach the remote at all, so the
+    row shows a labelled unknown state rather than a stale or invented count.
+    """
+
+    repo: str
+    ahead: int | None = None
+    behind: int | None = None
+    unknown: bool = False

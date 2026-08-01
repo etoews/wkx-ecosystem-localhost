@@ -240,7 +240,17 @@ footer {
 .ws-chip .num { font-weight: 600; color: var(--text); }
 .ws-chip .lbl { color: var(--fog); }
 .ws-chip--muted { color: var(--fog); }
-.ws-chip--pending { color: var(--fog); font-style: italic; }
+.ws-chip--muted .num { color: var(--fog); font-weight: 400; }
+
+/* ahead/behind chip: quiet while its fetch is in flight, settling in when the
+ * count lands over SSE. The fill is announced by weight and the ↑/↓ glyphs, not
+ * colour, which stays reserved for the M6 Flag layer. */
+.ws-chip--ab .num { font-variant-numeric: tabular-nums; }
+.ws-chip--filled { animation: ws-ab-in .3s ease-out; }
+@keyframes ws-ab-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
 .ws-config { font-family: var(--mono); font-size: .7rem; }
 .ws-config summary {
