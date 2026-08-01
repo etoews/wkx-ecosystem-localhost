@@ -61,6 +61,21 @@ def toolchains_client() -> TestClient:
 
 
 @pytest.fixture
+def system_client() -> TestClient:
+    """A client wired to a fake machine loaded with synthetic system-tool facts.
+
+    Drives the real app and Collector over HTTP against a configured tool list:
+    nine tools report a version in their own format, one is absent, and one is
+    added purely through configuration with an overridden version command, so the
+    present-or-missing contract and the config-driven probe are produced exactly as
+    production would, only the machine seam faked.
+    """
+    machine, tools = fixtures.build_system_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV], system_tools=tools)
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 

@@ -140,6 +140,18 @@ class Tool(BaseModel):
     present: bool
 
 
+class SystemToolsSection(BaseModel):
+    """The system Section: each configured developer CLI as present-or-missing.
+
+    One ``Tool`` per configured tool, in the configured order. A present tool
+    carries its parsed version; a missing one carries None, which the board renders
+    as a plain "missing" fact rather than an error. The list of tools probed is
+    configuration, so the Section grows without any code change.
+    """
+
+    tools: list[Tool]
+
+
 class RepoTypeScript(BaseModel):
     """A repo's declared versus installed TypeScript, so drift reads at a glance.
 

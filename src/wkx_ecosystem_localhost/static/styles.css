@@ -431,6 +431,33 @@ footer {
 
 .tc-muted { font-family: var(--mono); font-size: .66rem; color: var(--fog); }
 
+/* System Section: the configured developer CLIs as a wrap of stat-tile chips.
+ * Reuses the vendored palette and chip idiom so it reads as one system with the
+ * other panels. Colour stays reserved for the M6 Flag layer, so present and
+ * missing are told apart by weight and the label, never by hue. */
+.sy-note { font-size: .82rem; color: var(--fog); }
+.sy-count { color: var(--text); font-family: var(--mono); }
+
+.sy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+  margin-top: .55rem;
+}
+.sy-chip {
+  font-family: var(--mono);
+  font-size: .67rem;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .04rem .45rem;
+  white-space: nowrap;
+}
+.sy-chip .lbl { color: var(--fog); }
+.sy-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.sy-chip--muted { color: var(--fog); }
+.sy-chip--muted .num { color: var(--fog); font-weight: 400; }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

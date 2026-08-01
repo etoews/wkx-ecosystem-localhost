@@ -579,3 +579,77 @@
       note("Could not load toolchains. Check that the board is still running.");
     });
 })();
+
+// System Section: fetch /api/system and render each configured developer CLI as
+// present-with-version or missing. The tools shown are whatever the machine
+// configured, in order, so the panel grows with configuration alone. Facts only:
+// a missing tool reads as a plain "missing" fact, told apart by weight and label,
+// never by hue, which stays reserved for the M6 Flag layer.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("system");
+  if (!mount) return;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "sy-note", message));
+  }
+
+  // Stat-tile idiom (dataviz skill): the tool name labels, the version is the
+  // loud element. A missing tool is the same tile, quietened and reading
+  // "missing" in place of a version, so presence tells by weight, not colour.
+  function toolChip(tool) {
+    const present = tool.present && tool.version;
+    const chip = el("span", "sy-chip");
+    if (!present) chip.classList.add("sy-chip--muted");
+    chip.append(
+      el("span", "lbl", tool.name),
+      " ",
+      el("span", "num", present ? tool.version : "missing"),
+    );
+    chip.title = present
+      ? tool.name + " " + tool.version
+      : tool.name + " is not installed on this machine.";
+    return chip;
+  }
+
+  function render(data) {
+    const tools = data.tools || [];
+    if (tools.length === 0) {
+      note("No developer tools are configured to probe.");
+      return;
+    }
+    const present = tools.filter(function (tool) {
+      return tool.present && tool.version;
+    }).length;
+    const summary = el("p", "sy-note");
+    summary.append(
+      el("span", "sy-count", String(present)),
+      " of ",
+      el("span", "sy-count", String(tools.length)),
+      " present",
+    );
+    const grid = el("div", "sy-chips");
+    tools.forEach(function (tool) {
+      grid.append(toolChip(tool));
+    });
+    mount.replaceChildren(summary, grid);
+  }
+
+  fetch("/api/system")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load system tools. Check that the board is still running.");
+    });
+})();

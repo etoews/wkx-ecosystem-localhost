@@ -14,12 +14,14 @@ from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
     stream_submodule_probes,
 )
+from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
 from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
 from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
     SubmoduleSection,
+    SystemToolsSection,
     ToolchainsSection,
     WorkspaceSection,
 )
@@ -149,6 +151,15 @@ def create_app(
             app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
         )
         return collect_toolchains(app.state.machine, repo_paths, home=app.state.home)
+
+    @app.get("/api/system")
+    def system() -> SystemToolsSection:
+        """Each configured developer CLI as present-with-version or missing.
+
+        The tools probed come straight from ``settings``, so a machine extends the
+        Section by naming more tools in its configuration, not by changing code.
+        """
+        return collect_system_tools(app.state.machine, settings.system_tools)
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

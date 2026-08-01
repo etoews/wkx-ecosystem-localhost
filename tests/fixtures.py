@@ -34,6 +34,7 @@ from wkx_ecosystem_localhost.collectors.workspace import (
     STASH_ARGV,
     STATUS_ARGV,
 )
+from wkx_ecosystem_localhost.config import ToolSpec
 from wkx_ecosystem_localhost.machine import CommandResult
 
 # A clean repo tracking an upstream.
@@ -299,6 +300,74 @@ def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
         },
     )
     return machine, HOME, [DEV]
+
+
+# ------------------------- system-tools fixtures -------------------------
+# One version banner per tool, each in that tool's own shape, so the parser is
+# pinned against every format. Every string is invented, never captured from a
+# real machine.
+
+# Labelled: "<name> version <v>".
+GIT_VERSION = "git version 2.39.5\n"
+# Labelled, then a trailing URL line whose own version must not win.
+GH_VERSION = "gh version 2.63.2 (2024-12-05)\nhttps://github.com/cli/cli/releases/tag/v2.63.2\n"
+# Name then a bare version with a parenthesised build.
+UV_VERSION = "uv 0.5.11 (abc1234 2024-12-05)\n"
+# The build hash after the comma must not be read as the version.
+DOCKER_VERSION = "Docker version 27.4.0, build bde2b89\n"
+# v-prefixed and multi-line: only the first line carries the version.
+TERRAFORM_VERSION = "Terraform v1.10.2\non darwin_arm64\n"
+# Slash-packed: the CLI version comes before the Python and OS versions.
+AWS_VERSION = "aws-cli/2.22.19 Python/3.12.6 Darwin/24.1.0 exe/x86_64\n"
+# A bare first-line version followed by a commit hash and an arch line.
+CODE_VERSION = "1.96.0\n138f619c86f1199955d53b4166bef66ef252935c\narm64\n"
+# The classic bare "v<version>".
+NODE_VERSION_OUT = "v22.12.0\n"
+# A configuration-added tool probed with a "version" subcommand, not "--version".
+WIDGET_VERSION = "widget version 3.2.1\n"
+
+# The configured probe for the tests: the varied real shapes above, one tool
+# (ty) deliberately absent, and one (widget) added purely through configuration
+# with an overridden version command, so the config-driven probe is exercised.
+SYSTEM_TOOLS = [
+    ToolSpec(name="git"),
+    ToolSpec(name="gh"),
+    ToolSpec(name="uv"),
+    ToolSpec(name="docker"),
+    ToolSpec(name="terraform"),
+    ToolSpec(name="aws"),
+    ToolSpec(name="code"),
+    ToolSpec(name="node"),
+    ToolSpec(name="ty"),
+    ToolSpec(name="widget", version_args=("version",)),
+]
+
+
+def build_system_workspace() -> tuple[FakeMachine, list[ToolSpec]]:
+    """Build a fake machine and its configured tool list for the system Collector.
+
+    Nine tools report a version, each in its own format; ``ty`` is deliberately
+    unregistered so the fake returns 127, standing in for a tool that is not
+    installed; and ``widget`` is a tool added purely through configuration, probed
+    with a ``version`` subcommand rather than ``--version``. Returns the machine
+    plus the tool list to build the settings with.
+    """
+    machine = FakeMachine(
+        commands={
+            (None, ("git", "--version")): _ok(GIT_VERSION),
+            (None, ("gh", "--version")): _ok(GH_VERSION),
+            (None, ("uv", "--version")): _ok(UV_VERSION),
+            (None, ("docker", "--version")): _ok(DOCKER_VERSION),
+            (None, ("terraform", "--version")): _ok(TERRAFORM_VERSION),
+            (None, ("aws", "--version")): _ok(AWS_VERSION),
+            (None, ("code", "--version")): _ok(CODE_VERSION),
+            (None, ("node", "--version")): _ok(NODE_VERSION_OUT),
+            (None, ("widget", "version")): _ok(WIDGET_VERSION),
+            # ty is deliberately unregistered: the fake returns 127, standing in
+            # for a tool that is not installed.
+        },
+    )
+    return machine, SYSTEM_TOOLS
 
 
 def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
