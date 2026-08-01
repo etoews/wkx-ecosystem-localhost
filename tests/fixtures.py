@@ -168,9 +168,7 @@ GITMODULES_APP = (
     f"\turl = {KIT_URL}\n"
 )
 GITMODULES_API = (
-    '[submodule "vendor/remote-gone"]\n'
-    "\tpath = vendor/remote-gone\n"
-    f"\turl = {GONE_URL}\n"
+    f'[submodule "vendor/remote-gone"]\n\tpath = vendor/remote-gone\n\turl = {GONE_URL}\n'
 )
 
 # git ls-remote --tags output: "<sha>\trefs/tags/<tag>", with an annotated tag's

@@ -42,11 +42,7 @@ def test_parse_ls_remote_tags_dedupes_the_peeled_annotated_tag() -> None:
 
 
 def test_parse_ls_remote_tags_ignores_non_tag_refs() -> None:
-    text = (
-        "aaaa\trefs/heads/main\n"
-        "bbbb\trefs/tags/1.0.0\n"
-        "cccc\tHEAD\n"
-    )
+    text = "aaaa\trefs/heads/main\nbbbb\trefs/tags/1.0.0\ncccc\tHEAD\n"
     assert parse_ls_remote_tags(text) == ["1.0.0"]
 
 

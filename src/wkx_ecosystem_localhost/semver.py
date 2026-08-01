@@ -22,9 +22,7 @@ from typing import Any
 # major.minor.patch, an optional v/V prefix, an optional -pre-release, and
 # optional +build metadata. Anything that does not match this shape is not a
 # version tag we rank (a moving tag like "latest" or "stable" is simply ignored).
-_SEMVER_RE = re.compile(
-    r"^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$"
-)
+_SEMVER_RE = re.compile(r"^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$")
 
 # A git-describe suffix: "-<commits>-g<abbrev>" appended when the described
 # commit is past the nearest tag. Stripped from a pinned describe so a submodule

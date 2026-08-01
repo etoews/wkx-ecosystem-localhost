@@ -32,9 +32,7 @@ def test_discover_submodules_resolves_each_pin_locally() -> None:
 
 def test_probe_reports_latest_and_tags_behind_for_a_drifted_submodule() -> None:
     machine, _, _ = fixtures.build_submodule_workspace()
-    (spec,) = [
-        s for s in discover_submodules(machine, [fixtures.APP]) if s.name == "libs/widgets"
-    ]
+    (spec,) = [s for s in discover_submodules(machine, [fixtures.APP]) if s.name == "libs/widgets"]
 
     outcome = probe_submodule(machine, spec)
 
