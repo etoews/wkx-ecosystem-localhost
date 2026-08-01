@@ -1,0 +1,3 @@
+[submodule "standards/python"]
+	path = standards/python
+	url = https://github.com/etoews/python-standards.git

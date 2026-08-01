@@ -1,0 +1,56 @@
+[project]
+name = "wkx-ecosystem-localhost"
+version = "0.1.0"
+description = "Read-only localhost board that inventories a dev machine's ecosystem."
+readme = "README.md"
+requires-python = ">=3.14"
+authors = [
+    { name = "Everett Toews", email = "everett.toews@gmail.com" }
+]
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.14.2",
+    "typer>=0.27.0",
+    "uvicorn>=0.52.0",
+]
+
+[project.scripts]
+wkx-ecosystem-localhost = "wkx_ecosystem_localhost.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wkx_ecosystem_localhost"]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.9.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.1",
+    "ty>=0.0.65",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.ty.src]
+include = ["src"]

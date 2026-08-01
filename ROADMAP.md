@@ -29,8 +29,8 @@ are the cross-cutting decisions every milestone inherits.
 
 | Milestone | Size | Status |
 |-----------|------|--------|
-| [M0: Scaffold](#m0-scaffold) | S | ⬜ Next |
-| [M1: Workspace slice](#m1-workspace-slice) | M | ⬜ Not started |
+| [M0: Scaffold](#m0-scaffold) | S | ✅ Complete |
+| [M1: Workspace slice](#m1-workspace-slice) | M | ⬜ Next |
 | [M2: Background fetch + SSE](#m2-background-fetch--sse) | M | ⬜ Not started |
 | [M3: Toolchains + System tools](#m3-toolchains--system-tools) | M | ⬜ Not started |
 | [M4: Claude environment](#m4-claude-environment) | M | ⬜ Not started |
@@ -50,20 +50,20 @@ M6 needs the collectors it flags. M7–M9 are opt-in.
 ## M0: Scaffold
 
 **Deliverables**
-- [ ] `uv init --app`, `src/wkx_ecosystem_localhost/` layout per `standards/python/PROJECT.md`.
-- [ ] `pyproject.toml` with ruff (`E,F,I,UP,B,SIM,RUF`), ty, pytest; Python 3.14 pin.
-- [ ] `standards/python/` git submodule (HTTPS URL, pinned to release `1.0.0`, commit `9909b8e`).
-- [ ] `CLAUDE.md` from the §15 template, with the playbook line rewritten to `./standards/python/PROJECT.md`.
-- [ ] `config.py` (`pydantic-settings`): repo scan roots (default `Path.home()/"dev"`, never a literal path), port (default `8787`), all machine inputs typed and defaulted by computation. `.env.example` documents the contract with placeholders only.
-- [ ] `_logging.py` (stdlib) and `exceptions.py` hierarchy.
-- [ ] `app.py`: FastAPI serving the static board; Typer entry point `wkx-ecosystem-localhost serve` (`--open-browser`) binding uvicorn to `127.0.0.1`.
-- [ ] `static/`: `index.html` + `styles.css` + `app.js`, vendoring the `wkx-namespace` palette, type stack, theme toggle (`auto/light/dark`, `localStorage`), panel/`signage` components, and fluid grid, with a provenance comment. Masthead "WKX Ecosystem" + "localhost" tag.
-- [ ] `README.md` noting `git clone --recurse-submodules`.
+- [x] `uv init --app`, `src/wkx_ecosystem_localhost/` layout per `standards/python/PROJECT.md`.
+- [x] `pyproject.toml` with ruff (`E,F,I,UP,B,SIM,RUF`), ty, pytest; Python 3.14 pin.
+- [x] `standards/python/` git submodule (HTTPS URL, pinned to release `1.0.0`, commit `9909b8e`).
+- [x] `CLAUDE.md` from the §15 template, with the playbook line rewritten to `./standards/python/PROJECT.md`.
+- [x] `config.py` (`pydantic-settings`): repo scan roots (default `Path.home()/"dev"`, never a literal path), port (default `8787`), all machine inputs typed and defaulted by computation. `.env.example` documents the contract with placeholders only.
+- [x] `_logging.py` (stdlib) and `exceptions.py` hierarchy.
+- [x] `app.py`: FastAPI serving the static board; Typer entry point `wkx-ecosystem-localhost serve` (`--open-browser`) binding uvicorn to `127.0.0.1`.
+- [x] `static/`: `index.html` + `styles.css` + `app.js`, vendoring the `wkx-namespace` palette, type stack, theme toggle (`auto/light/dark`, `localStorage`), panel/`signage` components, and fluid grid, with a provenance comment. Masthead "WKX Ecosystem" + "localhost" tag.
+- [x] `README.md` noting `git clone --recurse-submodules`.
 
 **Hands-on artefact**
-- [ ] `uv run wkx-ecosystem-localhost serve` starts on `127.0.0.1:8787`; the page loads with masthead, theme toggle, and empty panels.
-- [ ] `curl` from another host on the LAN is refused (proves loopback binding).
-- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+- [x] `uv run wkx-ecosystem-localhost serve` starts on `127.0.0.1:8787`; the page loads with masthead, theme toggle, and empty panels.
+- [x] `curl` from another host on the LAN is refused (proves loopback binding).
+- [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 

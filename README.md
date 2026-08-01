@@ -45,8 +45,6 @@ status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
 
 ## Running
 
-Once M0 lands:
-
 ```sh
 git clone --recurse-submodules https://github.com/etoews/wkx-ecosystem-localhost.git
 cd wkx-ecosystem-localhost

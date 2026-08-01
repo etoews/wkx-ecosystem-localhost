@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WKX Ecosystem localhost</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230A141E'/%3E%3Cpath d='M10 2 L6 14' stroke='%23FFE9A3' stroke-width='2'/%3E%3C/svg%3E">
+<script>
+  // Apply a saved theme override before first paint; without one, the
+  // system setting decides via prefers-color-scheme.
+  (function () {
+    const saved = localStorage.getItem("wkx-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  })();
+</script>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <h1>WKX <span class="dim">Ecosystem</span></h1>
+    <span class="tag">localhost</span>
+    <div class="controls">
+      <button class="theme" id="theme-toggle" aria-label="Cycle theme">theme: auto</button>
+    </div>
+  </header>
+
+  <main class="board" aria-label="Sections">
+    <section class="panel" aria-label="workspace">
+      <p class="signage">workspace</p>
+      <p class="empty">Repos, their status, and git config arrive with the workspace Collector (M1).</p>
+    </section>
+    <section class="panel" aria-label="toolchains">
+      <p class="signage">toolchains</p>
+      <p class="empty">Python and TypeScript/Node versions arrive with the toolchains Collector (M3a).</p>
+    </section>
+    <section class="panel" aria-label="claude">
+      <p class="signage">claude</p>
+      <p class="empty">Skills, plugins, and MCP servers arrive with the claude Collector (M4).</p>
+    </section>
+    <section class="panel" aria-label="system">
+      <p class="signage">system</p>
+      <p class="empty">Dev CLI presence and versions arrive with the system Collector (M3b).</p>
+    </section>
+    <section class="panel" aria-label="homebrew">
+      <p class="signage">homebrew</p>
+      <p class="empty">Outdated formulae and casks arrive with the homebrew Collector (M5).</p>
+    </section>
+    <section class="panel" aria-label="docker">
+      <p class="signage">docker</p>
+      <p class="empty">Daemon state, containers, and disk arrive with the docker Collector (M5).</p>
+    </section>
+  </main>
+
+  <footer>read-only · 127.0.0.1 only · facts land as Collectors ship</footer>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

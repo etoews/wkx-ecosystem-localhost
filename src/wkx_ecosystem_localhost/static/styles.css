@@ -1,0 +1,159 @@
+/*
+ * Adapted from the wkx-namespace design system: look and feel only.
+ * Palette, type stacks, panel idiom, and theme behaviour are vendored;
+ * the platform's Status vocabulary is deliberately not inherited.
+ */
+
+:root {
+  /* night, the identity default */
+  --deep: #0A141E;
+  --water: #0E1C2A;
+  --hull: #14273A;
+  --line: #21374C;
+  --text: #E8F0F6;
+  --fog: #8AA3B5;
+  --add: #3DDC97;
+  --del: #FF6257;
+  --chg: #F5B84A;
+  --masthead: #FFFFFF;
+  --match: #FFE9A3;
+  --sans: "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --sans-cond: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif;
+  --mono: ui-monospace, "Menlo", "SF Mono", monospace;
+}
+
+/* day: system preference, unless the operator overrides to dark */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --deep: #EEF3F6;
+    --water: #FFFFFF;
+    --hull: #DFE8EE;
+    --line: #C6D3DC;
+    --text: #182634;
+    --fog: #5B7284;
+    --add: #0F8A5F;
+    --del: #C3362B;
+    --chg: #A06E00;
+    --masthead: #0A141E;
+    --match: #7A5600;
+  }
+}
+
+/* explicit operator overrides beat the system preference in both directions */
+:root[data-theme="light"] {
+  --deep: #EEF3F6;
+  --water: #FFFFFF;
+  --hull: #DFE8EE;
+  --line: #C6D3DC;
+  --text: #182634;
+  --fog: #5B7284;
+  --add: #0F8A5F;
+  --del: #C3362B;
+  --chg: #A06E00;
+  --masthead: #0A141E;
+  --match: #7A5600;
+}
+:root[data-theme="dark"] {
+  --deep: #0A141E;
+  --water: #0E1C2A;
+  --hull: #14273A;
+  --line: #21374C;
+  --text: #E8F0F6;
+  --fog: #8AA3B5;
+  --add: #3DDC97;
+  --del: #FF6257;
+  --chg: #F5B84A;
+  --masthead: #FFFFFF;
+  --match: #FFE9A3;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--deep);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+a { color: var(--add); }
+:focus-visible { outline: 2px solid var(--chg); outline-offset: 2px; }
+
+/* Fluid width: the board takes the whole screen; prose stays capped inside panels. */
+.page {
+  margin: 0 auto;
+  padding: 1.5rem clamp(1.25rem, 2.5vw, 4rem) 4rem;
+}
+
+/* ---------- masthead ---------- */
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: .7rem;
+  flex-wrap: wrap;
+  padding-bottom: 1.25rem;
+}
+.masthead h1 {
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--masthead);
+  letter-spacing: -.01em;
+}
+.masthead h1 .dim { color: var(--fog); font-weight: 400; }
+.masthead .tag {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .1rem .6rem;
+}
+.masthead .controls { margin-left: auto; }
+button.theme {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+  cursor: pointer;
+}
+button.theme:hover { color: var(--text); border-color: var(--fog); }
+
+/* ---------- board ---------- */
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: .8rem;
+}
+.panel {
+  background: var(--water);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .9rem 1rem 1rem;
+}
+.signage {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--fog);
+  margin-bottom: .5rem;
+}
+.empty {
+  font-size: .82rem;
+  color: var(--fog);
+  max-width: 42ch;
+}
+.empty code { font-family: var(--mono); font-size: .95em; }
+
+footer {
+  padding-top: 1.5rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
