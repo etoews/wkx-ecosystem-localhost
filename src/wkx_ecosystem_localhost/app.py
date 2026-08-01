@@ -7,27 +7,51 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from wkx_ecosystem_localhost.collectors.workspace import collect_workspace
 from wkx_ecosystem_localhost.config import Settings
+from wkx_ecosystem_localhost.machine import Machine, RealMachine
+from wkx_ecosystem_localhost.models import WorkspaceSection
 
 logger = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
 
 
-def create_app(settings: Settings) -> FastAPI:
+def create_app(
+    settings: Settings, *, machine: Machine | None = None, home: Path | None = None
+) -> FastAPI:
     """Build the application.
 
-    Collectors added in later milestones read their configuration from
-    app.state.settings; the factory takes Settings explicitly so tests can
-    construct apps without touching the environment.
+    Collectors read their configuration from ``settings`` and reach the host only
+    through ``machine`` (the seam), so tests inject a fake and a synthetic ``home``
+    to drive the real app end to end without touching a real machine. Production
+    defaults to the ``RealMachine`` and the actual home directory.
+
+    Args:
+        settings: Typed configuration, built once at the entry point.
+        machine: The machine seam. Defaults to ``RealMachine``.
+        home: Home directory used to relativise displayed paths. Defaults to the
+            real home.
     """
     app = FastAPI(title="WKX Ecosystem localhost")
     app.state.settings = settings
+    app.state.machine = machine if machine is not None else RealMachine()
+    app.state.home = home if home is not None else Path.home()
 
     @app.get("/api/health")
     def health() -> dict[str, bool]:
         """Liveness probe for the board's own JS and for smoke tests."""
         return {"ok": True}
+
+    @app.get("/api/workspace")
+    def workspace() -> WorkspaceSection:
+        """Discovered repos with status and redacted config for the workspace Section."""
+        return collect_workspace(
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+        )
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

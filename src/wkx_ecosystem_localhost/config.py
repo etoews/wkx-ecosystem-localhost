@@ -31,4 +31,5 @@ class Settings(BaseSettings):
     )
 
     scan_roots: list[Path] = Field(default_factory=_default_scan_roots)
+    scan_depth: int = 8
     port: int = 8787

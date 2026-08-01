@@ -14,6 +14,7 @@ def test_defaults_are_computed_not_literal() -> None:
     settings = Settings(_env_file=None)
 
     assert settings.scan_roots == [Path.home() / "dev"]
+    assert settings.scan_depth == 8
     assert settings.port == 8787
 
 
