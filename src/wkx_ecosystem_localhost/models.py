@@ -273,6 +273,53 @@ class ClaudeSection(BaseModel):
     mcp_servers: list[McpServer]
 
 
+class OutdatedPackage(BaseModel):
+    """One Homebrew package with a newer version available.
+
+    ``installed`` is the version (or versions) currently on this machine, joined
+    for display when Homebrew records more than one; ``current`` is the version
+    Homebrew would upgrade it to. A formula and a cask share this shape; which
+    list a package sits in is the only thing that tells them apart.
+    """
+
+    name: str
+    installed: str
+    current: str
+
+
+class HomebrewSection(BaseModel):
+    """The homebrew Section: outdated formulae and casks, or Homebrew's absence.
+
+    ``present`` is False when ``brew`` is not installed on this machine, which the
+    board renders as a plain fact rather than an error. When present, ``formulae``
+    and ``casks`` carry the outdated packages (either may be empty when everything
+    is current); the board reads the counts straight off the list lengths.
+    """
+
+    present: bool
+    formulae: list[OutdatedPackage] = []
+    casks: list[OutdatedPackage] = []
+
+
+class DockerSection(BaseModel):
+    """The docker Section: daemon reachability and a few disk-and-container facts.
+
+    ``daemon_reachable`` is False when ``docker info`` cannot reach the daemon
+    (down, or the CLI absent); the board renders that as a fact, never an error,
+    and the remaining fields stay at their empty defaults. When reachable,
+    ``containers_running`` and ``containers_total`` are the running and the total
+    container counts, ``images`` the image count, and ``reclaimable`` the
+    display-ready reclaimable disk total (for example ``3.23 GB``) summed across
+    what ``docker system df`` reports, or None when that probe cannot be read.
+    """
+
+    daemon_reachable: bool
+    containers_running: int = 0
+    containers_total: int = 0
+    images: int = 0
+    reclaimable: str | None = None
+
+
 class FetchEvent(BaseModel):
     """One repo's ahead/behind, streamed over SSE as its background fetch lands.
 

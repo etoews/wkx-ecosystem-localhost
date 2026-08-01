@@ -569,6 +569,113 @@ footer {
 }
 .cl-tag--muted { color: var(--fog); }
 
+/* Homebrew Section: a headline outdated count over two grouped lists (formulae
+ * and casks). Reuses the vendored palette and mono type so it reads as one system
+ * with the other panels. An outdated package is a version bump — the current
+ * version is loud, the installed one recessive — told apart by weight, never hue,
+ * which stays reserved for the M6 Flag layer. */
+.hb-note { font-size: .82rem; color: var(--fog); }
+.hb-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.hb-groups { display: flex; flex-direction: column; gap: .7rem; margin-top: .6rem; }
+.hb-group { display: flex; flex-direction: column; gap: .3rem; }
+.hb-group-head {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+.hb-group-head .hb-count { font-size: .78rem; text-transform: none; letter-spacing: 0; }
+
+.hb-rows { display: flex; flex-direction: column; gap: .28rem; }
+.hb-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .3rem .5rem;
+}
+.hb-name {
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.hb-bump {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .68rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: .3rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hb-from { color: var(--fog); }
+.hb-arrow { color: var(--fog); }
+.hb-to { color: var(--text); font-weight: 600; }
+
+/* Docker Section: the daemon fact as an eyebrow pill over a small row of stat
+ * tiles — containers, images, reclaimable disk. Reuses the vendored palette and
+ * mono type. Reachable and down are told apart by weight and the word, not colour,
+ * which stays reserved for the M6 Flag layer; a down daemon states the fact and
+ * withholds the tiles rather than showing meaningless zeros. */
+.dk-note { font-size: .82rem; color: var(--fog); }
+.dk-muted { font-family: var(--mono); font-size: .68rem; color: var(--fog); max-width: 40ch; }
+
+.dk-wrap { display: flex; flex-direction: column; gap: .7rem; }
+
+.dk-daemon {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: baseline;
+  gap: .4rem;
+  font-family: var(--mono);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .12rem .6rem;
+}
+.dk-daemon-lbl {
+  font-size: .58rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+.dk-daemon-state { font-size: .74rem; font-weight: 600; color: var(--text); }
+/* A down daemon reads by a dashed edge and the word, not by hue. */
+.dk-daemon--down { border-style: dashed; }
+.dk-daemon--down .dk-daemon-state { color: var(--fog); }
+
+.dk-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: .5rem;
+}
+.dk-tile {
+  background: var(--deep);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .5rem .6rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+.dk-num {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.dk-lbl {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fog);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

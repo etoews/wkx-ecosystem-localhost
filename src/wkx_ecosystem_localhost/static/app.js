@@ -845,3 +845,177 @@
       note("Could not load the Claude environment. Check that the board is still running.");
     });
 })();
+
+// Homebrew Section: fetch /api/homebrew and render the outdated formulae and casks
+// as two grouped lists with a headline count. Facts only: an outdated package is a
+// version bump (installed → current), told apart by weight and adjacency, never by
+// hue, which stays reserved for the M6 Flag layer. Homebrew's absence is a plain
+// fact, not an error.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("homebrew");
+  if (!mount) return;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "hb-note", message));
+  }
+
+  // One outdated package: its name, then the bump from the installed version to
+  // the current one. The current version is the loud element (the target of the
+  // upgrade); the installed version stays recessive.
+  function pkgRow(pkg) {
+    const row = el("div", "hb-row");
+    row.append(el("span", "hb-name", pkg.name));
+    const bump = el("span", "hb-bump");
+    bump.append(
+      el("span", "hb-from", pkg.installed || "—"),
+      el("span", "hb-arrow", "→"),
+      el("span", "hb-to", pkg.current || "—"),
+    );
+    row.append(bump);
+    return row;
+  }
+
+  function group(label, packages) {
+    const wrap = el("div", "hb-group");
+    const head = el("p", "hb-group-head");
+    head.append(el("span", "hb-count", String(packages.length)), " " + label);
+    wrap.append(head);
+    const rows = el("div", "hb-rows");
+    packages.forEach(function (pkg) {
+      rows.append(pkgRow(pkg));
+    });
+    wrap.append(rows);
+    return wrap;
+  }
+
+  function render(data) {
+    if (!data.present) {
+      note("Homebrew is not installed on this machine.");
+      return;
+    }
+    const formulae = data.formulae || [];
+    const casks = data.casks || [];
+    const total = formulae.length + casks.length;
+    if (total === 0) {
+      note("Every formula and cask is up to date.");
+      return;
+    }
+    const summary = el("p", "hb-note");
+    summary.append(
+      el("span", "hb-count", String(total)),
+      total === 1 ? " package outdated" : " packages outdated",
+    );
+    const groups = el("div", "hb-groups");
+    if (formulae.length > 0) groups.append(group("formulae", formulae));
+    if (casks.length > 0) groups.append(group("casks", casks));
+    mount.replaceChildren(summary, groups);
+  }
+
+  fetch("/api/homebrew")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load Homebrew. Check that the board is still running.");
+    });
+})();
+
+// Docker Section: fetch /api/docker and render the daemon state with a small row
+// of stat tiles — containers, images, and reclaimable disk. A daemon that cannot
+// be reached renders as a fact, never an error: the down state is stated plainly
+// and the meaningless zero counts are withheld rather than shown as real. Colour
+// stays reserved for the M6 Flag layer, so reachable and down are told apart by
+// weight and label, never by hue.
+(function () {
+  "use strict";
+
+  const mount = document.getElementById("docker");
+  if (!mount) return;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function note(message) {
+    mount.replaceChildren(el("p", "dk-note", message));
+  }
+
+  // Stat-tile idiom (dataviz skill): the figure is the loud element, its label
+  // recessive. No hue is spent — that channel is the M6 Flag layer's.
+  function tile(value, label, title) {
+    const cell = el("div", "dk-tile");
+    cell.append(el("span", "dk-num", value), el("span", "dk-lbl", label));
+    if (title) cell.title = title;
+    return cell;
+  }
+
+  // The daemon fact as an eyebrow pill: reachable or unreachable, told apart by
+  // weight and word, not colour.
+  function daemon(reachable) {
+    const pill = el("div", "dk-daemon" + (reachable ? "" : " dk-daemon--down"));
+    pill.append(
+      el("span", "dk-daemon-lbl", "daemon"),
+      el("span", "dk-daemon-state", reachable ? "reachable" : "unreachable"),
+    );
+    return pill;
+  }
+
+  function render(data) {
+    const reachable = data.daemon_reachable;
+    const wrap = el("div", "dk-wrap");
+    wrap.append(daemon(reachable));
+    if (!reachable) {
+      wrap.append(
+        el(
+          "p",
+          "dk-muted",
+          "The Docker daemon is not reachable. Start Docker to see containers, images, and reclaimable disk.",
+        ),
+      );
+      mount.replaceChildren(wrap);
+      return;
+    }
+    const tiles = el("div", "dk-tiles");
+    tiles.append(
+      tile(
+        data.containers_running + " / " + data.containers_total,
+        "containers running / total",
+        data.containers_running + " running of " + data.containers_total + " total",
+      ),
+      tile(String(data.images), data.images === 1 ? "image" : "images"),
+      tile(
+        data.reclaimable != null ? data.reclaimable : "unknown",
+        "reclaimable",
+        data.reclaimable != null
+          ? "Disk that pruning could reclaim, summed across images, containers, volumes, and build cache."
+          : "The reclaimable disk could not be read.",
+      ),
+    );
+    wrap.append(tiles);
+    mount.replaceChildren(wrap);
+  }
+
+  fetch("/api/docker")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load Docker. Check that the board is still running.");
+    });
+})();

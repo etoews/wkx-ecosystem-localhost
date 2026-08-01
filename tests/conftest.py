@@ -91,6 +91,58 @@ def claude_client() -> TestClient:
 
 
 @pytest.fixture
+def homebrew_client() -> TestClient:
+    """A client wired to a fake machine whose Homebrew reports outdated packages.
+
+    Drives the real app and Collector over HTTP: three outdated formulae (one at
+    two installed versions) and two outdated casks are produced exactly as
+    production would, only the machine seam faked.
+    """
+    machine = fixtures.build_homebrew_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
+def homebrew_absent_client() -> TestClient:
+    """A client wired to a fake machine with no Homebrew installed.
+
+    Drives the real app and Collector over HTTP so the absent state is produced
+    exactly as production would: present is False and both lists are empty, a plain
+    fact rather than an error.
+    """
+    machine = fixtures.build_homebrew_absent()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
+def docker_client() -> TestClient:
+    """A client wired to a fake machine whose Docker daemon is reachable.
+
+    Drives the real app and Collector over HTTP: 2 of 5 containers running, 12
+    images, and 3.23 GB reclaimable across four resource types are produced exactly
+    as production would, only the machine seam faked.
+    """
+    machine = fixtures.build_docker_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
+def docker_down_client() -> TestClient:
+    """A client wired to a fake machine whose Docker daemon cannot be reached.
+
+    Drives the real app and Collector over HTTP so the down state is produced
+    exactly as production would: daemon_reachable is False and the counts stay at
+    their empty defaults, a plain fact rather than an error page.
+    """
+    machine = fixtures.build_docker_down()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
 def fetch_client() -> TestClient:
     """A client wired to a fake machine whose repos exercise the fetch stream.
 

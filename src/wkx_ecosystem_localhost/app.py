@@ -10,7 +10,9 @@ from fastapi.staticfiles import StaticFiles
 
 from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
+from wkx_ecosystem_localhost.collectors.docker import collect_docker
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
+from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
     stream_submodule_probes,
@@ -22,6 +24,8 @@ from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
+    DockerSection,
+    HomebrewSection,
     SubmoduleSection,
     SystemToolsSection,
     ToolchainsSection,
@@ -172,6 +176,24 @@ def create_app(
         machine, telemetry, and credential fields never reach the board.
         """
         return collect_claude(app.state.machine, home=app.state.home)
+
+    @app.get("/api/homebrew")
+    def homebrew() -> HomebrewSection:
+        """Outdated formulae and casks, or Homebrew's absence, for the homebrew Section.
+
+        The whole thing is one ``brew outdated`` probe: a machine without ``brew``
+        reports absent as a plain fact rather than erroring the board.
+        """
+        return collect_homebrew(app.state.machine)
+
+    @app.get("/api/docker")
+    def docker() -> DockerSection:
+        """Daemon reachability, container and image counts, and reclaimable disk.
+
+        A daemon that cannot be reached (down, or the CLI absent) renders as a fact
+        on the board, never an error page; the counts stay at their empty defaults.
+        """
+        return collect_docker(app.state.machine)
 
     app.mount("/static", StaticFiles(directory=_STATIC), name="static")
 

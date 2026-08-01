@@ -16,7 +16,9 @@ from pathlib import Path
 
 from fakes import FakeMachine
 
+from wkx_ecosystem_localhost.collectors.docker import DOCKER_DF_ARGV, DOCKER_INFO_ARGV
 from wkx_ecosystem_localhost.collectors.fetch import AHEAD_BEHIND_ARGV, FETCH_ARGV
+from wkx_ecosystem_localhost.collectors.homebrew import BREW_OUTDATED_ARGV
 from wkx_ecosystem_localhost.collectors.submodules import (
     DESCRIBE_ARGV,
     GITMODULES,
@@ -530,6 +532,108 @@ def build_claude_workspace() -> tuple[FakeMachine, Path]:
         },
     )
     return machine, HOME
+
+
+# ------------------------- homebrew fixtures -------------------------
+# The outdated formulae and casks of a synthetic Homebrew. Every name and version
+# is invented, never captured from a real machine. The v2 payload carries formulae
+# and casks together, each with its installed and current versions; one formula is
+# tracked at two installed versions to exercise the join, and one carries pinned
+# metadata the Collector ignores as a bare fact.
+BREW_OUTDATED_JSON = """\
+{
+  "formulae": [
+    {"name": "wget", "installed_versions": ["1.21.3"], "current_version": "1.21.4",
+     "pinned": false, "pinned_version": null},
+    {"name": "ripgrep", "installed_versions": ["14.1.0"], "current_version": "14.1.1",
+     "pinned": false, "pinned_version": null},
+    {"name": "openssl@3", "installed_versions": ["3.3.1", "3.3.2"], "current_version": "3.4.0",
+     "pinned": false, "pinned_version": null}
+  ],
+  "casks": [
+    {"name": "firefox", "installed_versions": ["120.0"], "current_version": "121.0"},
+    {"name": "docker", "installed_versions": ["4.36.0"], "current_version": "4.37.1"}
+  ]
+}
+"""
+
+# Nothing outdated: brew succeeds with two empty arrays.
+BREW_OUTDATED_EMPTY = '{"formulae": [], "casks": []}\n'
+
+
+def build_homebrew_workspace() -> FakeMachine:
+    """Build a fake machine whose Homebrew reports outdated formulae and casks.
+
+    Three formulae are outdated (one tracked at two installed versions, exercising
+    the version join) and two casks are outdated, so the counts and both lists are
+    produced exactly as production would. Returns the machine to build the app with.
+    """
+    return FakeMachine(commands={(None, BREW_OUTDATED_ARGV): _ok(BREW_OUTDATED_JSON)})
+
+
+def build_homebrew_absent() -> FakeMachine:
+    """Build a fake machine with no Homebrew at all.
+
+    No ``brew`` command is registered, so the fake returns a non-zero result,
+    standing in for a machine where ``brew`` is not installed. The Section must
+    render this as a plain absent fact, never an error. Returns the machine.
+    """
+    return FakeMachine()
+
+
+# ------------------------- docker fixtures -------------------------
+# The daemon, container, image, and disk facts of a synthetic Docker. Every count
+# and size is invented, never captured from a real machine. ``docker info`` reports
+# one JSON object; ``docker system df`` reports one per resource type, each with a
+# reclaimable size that sums across the four to 3.23 GB (decimal units):
+# 1.2GB + 80MB + 450MB + 1.5GB.
+DOCKER_INFO_JSON = (
+    '{"ID": "ABCD-EFGH", "Containers": 5, "ContainersRunning": 2, '
+    '"ContainersPaused": 0, "ContainersStopped": 3, "Images": 12, '
+    '"ServerVersion": "27.4.0"}\n'
+)
+DOCKER_DF_JSON = """\
+{"Type":"Images","TotalCount":"12","Active":"3","Size":"2.5GB","Reclaimable":"1.2GB (48%)"}
+{"Type":"Containers","TotalCount":"5","Active":"2","Size":"120MB","Reclaimable":"80MB (66%)"}
+{"Type":"Local Volumes","TotalCount":"4","Active":"1","Size":"500MB","Reclaimable":"450MB (90%)"}
+{"Type":"Build Cache","TotalCount":"20","Active":"0","Size":"1.5GB","Reclaimable":"1.5GB (100%)"}
+"""
+
+# The message a down daemon prints to stderr, invented but shaped like the real one.
+DOCKER_DAEMON_DOWN_STDERR = (
+    "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
+    "Is the docker daemon running?\n"
+)
+
+
+def build_docker_workspace() -> FakeMachine:
+    """Build a fake machine whose Docker daemon is reachable with a few resources.
+
+    ``docker info`` reports 2 of 5 containers running and 12 images; ``docker
+    system df`` reports reclaimable sizes across four resource types that sum to
+    3.23 GB, so the counts and the reclaimable disk total are produced exactly as
+    production would. Returns the machine to build the app with.
+    """
+    return FakeMachine(
+        commands={
+            (None, DOCKER_INFO_ARGV): _ok(DOCKER_INFO_JSON),
+            (None, DOCKER_DF_ARGV): _ok(DOCKER_DF_JSON),
+        }
+    )
+
+
+def build_docker_down() -> FakeMachine:
+    """Build a fake machine whose Docker daemon cannot be reached.
+
+    ``docker info`` returns a non-zero result with the daemon-down message, exactly
+    as the CLI does when the daemon is stopped, so the Section renders the down
+    state as a plain fact rather than an error. Returns the machine.
+    """
+    return FakeMachine(
+        commands={
+            (None, DOCKER_INFO_ARGV): CommandResult(1, "", DOCKER_DAEMON_DOWN_STDERR),
+        }
+    )
 
 
 def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
