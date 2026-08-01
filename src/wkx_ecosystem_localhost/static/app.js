@@ -53,8 +53,10 @@
   }
 
   function countChip(n, label) {
+    // Stat-tile idiom (dataviz skill): the magnitude is the loud element, the
+    // label stays recessive. No colour — that channel is reserved for M6 Flags.
     const chip = el("span", "ws-chip");
-    chip.append(String(n) + " ", el("span", "lbl", label));
+    chip.append(el("span", "num", String(n)), " ", el("span", "lbl", label));
     return chip;
   }
 

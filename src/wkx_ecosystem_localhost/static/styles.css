@@ -237,6 +237,7 @@ footer {
   padding: .04rem .45rem;
   white-space: nowrap;
 }
+.ws-chip .num { font-weight: 600; color: var(--text); }
 .ws-chip .lbl { color: var(--fog); }
 .ws-chip--muted { color: var(--fog); }
 .ws-chip--pending { color: var(--fog); font-style: italic; }
