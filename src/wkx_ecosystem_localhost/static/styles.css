@@ -7,12 +7,17 @@
  * lays its facts out in a table beneath. Colour is reserved for the M6 Flag
  * layer (amber attention, red problem); every neutral fact is told apart by
  * weight, a muted tone, and a label, never by hue.
+ *
+ * The panel tint diverges from the vendored palette so Sections read against
+ * the page. In day the page is white and each panel sits on a very light
+ * water tint, with tiles and nested rows popping back to white. At night the
+ * panel is a shade lighter than the deep page for the same separation.
  */
 
 :root {
   /* night, the identity default */
   --deep: #0A141E;
-  --water: #0E1C2A;
+  --water: #112132;
   --hull: #14273A;
   --line: #21374C;
   --text: #E8F0F6;
@@ -30,9 +35,9 @@
 /* day: system preference, unless the operator overrides to dark */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --deep: #EEF3F6;
-    --water: #FFFFFF;
-    --hull: #DFE8EE;
+    --deep: #FFFFFF;
+    --water: #E9F1F7;
+    --hull: #D8E4EC;
     --line: #C6D3DC;
     --text: #182634;
     --fog: #5B7284;
@@ -46,9 +51,9 @@
 
 /* explicit operator overrides beat the system preference in both directions */
 :root[data-theme="light"] {
-  --deep: #EEF3F6;
-  --water: #FFFFFF;
-  --hull: #DFE8EE;
+  --deep: #FFFFFF;
+  --water: #E9F1F7;
+  --hull: #D8E4EC;
   --line: #C6D3DC;
   --text: #182634;
   --fog: #5B7284;
@@ -60,7 +65,7 @@
 }
 :root[data-theme="dark"] {
   --deep: #0A141E;
-  --water: #0E1C2A;
+  --water: #112132;
   --hull: #14273A;
   --line: #21374C;
   --text: #E8F0F6;
