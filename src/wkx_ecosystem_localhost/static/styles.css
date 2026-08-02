@@ -280,18 +280,11 @@ tr.expandable { cursor: pointer; }
 }
 tr.expandable.open .exp-caret { transform: rotate(90deg); }
 
-/* nested plugin-skills row: the chips of skills a plugin ships, beneath it. */
-tr.skillrow td { background: var(--deep); padding-top: .35rem; padding-bottom: .55rem; }
+/* nested plugin-skills row: a subtable of the skills a plugin ships, beneath it,
+ * sharing My skills' columns and indented so it reads as nested. */
+tr.skillrow td { background: var(--deep); padding: .5rem .7rem .7rem; }
 tr.skillrow:hover td { background: var(--deep); }
-.skill-wrap { display: flex; flex-wrap: wrap; gap: .28rem; padding-left: 1rem; align-items: center; }
-.skill-wrap .k-lead {
-  font-family: var(--mono);
-  font-size: .57rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--fog);
-  margin-right: .15rem;
-}
+tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 
 /* a value settling in over SSE (ahead/behind, submodule latest) fades on arrival. */
 .filled { animation: fade-in .3s ease-out; }

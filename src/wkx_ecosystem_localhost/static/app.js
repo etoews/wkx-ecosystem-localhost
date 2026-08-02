@@ -817,7 +817,7 @@ window.wkxFlags = (function () {
           nameCell(interp.implementation),
           verCell(interp.version),
           U.td(U.quiet("uv-managed")),
-          U.td(interp.installed ? U.ok("installed") : U.quiet("available")),
+          U.td(interp.installed ? U.ok("installed") : U.quiet("not installed")),
         ]),
       );
     });
@@ -851,7 +851,7 @@ window.wkxFlags = (function () {
     );
     rows.forEach(function (pair) {
       const tool = pair[1];
-      const stateCell = U.td(tool.present ? U.ok("present") : U.quiet("absent"));
+      const stateCell = U.td(tool.present ? U.ok("installed") : U.quiet("not installed"));
       if (!tool.present && pair[0] === "tsc") {
         stateCell.title = "Install TypeScript globally (npm i -g typescript), or rely on each repo's local tsc.";
       }
@@ -864,7 +864,7 @@ window.wkxFlags = (function () {
     const built = U.table(COLUMNS);
     node.repos.forEach(function (repo) {
       const installed = repo.installed;
-      const state = U.td(U.quiet(installed ? "installed" : "not installed"), "flags-cell");
+      const state = U.td(installed ? U.ok("installed") : U.quiet("not installed"), "flags-cell");
       state.dataset.flagKey = "toolchains:ts:" + repo.repo;
       if (!installed) state.title = "Install the declared TypeScript: run npm install in the repo.";
       built.tbody.append(
@@ -943,20 +943,17 @@ window.wkxFlags = (function () {
     return skill.origin.indexOf("@") < 0; // user or project, never a <plugin>@<market> pair
   }
 
-  // The skills a plugin ships, as a hidden chip row revealed when its plugin
-  // row is expanded. These are the only place plugin skills appear.
-  function skillChipsRow(skills) {
-    const wrap = U.el("div", "skill-wrap");
-    wrap.append(U.el("span", "k-lead", skills.length + " skills"));
-    skills.forEach(function (skill) {
-      const chip = U.el("span", "chip", skill.name);
-      chip.dataset.flagKey = "claude:skill:" + skill.name;
-      if (skill.description) chip.title = skill.description;
-      wrap.append(chip);
+  // The skills a plugin ships, as a hidden nested subtable revealed when its
+  // plugin row is expanded. It shares My skills' columns and is the only place a
+  // plugin's skills appear. Origin repeats the plugin so the column matches.
+  function pluginSkillsRow(skills, pluginName) {
+    const inner = skillTable(skills, function () {
+      return pluginName;
     });
+    inner.classList.add("subtable");
     const cell = U.el("td");
     cell.colSpan = 6;
-    cell.append(wrap);
+    cell.append(inner);
     const row = U.el("tr", "skillrow");
     row.hidden = true;
     row.append(cell);
@@ -997,7 +994,7 @@ window.wkxFlags = (function () {
       built.tbody.append(row);
 
       if (hasSkills) {
-        const skillrow = skillChipsRow(skills);
+        const skillrow = pluginSkillsRow(skills, plugin.name);
         built.tbody.append(skillrow);
         row.classList.add("expandable");
         row.setAttribute("role", "button");
@@ -1206,9 +1203,9 @@ window.wkxFlags = (function () {
       return;
     }
     const summary = U.tiles([
-      { value: total, label: "Outdated" },
       { value: formulae.length, label: "Formulae" },
       { value: casks.length, label: "Casks" },
+      { value: total, label: "Outdated" },
     ]);
     const nodes = [summary];
     if (formulae.length > 0) {
