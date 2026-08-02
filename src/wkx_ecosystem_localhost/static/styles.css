@@ -224,9 +224,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .ok { color: var(--add); font-weight: 600; white-space: nowrap; }
 .ok::before { content: "\2713\00a0"; }
 
-/* The cell the M6 Flag layer badges into; badges wrap when a row carries more
- * than one. Empty until a Flag lands, so a clean row stays quiet. */
-.flags-cell { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+/* The in-cell flex line: working-tree chips and M6 flag badges lay out on this
+ * inner span with a shared gap; badges wrap when a row carries more than one.
+ * The flex must live on this wrapper, never on the td itself — a td displayed
+ * as anything but table-cell falls out of the table model: its row border
+ * floats at content height, colSpan is ignored, and its content pollutes
+ * column sizing (tests/test_static_assets.py holds this line). A flag host is
+ * empty until a Flag lands, so a clean row stays quiet. */
+.cell-flex { display: inline-flex; flex-wrap: wrap; gap: .3rem; align-items: center; max-width: 100%; }
 
 /* An installed-but-idle fact (a plugin version, an origin) as a quiet chip. */
 .chip {

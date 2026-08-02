@@ -1,6 +1,6 @@
 // Board behaviour. Every Section leads with a one-line summary and lays its facts
 // out in a sortable table beneath. Colour is reserved for the M6 Flag layer:
-// sections stamp a data-flag-key host cell and the flag layer badges it; neutral
+// sections stamp a data-flag-key host element and the flag layer badges it; neutral
 // facts are told apart by weight, a muted tone, and a label, never by hue.
 
 // ---------- theme control ----------
@@ -195,6 +195,26 @@ window.wkxUI = (function () {
     return cell;
   }
 
+  // The in-cell flex line: chips or badges laid out with a shared gap INSIDE a
+  // cell. The flex lives on this inner span, never on the td itself — a td
+  // displayed as anything but table-cell falls out of the table model: its row
+  // border floats at content height, colSpan is ignored, and its content
+  // pollutes column sizing (tests/test_static_assets.py holds this line).
+  function cellFlex(content) {
+    const line = el("span", "cell-flex");
+    append(line, content);
+    return line;
+  }
+
+  // A td that hosts M6 flag badges. The flag key rides on the inner flex line,
+  // so a landing badge joins the cell's content with the shared gap and the td
+  // stays a plain table cell.
+  function flagsTd(content, flagKey, className) {
+    const host = cellFlex(content);
+    host.dataset.flagKey = flagKey;
+    return td(host, className);
+  }
+
   function tr(cells) {
     const row = el("tr");
     cells.forEach(function (cell) {
@@ -249,6 +269,8 @@ window.wkxUI = (function () {
     append: append,
     table: table,
     td: td,
+    cellFlex: cellFlex,
+    flagsTd: flagsTd,
     tr: tr,
     ok: ok,
     quiet: quiet,
@@ -527,12 +549,11 @@ window.wkxFlags = (function () {
     ].forEach(function (pair) {
       if (pair[0] > 0) chips.push(countChip(pair[0], pair[1]));
     });
-    return chips;
+    return U.cellFlex(chips);
   }
 
   function repoRow(repo) {
-    const flags = U.td("", "flags-cell");
-    flags.dataset.flagKey = "workspace:" + repo.path;
+    const flags = U.flagsTd("", "workspace:" + repo.path);
     const ahead = U.td(U.quiet("···"), "num");
     const behind = U.td(U.quiet("···"), "num");
     ahead.setAttribute("data-sort", "");
@@ -561,12 +582,8 @@ window.wkxFlags = (function () {
 
   function subRow(sub) {
     // One nested detail line spanning the row rather than data spread across
-    // columns it has no values for. The cell is itself the flag host, so a
+    // columns it has no values for. The in-cell line is the flag host, so a
     // "releases behind" badge lands inline at the end of the line.
-    const cell = U.el("td", "sub-cell flags-cell");
-    cell.colSpan = 8;
-    cell.dataset.flagKey = "submodules:" + sub.path;
-
     const lead = U.el("span", "sub-lead", sub.name);
     const pinned = subPart("pinned", sub.pinned ? U.el("span", "ver", sub.pinned) : U.quiet("untagged"));
     const latest = subPart("latest", U.quiet("listing…"));
@@ -575,7 +592,8 @@ window.wkxFlags = (function () {
 
     smRows.set(sub.path, { latest: latest, behind: behind });
 
-    cell.append(lead, sep(), pinned, sep(), latest, sep(), behind);
+    const cell = U.flagsTd([lead, sep(), pinned, sep(), latest, sep(), behind], "submodules:" + sub.path, "sub-cell");
+    cell.colSpan = 8;
     const row = U.el("tr", "subrow");
     row.append(cell);
     return row;
@@ -833,8 +851,7 @@ window.wkxFlags = (function () {
     const built = U.table(COLUMNS);
     python.repo_pins.forEach(function (pin) {
       const matches = pin.version === python.global_pin;
-      const state = U.td(U.quiet(matches ? "matches global" : "differs from global"), "flags-cell");
-      state.dataset.flagKey = "toolchains:pin:" + pin.repo;
+      const state = U.flagsTd(U.quiet(matches ? "matches global" : "differs from global"), "toolchains:pin:" + pin.repo);
       built.tbody.append(
         U.tr([nameCell(base(pin.repo)), verCell(pin.version), U.td(U.quiet("global " + (python.global_pin || "unset"))), state]),
       );
@@ -869,8 +886,7 @@ window.wkxFlags = (function () {
     const built = U.table(COLUMNS);
     node.repos.forEach(function (repo) {
       const installed = repo.installed;
-      const state = U.td(installed ? U.ok("installed") : U.quiet("not installed"), "flags-cell");
-      state.dataset.flagKey = "toolchains:ts:" + repo.repo;
+      const state = U.flagsTd(installed ? U.ok("installed") : U.quiet("not installed"), "toolchains:ts:" + repo.repo);
       if (!installed) state.title = "Install the declared TypeScript: run npm install in the repo.";
       built.tbody.append(
         U.tr([
@@ -982,8 +998,7 @@ window.wkxFlags = (function () {
       if (hasSkills) nameCell.append(U.el("span", "exp-caret", "▸"));
       nameCell.append(U.el("span", "t-name", plugin.name));
 
-      const state = U.td(U.quiet(plugin.enabled ? "enabled" : "disabled"), "flags-cell");
-      state.dataset.flagKey = "claude:plugin:" + plugin.name;
+      const state = U.flagsTd(U.quiet(plugin.enabled ? "enabled" : "disabled"), "claude:plugin:" + plugin.name);
 
       const countCell = U.td(hasSkills ? String(skills.length) : U.quiet("—"), "num");
       countCell.setAttribute("data-sort", String(skills.length));
@@ -1025,8 +1040,7 @@ window.wkxFlags = (function () {
   function skillTable(skills, originText) {
     const built = U.table(SKILL_COLUMNS);
     skills.forEach(function (skill) {
-      const state = U.td(U.quiet(skill.enabled ? "enabled" : "disabled"), "flags-cell");
-      state.dataset.flagKey = "claude:skill:" + skill.name;
+      const state = U.flagsTd(U.quiet(skill.enabled ? "enabled" : "disabled"), "claude:skill:" + skill.name);
       const desc = skill.description ? U.el("div", "clamp2", skill.description) : U.dash();
       if (skill.description) desc.title = skill.description;
       built.tbody.append(
@@ -1044,8 +1058,7 @@ window.wkxFlags = (function () {
   function mcpTable(servers) {
     const built = U.table([{ label: "Server" }, { label: "Origin" }, { label: "Transport" }, { label: "Auth" }]);
     servers.forEach(function (server) {
-      const auth = U.td(U.quiet(server.needs_auth ? "needs auth" : "ready"), "flags-cell");
-      auth.dataset.flagKey = "claude:mcp:" + server.name;
+      const auth = U.flagsTd(U.quiet(server.needs_auth ? "needs auth" : "ready"), "claude:mcp:" + server.name);
       built.tbody.append(
         U.tr([U.td(U.el("span", "t-name", server.name)), U.td(server.origin, "q"), U.td(server.transport, "q"), auth]),
       );
@@ -1135,8 +1148,7 @@ window.wkxFlags = (function () {
 
     const built = U.table([{ label: "Tool" }, { label: "Version" }, { label: "Flags" }]);
     tools.forEach(function (tool) {
-      const flags = U.td("", "flags-cell");
-      flags.dataset.flagKey = "system:" + tool.name;
+      const flags = U.flagsTd("", "system:" + tool.name);
       const versionCell = U.td(tool.present && tool.version ? U.el("span", "ver", tool.version) : U.dash());
       if (!tool.present) versionCell.title = "Install it: brew install " + tool.name + " (or uv tool install " + tool.name + ").";
       built.tbody.append(U.tr([U.td(U.el("span", "t-name", tool.name)), versionCell, flags]));
@@ -1181,8 +1193,7 @@ window.wkxFlags = (function () {
   function pkgTable(kind, packages) {
     const built = U.table([{ label: "Package" }, { label: "Installed" }, { label: "Current" }, { label: "Flags" }]);
     packages.forEach(function (pkg) {
-      const flags = U.td("", "flags-cell");
-      flags.dataset.flagKey = "homebrew:" + kind + ":" + pkg.name;
+      const flags = U.flagsTd("", "homebrew:" + kind + ":" + pkg.name);
       built.tbody.append(
         U.tr([
           U.td(U.el("span", "t-name", pkg.name)),
