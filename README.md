@@ -11,24 +11,26 @@ glossary.
 
 ## The board
 
-Each Section leads with a one-line summary and lays its facts out in a table.
+Each Section leads with a one-line summary and a table beneath; every table sorts
+on any column.
 
 - **Needs attention**: every open flag rolled up by category, problems first,
   at the top of the board.
 - **Workspace**: discovered repos with branch, ahead/behind, working-tree state
   and stashes, each submodule nested beneath its repo as "pinned · latest ·
   releases-behind".
-- **Toolchains**: Python (uv-managed versions, pins, system) and
-  TypeScript/Node, global and per repo.
-- **Claude**: plugins with the skills they ship nested beneath each one, your own
-  independent skills in their own table, and MCP servers, each with its Origin.
+- **Toolchains**: Python and TypeScript/Node, global and per repo, every subtable
+  in one shape (name · version · detail · state) so the columns align.
+- **Claude**: plugins with a count of the skills each ships, then those skills
+  split into your own and the plugin-shipped (OSS) ones, each in its own table,
+  and MCP servers, each with its Origin.
 - **System**: a configurable probe of dev CLIs, present or missing, with versions.
 - **Homebrew**: outdated formulae and casks.
 - **Docker**: daemon state, containers, images, reclaimable disk.
 
-Flags are amber (attention) or red (problem), badged on the affected row, tallied
-in the header, and grouped by category in the Needs attention summary. No ruleset:
-a flag states only what the data makes obvious.
+Flags are amber (attention) or red (problem), badged on the affected row and
+grouped by category in the Needs attention summary; hovering a badge suggests how
+to resolve it. No ruleset: a flag states only what the data makes obvious.
 
 ## Security posture
 

@@ -116,27 +116,6 @@ a { color: var(--add); }
 }
 .masthead .controls { margin-left: auto; display: inline-flex; align-items: center; gap: .5rem; }
 
-/* ---------- Flag layer (M6) header tally ----------
- * The masthead pill: reuses --chg (amber, attention) and --del (red, problem);
- * the level is carried by a word and the count as well as the hue, so it never
- * rests on colour alone. At zero it reads "all clear" in the quiet fog ink. */
-.tally {
-  font-family: var(--mono);
-  font-size: .72rem;
-  display: inline-flex;
-  align-items: baseline;
-  gap: .3rem;
-  color: var(--fog);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .18rem .7rem;
-}
-.tally .num { font-weight: 600; font-variant-numeric: tabular-nums; }
-.tally--clear { color: var(--fog); border-color: var(--line); }
-.tally--attention { color: var(--chg); border-color: var(--chg); }
-.tally--attention .num { color: var(--chg); }
-.tally--problem { color: var(--del); border-color: var(--del); }
-.tally--problem .num { color: var(--del); }
 button.theme {
   font-family: var(--mono);
   font-size: .72rem;
@@ -218,6 +197,15 @@ thead th {
   white-space: nowrap;
   background: var(--hull);
 }
+/* Every column sorts on click (or Enter/Space): a neutral caret signals the
+ * affordance; the active column shows the direction and reads it to a11y via
+ * aria-sort. */
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sortable::after { content: " \2195"; opacity: .3; font-size: .95em; }
+th.sort-asc::after { content: " \2191"; opacity: 1; color: var(--text); }
+th.sort-desc::after { content: " \2193"; opacity: 1; color: var(--text); }
+th.num.sortable { text-align: right; }
 tbody td {
   padding: .42rem .7rem;
   border-bottom: 1px solid var(--line);
