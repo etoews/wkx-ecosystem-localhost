@@ -84,3 +84,7 @@ Workflow for building this app with Claude Code.
 /run-skill-generator
 /run
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).
