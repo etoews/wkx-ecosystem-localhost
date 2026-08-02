@@ -11,12 +11,6 @@ bound to `127.0.0.1:8787`. It inventories **this** machine, so the API
 responses, the terminal output, and any screenshot contain real,
 machine-specific data.
 
-A bare run launches the app and **leaves it running** (a background `serve`) so
-its output is visible. To verify it end to end, the `smoke.sh` driver launches
-its own instance, curls every endpoint, checks the two SSE streams, screenshots
-the board with headless Chrome, then stops. Paths below are relative to the repo
-root.
-
 ## Prerequisites
 
 macOS with these on `PATH` (all were already present here; install any that
@@ -37,7 +31,8 @@ uv sync
 
 ## Run (default) — launch and leave it running
 
-A bare run should start the board and **leave it up**, with its output visible.
+**When launched as `/run`, only start the server and take no other action.**
+Start `serve`, confirm health once, report the URL using `localhost` and **leave it up**.
 Launch `serve` as a background process. In Claude Code, run it with
 `run_in_background` so the process persists and its log streams to a file you
 can Read; the portable equivalent is `… serve > "$log" 2>&1 &`.
@@ -49,10 +44,10 @@ uv run wkx-ecosystem-localhost serve --port 8787
 Confirm it is up:
 
 ```sh
-curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8787/api/health
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8787/api/health
 ```
 
-The board is at `http://127.0.0.1:8787/`. The background log shows startup and
+The board is at `http://localhost:8787/`. The background log shows startup and
 one access line per request, and is what "Claude Code can see the output" means
 here:
 
@@ -69,6 +64,13 @@ or portably:
 ```sh
 pkill -f 'wkx-ecosystem-localhost serve'
 ```
+
+A bare run launches the app and **leaves it running** (a background `serve`) so
+its output is visible. To verify it end to end, the `smoke.sh` driver launches
+its own instance, curls every endpoint, checks the two SSE streams, screenshots
+the board with headless Chrome, then stops. Paths below are relative to the repo
+root.
+
 
 ## Smoke test — verify end to end
 
