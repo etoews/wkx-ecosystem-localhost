@@ -39,6 +39,31 @@ def test_collect_skills_carries_origin_and_enabled_state() -> None:
     assert _skill(section.skills, "wireframe").enabled is False
 
 
+def test_collect_skills_finds_a_symlinked_user_skill() -> None:
+    # A user skill is often a symlink into another repo, which the seam reports as
+    # a non-directory; discovery must recognise it by its SKILL.md, not is_dir.
+    machine, home = fixtures.build_claude_workspace()
+
+    section = collect_claude(machine, home=home)
+
+    linked = _skill(section.skills, "linked-skill")
+    assert linked.origin == "user"
+    assert linked.enabled is True
+    assert linked.description == "A user skill symlinked in from another repo."
+
+
+def test_collect_skills_recurses_into_category_folders() -> None:
+    # Some plugins file their skills under category folders; discovery must recurse
+    # past the grouping folder to find the skill nested inside it.
+    machine, home = fixtures.build_claude_workspace()
+
+    section = collect_claude(machine, home=home)
+
+    deep = _skill(section.skills, "deep-layout")
+    assert deep.origin == "tidy@studio-official"
+    assert deep.enabled is True
+
+
 def test_collect_plugins_joins_repo_version_and_enabled() -> None:
     machine, home = fixtures.build_claude_workspace()
 

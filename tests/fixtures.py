@@ -402,10 +402,21 @@ SKILL_TIDY_REPO = (
     "# tidy-repo\n\nBody prose with a colon: not front matter.\n"
 )
 SKILL_SCRATCH_NO_FM = "# scratch\n\nA skill file with no front matter block.\n"
+# A user skill reached through a symlink: the seam reports the entry as a
+# non-directory (see RealMachine.list_dir), yet its SKILL.md is readable, so
+# discovery must recognise it by the file rather than the is_dir flag.
+SKILL_LINKED = (
+    "---\nname: linked-skill\ndescription: A user skill symlinked in from another repo.\n---\n"
+)
 # Plugin skills: one from an enabled plugin, one from a disabled plugin.
 SKILL_LAYOUT = "---\nname: layout\ndescription: Lay out a page grid.\n---\n\n# layout\n"
 SKILL_WIREFRAME = (
     "---\nname: wireframe\ndescription: Sketch a low-fi wireframe.\n---\n\n# wireframe\n"
+)
+# A plugin skill nested under a category folder (some plugins file skills by
+# category), so discovery must recurse past the grouping folder to find it.
+SKILL_DEEP_LAYOUT = (
+    "---\nname: deep-layout\ndescription: A plugin skill nested under a category folder.\n---\n"
 )
 
 INSTALLED_PLUGINS_JSON = f"""\
@@ -502,25 +513,35 @@ USER_CONFIG_JSON = """\
 def build_claude_workspace() -> tuple[FakeMachine, Path]:
     """Build a fake machine exercising the claude Collector end to end.
 
-    Two user skills (one with front matter, one without), four installed plugins
-    (tidy and cloudkit enabled, sketch disabled but shown, gizmo enabled only in
-    settings.local.json and from a non-GitHub marketplace so it has no repo),
-    plugin skills from an enabled and a disabled plugin, and MCP servers from a
-    plugin (one needing auth), from the user config, and from a project. The user
-    config carries account, machine, and telemetry fields plus a bearer token that
-    the narrow read must never surface. Returns the machine and its home.
+    Two user skills (one with front matter, one without) plus one symlinked in
+    (reported as a non-directory, recognised by its SKILL.md), four installed
+    plugins (tidy and cloudkit enabled, sketch disabled but shown, gizmo enabled
+    only in settings.local.json and from a non-GitHub marketplace so it has no
+    repo), plugin skills from an enabled and a disabled plugin including one nested
+    under a category folder, and MCP servers from a plugin (one needing auth), from
+    the user config, and from a project. The user config carries account, machine,
+    and telemetry fields plus a bearer token that the narrow read must never
+    surface. Returns the machine and its home.
     """
     machine = FakeMachine(
         dirs={
             CLAUDE_SKILLS / "tidy-repo",
             CLAUDE_SKILLS / "scratch",
             TIDY_PATH / "skills" / "layout",
+            # A category grouping folder holding a nested skill, to exercise recursion.
+            TIDY_PATH / "skills" / "advanced",
+            TIDY_PATH / "skills" / "advanced" / "deep-layout",
             SKETCH_PATH / "skills" / "wireframe",
         },
+        # A user skill symlinked in from another repo: the seam lists it as a
+        # non-directory, so discovery has to recognise it by its SKILL.md.
+        nondirs={CLAUDE_SKILLS / "linked-skill"},
         files={
             CLAUDE_SKILLS / "tidy-repo" / "SKILL.md": SKILL_TIDY_REPO,
             CLAUDE_SKILLS / "scratch" / "SKILL.md": SKILL_SCRATCH_NO_FM,
+            CLAUDE_SKILLS / "linked-skill" / "SKILL.md": SKILL_LINKED,
             TIDY_PATH / "skills" / "layout" / "SKILL.md": SKILL_LAYOUT,
+            TIDY_PATH / "skills" / "advanced" / "deep-layout" / "SKILL.md": SKILL_DEEP_LAYOUT,
             SKETCH_PATH / "skills" / "wireframe" / "SKILL.md": SKILL_WIREFRAME,
             CLAUDE_PLUGINS / "installed_plugins.json": INSTALLED_PLUGINS_JSON,
             CLAUDE_PLUGINS / "known_marketplaces.json": KNOWN_MARKETPLACES_JSON,

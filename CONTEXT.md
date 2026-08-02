@@ -39,10 +39,11 @@ _Avoid_: source (ambiguous with a git remote), provider
 ### Anomalies
 
 **Flag**:
-A data-evident anomaly surfaced as an inline badge on the affected row, derived
-purely from the facts a collector already gathered, with no external ruleset. Two
-levels: amber (attention) and red (problem). A flag states what the data makes
-obvious (dirty tree, behind remote, daemon down); it never measures conformance
-to a written standard.
+A data-evident anomaly surfaced as an inline badge on the affected row and rolled
+up by category in the board's Needs attention summary, derived purely from the
+facts a collector already gathered, with no external ruleset. Two levels: amber
+(attention) and red (problem). A flag states what the data makes obvious (dirty
+tree, behind remote, daemon down); it never measures conformance to a written
+standard.
 _Avoid_: check, violation, conformance, alert, Status (Status, up/stabilising/down
 is the `wkx-platform` operational vocabulary, deliberately not inherited here)

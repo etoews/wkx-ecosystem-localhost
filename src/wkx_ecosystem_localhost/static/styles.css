@@ -2,6 +2,11 @@
  * Adapted from the wkx-namespace design system: look and feel only.
  * Palette, type stacks, panel idiom, and theme behaviour are vendored;
  * the platform's Status vocabulary is deliberately not inherited.
+ *
+ * The board reads as tables: each Section leads with a one-line summary and
+ * lays its facts out in a table beneath. Colour is reserved for the M6 Flag
+ * layer (amber attention, red problem); every neutral fact is told apart by
+ * weight, a muted tone, and a label, never by hue.
  */
 
 :root {
@@ -112,10 +117,9 @@ a { color: var(--add); }
 .masthead .controls { margin-left: auto; display: inline-flex; align-items: center; gap: .5rem; }
 
 /* ---------- Flag layer (M6) header tally ----------
- * The one place the open-Flag count reads: a single masthead pill. It reuses the
- * design-system --chg (amber, attention) and --del (red, problem) and the level
- * is carried by a word ("want attention") and the count as well as the hue, so it
- * never rests on colour alone. At zero it reads "all clear" in the quiet fog ink. */
+ * The masthead pill: reuses --chg (amber, attention) and --del (red, problem);
+ * the level is carried by a word and the count as well as the hue, so it never
+ * rests on colour alone. At zero it reads "all clear" in the quiet fog ink. */
 .tally {
   font-family: var(--mono);
   font-size: .72rem;
@@ -145,21 +149,24 @@ button.theme {
 }
 button.theme:hover { color: var(--text); border-color: var(--fog); }
 
-/* ---------- board ---------- */
+/* ---------- board & panels ---------- */
 .board {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: .8rem;
 }
 .panel {
   background: var(--water);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: .9rem 1rem 1rem;
+  padding: .9rem 1rem 1.05rem;
 }
+.panel--wide { grid-column: 1 / -1; }
 .signage {
   font-family: var(--mono);
   font-size: .78rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
   color: var(--fog);
   margin-bottom: .5rem;
 }
@@ -170,546 +177,153 @@ button.theme:hover { color: var(--text); border-color: var(--fog); }
 }
 .empty code { font-family: var(--mono); font-size: .95em; }
 
-footer {
-  padding-top: 1.5rem;
-  font-family: var(--mono);
-  font-size: .72rem;
-  color: var(--fog);
-}
-
-/* ---------- workspace Section ----------
- * The tracer-bullet Section. Reuses the vendored palette and mono type; colour
- * stays reserved for the M6 Flag layer, so clean/dirty and the counts are told
- * apart by weight and glyph, not by amber/red. */
-.panel--wide { grid-column: 1 / -1; }
-
-.ws-note {
-  font-size: .82rem;
-  color: var(--fog);
-}
-.ws-count { color: var(--text); font-family: var(--mono); }
-
-.ws-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: .6rem;
-  margin-top: .55rem;
-}
-
-.ws-card {
-  background: var(--deep);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: .6rem .7rem .5rem;
-  display: flex;
-  flex-direction: column;
-  gap: .45rem;
-}
-
-.ws-head { display: flex; align-items: baseline; gap: .5rem; }
-.ws-dot {
-  width: .5rem;
-  height: .5rem;
-  border-radius: 50%;
-  flex: none;
-  align-self: center;
-}
-.ws-dot--dirty { background: var(--text); }
-.ws-dot--clean { border: 1px solid var(--fog); }
-.ws-name {
-  font-family: var(--mono);
-  font-size: .88rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.ws-path {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: .66rem;
-  color: var(--fog);
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.ws-ref {
-  font-family: var(--mono);
-  font-size: .74rem;
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: .3rem .45rem;
-}
-.ws-ref .branch { color: var(--text); }
-.ws-ref .up { color: var(--fog); }
-.ws-eyebrow {
-  font-family: var(--mono);
-  font-size: .6rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-
-.ws-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
-.ws-chip {
-  font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .04rem .45rem;
-  white-space: nowrap;
-}
-.ws-chip .num { font-weight: 600; color: var(--text); }
-.ws-chip .lbl { color: var(--fog); }
-.ws-chip--muted { color: var(--fog); }
-.ws-chip--muted .num { color: var(--fog); font-weight: 400; }
-
-/* ahead/behind chip: quiet while its fetch is in flight, settling in when the
- * count lands over SSE. The fill is announced by weight and the ↑/↓ glyphs, not
- * colour, which stays reserved for the M6 Flag layer. */
-.ws-chip--ab .num { font-variant-numeric: tabular-nums; }
-.ws-chip--filled { animation: ws-ab-in .3s ease-out; }
-@keyframes ws-ab-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.ws-config { font-family: var(--mono); font-size: .7rem; }
-.ws-config summary {
-  cursor: pointer;
-  color: var(--fog);
-  list-style: none;
-}
-.ws-config summary::-webkit-details-marker { display: none; }
-.ws-config summary::before { content: "\25B8  "; }
-.ws-config[open] summary::before { content: "\25BE  "; }
-.ws-config summary:hover { color: var(--text); }
-
-.ws-cfg { margin-top: .45rem; display: flex; flex-direction: column; gap: .28rem; }
-.ws-cfg-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem .4rem; }
-.ws-cfg-key { color: var(--text); }
-.ws-cfg-scope {
-  color: var(--fog);
-  font-size: .58rem;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 0 .25rem;
-}
-.ws-cfg-val { color: var(--fog); overflow-wrap: anywhere; }
-.ws-reveal {
-  font-family: var(--mono);
-  font-size: .64rem;
-  color: var(--fog);
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.ws-reveal:hover { color: var(--text); }
-
-/* Submodules Section: one card per submodule, mirroring the workspace card so
- * the two wide panels read as one system. The pin lands with the first render;
- * latest and tags-behind settle in over SSE. */
-.sm-note { font-size: .82rem; color: var(--fog); }
-.sm-count { color: var(--text); font-family: var(--mono); }
-
-.sm-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: .6rem;
-  margin-top: .55rem;
-}
-.sm-card {
-  background: var(--deep);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: .6rem .7rem .5rem;
-  display: flex;
-  flex-direction: column;
-  gap: .4rem;
-}
-.sm-head { display: flex; align-items: baseline; gap: .5rem; }
-.sm-name {
-  font-family: var(--mono);
+/* The one-line Section summary that sits above every table. */
+.sec-summary {
   font-size: .86rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow-wrap: anywhere;
+  color: var(--fog);
+  max-width: 82ch;
+  margin-bottom: .7rem;
 }
-.sm-path {
-  margin-left: auto;
+.sec-summary b { color: var(--text); font-weight: 600; }
+.sec-summary code { font-family: var(--mono); font-size: .95em; }
+.sec-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* A sub-heading between the several tables of one Section (toolchains, claude). */
+.sub-head {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--fog);
+  margin: 1rem 0 .4rem;
+}
+.sub-head:first-child { margin-top: 0; }
+
+/* ---------- tables ---------- */
+.tbl-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .76rem; }
+thead th {
+  text-align: left;
+  font-size: .57rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--fog);
+  font-weight: 600;
+  padding: .5rem .7rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  background: var(--hull);
+}
+tbody td {
+  padding: .42rem .7rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+  color: var(--text);
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--hull); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.t-name { font-weight: 600; overflow-wrap: anywhere; }
+.q { color: var(--fog); }
+.dash { color: var(--fog); }
+.ver { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* present / current, the one positive state, in the design-system green with a
+ * check glyph and a word so it never rests on hue alone. */
+.ok { color: var(--add); font-weight: 600; white-space: nowrap; }
+.ok::before { content: "\2713\00a0"; }
+
+/* The cell the M6 Flag layer badges into; badges wrap when a row carries more
+ * than one. Empty until a Flag lands, so a clean row stays quiet. */
+.flags-cell { display: flex; flex-wrap: wrap; gap: .3rem; align-items: center; }
+
+/* An installed-but-idle fact (a plugin version, an origin) as a quiet chip. */
+.chip {
   font-family: var(--mono);
   font-size: .64rem;
-  color: var(--fog);
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-.sm-ctx {
-  font-family: var(--mono);
-  font-size: .68rem;
-  display: flex;
-  align-items: baseline;
-  gap: .35rem;
-}
-.sm-eyebrow {
-  font-size: .58rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-.sm-repo { color: var(--fog); overflow-wrap: anywhere; }
-
-.sm-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
-.sm-chip {
-  font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .04rem .45rem;
-  white-space: nowrap;
-}
-.sm-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.sm-chip .lbl { color: var(--fog); }
-.sm-chip--muted { color: var(--fog); }
-.sm-chip--muted .num { color: var(--fog); font-weight: 400; }
-
-/* latest and behind settle in when the remote tag listing lands over SSE. Drift
- * is announced by weight and the count, not colour, which stays reserved for the
- * M6 Flag layer. Reuses the workspace fade keyframe. */
-.sm-chips--filled .sm-chip--latest,
-.sm-chip--behind { animation: ws-ab-in .3s ease-out; }
-
-/* Toolchains Section: the whole language story in one wide panel, split into a
- * python lane and a node/typescript lane. Reuses the vendored palette and the
- * stat-tile chip idiom so it reads as one system with the other panels. Colour
- * stays reserved for the M6 Flag layer, so versions, drift, and absent tools are
- * told apart by weight and adjacency, never by hue. */
-.tc-note { font-size: .82rem; color: var(--fog); }
-
-.tc-lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: .8rem;
-  margin-top: .3rem;
-}
-.tc-lane {
-  background: var(--deep);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: .7rem .8rem .75rem;
-  display: flex;
-  flex-direction: column;
-  gap: .7rem;
-}
-.tc-lane-head {
-  font-family: var(--mono);
-  font-size: .74rem;
-  letter-spacing: .04em;
-  color: var(--text);
-  padding-bottom: .35rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.tc-group { display: flex; flex-direction: column; gap: .35rem; }
-.tc-group-head {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-
-.tc-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
-.tc-chip {
-  font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .04rem .45rem;
-  white-space: nowrap;
-}
-.tc-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.tc-chip .lbl { color: var(--fog); }
-.tc-chip--muted { color: var(--fog); }
-.tc-chip--muted .num { color: var(--fog); font-weight: 400; }
-
-.tc-rows { display: flex; flex-direction: column; gap: .3rem; }
-.tc-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: .3rem .45rem;
-}
-.tc-repo {
-  font-family: var(--mono);
-  font-size: .68rem;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.tc-row .tc-chips { margin-left: auto; }
-
-.tc-muted { font-family: var(--mono); font-size: .66rem; color: var(--fog); }
-
-/* System Section: the configured developer CLIs as a wrap of stat-tile chips.
- * Reuses the vendored palette and chip idiom so it reads as one system with the
- * other panels. Colour stays reserved for the M6 Flag layer, so present and
- * missing are told apart by weight and the label, never by hue. */
-.sy-note { font-size: .82rem; color: var(--fog); }
-.sy-count { color: var(--text); font-family: var(--mono); }
-
-.sy-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem;
-  margin-top: .55rem;
-}
-.sy-chip {
-  font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .04rem .45rem;
-  white-space: nowrap;
   display: inline-flex;
-  align-items: baseline;
-  gap: .3rem;
-}
-.sy-chip .lbl { color: var(--fog); }
-.sy-chip .num { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
-.sy-chip--muted { color: var(--fog); }
-.sy-chip--muted .num { color: var(--fog); font-weight: 400; }
-
-/* Claude Section: skills, plugins, and MCP servers in one wide panel, split into
- * three lanes. Origin is the structural spine — an eyebrow that clusters skills
- * and labels every plugin and server. Reuses the vendored palette, mono type, and
- * chip idiom so it reads as one system with the toolchains panel. Colour stays
- * reserved for the M6 Flag layer, so enabled/disabled and auth-needed are told
- * apart by weight and a muted tag, never by hue. */
-.cl-note { font-size: .82rem; color: var(--fog); }
-
-.cl-lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: .8rem;
-  margin-top: .3rem;
-}
-.cl-lane {
-  background: var(--deep);
+  align-items: center;
+  gap: .28rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: .7rem .8rem .75rem;
-  display: flex;
-  flex-direction: column;
+  border-radius: 999px;
+  padding: .02rem .44rem;
+  white-space: nowrap;
+  color: var(--text);
+}
+.chip .lbl { color: var(--fog); }
+.chip .num { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* installed → current bump (homebrew): the target of the upgrade is loud, the
+ * version installed now recessive; told apart by weight, never hue. */
+.bump { display: inline-flex; align-items: baseline; gap: .34rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bump .from { color: var(--fog); }
+.bump .arr { color: var(--fog); }
+.bump .to { color: var(--text); font-weight: 600; }
+
+/* long descriptions clamp to two lines; full text on hover via title. */
+.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--fog);
+  max-width: 62ch;
+}
+
+/* nested submodule row, beneath its parent repo. */
+tr.subrow td { background: var(--deep); }
+tr.subrow:hover td { background: var(--hull); }
+.sub-lead { color: var(--fog); overflow-wrap: anywhere; }
+.sub-lead::before { content: "\21B3\00a0\00a0"; color: var(--fog); }
+
+/* nested plugin-skills row: the chips of skills a plugin ships, beneath it. */
+tr.skillrow td { background: var(--deep); padding-top: .35rem; padding-bottom: .55rem; }
+tr.skillrow:hover td { background: var(--deep); }
+.skill-wrap { display: flex; flex-wrap: wrap; gap: .28rem; padding-left: 1rem; align-items: center; }
+.skill-wrap .k-lead {
+  font-family: var(--mono);
+  font-size: .57rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fog);
+  margin-right: .15rem;
+}
+
+/* a value settling in over SSE (ahead/behind, submodule latest) fades on arrival. */
+.filled { animation: fade-in .3s ease-out; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- needs-attention summary ---------- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: .55rem;
+  margin: .1rem 0 1rem;
 }
-.cl-lane-head {
-  display: flex;
-  align-items: baseline;
-  gap: .5rem;
-  padding-bottom: .35rem;
-  border-bottom: 1px solid var(--line);
-}
-.cl-lane-name {
-  font-family: var(--mono);
-  font-size: .74rem;
-  letter-spacing: .04em;
-  color: var(--text);
-}
-.cl-lane-count { font-size: .68rem; color: var(--fog); }
-.cl-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.tile { background: var(--deep); border: 1px solid var(--line); border-radius: 8px; padding: .6rem .75rem; }
+.tile .n { font-family: var(--mono); font-size: 1.7rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile .l { font-family: var(--mono); font-size: .58rem; letter-spacing: .07em; text-transform: uppercase; color: var(--fog); margin-top: .3rem; }
+.tile--attention .n { color: var(--chg); }
+.tile--problem .n { color: var(--del); }
 
-.cl-muted { font-family: var(--mono); font-size: .66rem; color: var(--fog); }
+.cat-bar-cell { display: flex; align-items: center; gap: .5rem; min-width: 140px; }
+.cat-count { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 1.6ch; text-align: right; }
+.cat-bar { position: relative; height: .62rem; min-width: 74px; flex: 1; background: var(--hull); border-radius: 3px; overflow: hidden; }
+.cat-bar > span { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; }
+.cat-bar--attention > span { background: var(--chg); }
+.cat-bar--problem > span { background: var(--del); }
 
-/* skills: grouped by Origin, each group a heading plus a wrap of name chips. */
-.cl-groups { display: flex; flex-direction: column; gap: .55rem; }
-.cl-group { display: flex; flex-direction: column; gap: .3rem; }
-.cl-group-head { display: flex; align-items: baseline; gap: .4rem; flex-wrap: wrap; }
-
-.cl-origin {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--fog);
-  overflow-wrap: anywhere;
-}
-
-.cl-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
-.cl-chip {
-  font-family: var(--mono);
-  font-size: .67rem;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .04rem .45rem;
-  white-space: nowrap;
-}
-
-/* plugins and MCP servers: one row each, a loud name line over a quiet meta line. */
-.cl-rows { display: flex; flex-direction: column; gap: .5rem; }
-.cl-row { display: flex; flex-direction: column; gap: .2rem; }
-.cl-row-main { display: flex; align-items: baseline; flex-wrap: wrap; gap: .35rem; }
-.cl-row-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem; }
-
-.cl-name {
-  font-family: var(--mono);
-  font-size: .78rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.cl-ver {
-  font-family: var(--mono);
-  font-size: .66rem;
-  color: var(--fog);
-  font-variant-numeric: tabular-nums;
-}
-.cl-transport {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--fog);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  padding: 0 .25rem;
-}
-.cl-repo { font-family: var(--mono); font-size: .64rem; color: var(--fog); overflow-wrap: anywhere; }
-
-/* A quiet tag for an installed-but-disabled or auth-needed fact. Told apart by
- * weight and the label, not colour, which stays reserved for the M6 Flag layer. */
-.cl-tag {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--fog);
-  border: 1px dashed var(--line);
-  border-radius: 3px;
-  padding: 0 .25rem;
-}
-.cl-tag--muted { color: var(--fog); }
-
-/* Homebrew Section: a headline outdated count over two grouped lists (formulae
- * and casks). Reuses the vendored palette and mono type so it reads as one system
- * with the other panels. An outdated package is a version bump — the current
- * version is loud, the installed one recessive — told apart by weight, never hue,
- * which stays reserved for the M6 Flag layer. */
-.hb-note { font-size: .82rem; color: var(--fog); }
-.hb-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
-
-.hb-groups { display: flex; flex-direction: column; gap: .7rem; margin-top: .6rem; }
-.hb-group { display: flex; flex-direction: column; gap: .3rem; }
-.hb-group-head {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-.hb-group-head .hb-count { font-size: .78rem; text-transform: none; letter-spacing: 0; }
-
-.hb-rows { display: flex; flex-direction: column; gap: .28rem; }
-.hb-row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: .3rem .5rem;
-}
-.hb-name {
-  font-family: var(--mono);
-  font-size: .74rem;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.hb-bump {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: .68rem;
-  display: inline-flex;
-  align-items: baseline;
-  gap: .3rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.hb-from { color: var(--fog); }
-.hb-arrow { color: var(--fog); }
-.hb-to { color: var(--text); font-weight: 600; }
-
-/* Docker Section: the daemon fact as an eyebrow pill over a small row of stat
- * tiles — containers, images, reclaimable disk. Reuses the vendored palette and
- * mono type. Reachable and down are told apart by weight and the word, not colour,
- * which stays reserved for the M6 Flag layer; a down daemon states the fact and
- * withholds the tiles rather than showing meaningless zeros. */
-.dk-note { font-size: .82rem; color: var(--fog); }
-.dk-muted { font-family: var(--mono); font-size: .68rem; color: var(--fog); max-width: 40ch; }
-
-.dk-wrap { display: flex; flex-direction: column; gap: .7rem; }
-
-.dk-daemon {
-  display: inline-flex;
-  align-self: flex-start;
-  align-items: baseline;
-  gap: .4rem;
-  font-family: var(--mono);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .12rem .6rem;
-}
-.dk-daemon-lbl {
-  font-size: .58rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-.dk-daemon-state { font-size: .74rem; font-weight: 600; color: var(--text); }
-/* A down daemon reads by a dashed edge and the word, not by hue. */
-.dk-daemon--down { border-style: dashed; }
-.dk-daemon--down .dk-daemon-state { color: var(--fog); }
-
-.dk-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: .5rem;
-}
-.dk-tile {
-  background: var(--deep);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: .5rem .6rem;
-  display: flex;
-  flex-direction: column;
-  gap: .15rem;
-}
-.dk-num {
-  font-family: var(--mono);
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-.dk-lbl {
-  font-family: var(--mono);
-  font-size: .58rem;
-  letter-spacing: .06em;
-  text-transform: uppercase;
-  color: var(--fog);
-}
-
-/* ---------- Flag layer (M6) inline badges ----------
- * The cross-cutting anomaly layer's one visible mark: an inline badge on the row
- * carrying the fact, in the same pill idiom as every Section chip so it reads as
- * one system. Amber (attention) and red (problem) reuse the design-system --chg
- * and --del. The level never rests on colour alone: each badge carries a word for
- * the fact, and the leading marker is a round dot for attention and a square for a
- * problem, a shape cue that survives when hue does not. */
-.flag {
+/* ---------- Flag layer (M6) inline badges & summary level markers ----------
+ * The anomaly layer's one visible mark on a row (.flag, placed by the flag
+ * layer) and the summary's level marker (.lvl, decorative and never touched by
+ * the flag layer's cleanup). Both reuse --chg (attention) and --del (problem),
+ * and both carry a word plus a shape cue: a round dot for attention, a square
+ * for a problem, so the level survives when hue does not. */
+.flag,
+.lvl {
   font-family: var(--mono);
   font-size: .6rem;
   letter-spacing: .03em;
@@ -721,9 +335,10 @@ footer {
   padding: .02rem .42rem;
   white-space: nowrap;
   align-self: center;
-  animation: ws-ab-in .3s ease-out;
 }
-.flag::before {
+.flag { animation: fade-in .3s ease-out; }
+.flag::before,
+.lvl::before {
   content: "";
   width: .4rem;
   height: .4rem;
@@ -731,12 +346,21 @@ footer {
   background: currentColor;
   flex: none;
 }
-.flag--attention { color: var(--chg); border-color: var(--chg); }
-.flag--problem { color: var(--del); border-color: var(--del); }
-/* A problem's marker is a square, so attention and problem stay distinct without
- * relying on the amber/red hue alone. */
-.flag--problem::before { border-radius: 1px; }
+.flag--attention,
+.lvl--attention { color: var(--chg); border-color: var(--chg); }
+.flag--problem,
+.lvl--problem { color: var(--del); border-color: var(--del); }
+.flag--problem::before,
+.lvl--problem::before { border-radius: 1px; }
+
+footer {
+  padding-top: 1.5rem;
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+@media (max-width: 640px) { .tiles { grid-template-columns: 1fr; } }

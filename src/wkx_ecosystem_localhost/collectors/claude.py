@@ -55,6 +55,10 @@ _ORIGIN_PROJECT = "project"
 
 _FRONTMATTER_FENCE = "---"
 
+# Skills can nest a couple of category folders deep; this caps the descent as a
+# backstop against a pathologically deep (or, via a real directory, cyclic) tree.
+_SKILLS_MAX_DEPTH = 4
+
 
 @dataclass(frozen=True)
 class InstalledPlugin:
@@ -346,24 +350,40 @@ def _collect_skills(
     return skills
 
 
-def _skills_under(machine: Machine, root: Path, *, origin: str, enabled: bool) -> list[Skill]:
-    """List every skill directory under ``root``, reading each one's front matter."""
+def _skills_under(
+    machine: Machine, root: Path, *, origin: str, enabled: bool, _depth: int = 0
+) -> list[Skill]:
+    """List every skill under ``root``, recursing through grouping folders.
+
+    A skill is any directory holding a ``SKILL.md``. The holder is recognised by
+    that file rather than by ``is_dir``, so a user skill symlinked in from another
+    repo, which the seam reports as a non-directory to stay loop-safe, is still
+    found. A child with no ``SKILL.md`` of its own is treated as a grouping folder
+    (some plugins file skills by category) and descended into, but only when it is
+    a real directory, so a symlink is never followed into a loop; ``_depth`` caps
+    the descent as a backstop. Hidden entries are skipped so a dotfile directory is
+    never mistaken for a skill tree.
+    """
     skills: list[Skill] = []
     for entry in machine.list_dir(root):
-        if not entry.is_dir:
+        if entry.name.startswith("."):
             continue
-        text = machine.read_file(root / entry.name / _SKILL_FILE)
-        if text is None:
-            continue
-        parsed_name, description = parse_skill_frontmatter(text)
-        skills.append(
-            Skill(
-                name=parsed_name or entry.name,
-                origin=origin,
-                description=description,
-                enabled=enabled,
+        child = root / entry.name
+        text = machine.read_file(child / _SKILL_FILE)
+        if text is not None:
+            parsed_name, description = parse_skill_frontmatter(text)
+            skills.append(
+                Skill(
+                    name=parsed_name or entry.name,
+                    origin=origin,
+                    description=description,
+                    enabled=enabled,
+                )
             )
-        )
+        elif entry.is_dir and _depth < _SKILLS_MAX_DEPTH:
+            skills.extend(
+                _skills_under(machine, child, origin=origin, enabled=enabled, _depth=_depth + 1)
+            )
     return skills
 
 

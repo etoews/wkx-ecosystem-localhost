@@ -28,46 +28,46 @@
   </header>
 
   <main class="board" aria-label="Sections">
+    <section class="panel panel--wide" aria-label="needs attention">
+      <p class="signage">needs attention</p>
+      <div id="summary" aria-live="polite">
+        <p class="sec-summary">Deriving the flags that want attention…</p>
+      </div>
+    </section>
     <section class="panel panel--wide" aria-label="workspace">
       <p class="signage">workspace</p>
       <div id="workspace" aria-live="polite">
-        <p class="ws-note">Scanning for repositories…</p>
-      </div>
-    </section>
-    <section class="panel panel--wide" aria-label="submodules">
-      <p class="signage">submodules</p>
-      <div id="submodules" aria-live="polite">
-        <p class="sm-note">Reading submodules…</p>
+        <p class="sec-summary">Scanning for repositories…</p>
       </div>
     </section>
     <section class="panel panel--wide" aria-label="toolchains">
       <p class="signage">toolchains</p>
       <div id="toolchains" aria-live="polite">
-        <p class="tc-note">Reading toolchains…</p>
+        <p class="sec-summary">Reading toolchains…</p>
       </div>
     </section>
     <section class="panel panel--wide" aria-label="claude">
       <p class="signage">claude</p>
       <div id="claude" aria-live="polite">
-        <p class="cl-note">Reading the Claude environment…</p>
+        <p class="sec-summary">Reading the Claude environment…</p>
+      </div>
+    </section>
+    <section class="panel panel--wide" aria-label="homebrew">
+      <p class="signage">homebrew</p>
+      <div id="homebrew" aria-live="polite">
+        <p class="sec-summary">Reading outdated formulae and casks…</p>
       </div>
     </section>
     <section class="panel" aria-label="system">
       <p class="signage">system</p>
       <div id="system" aria-live="polite">
-        <p class="sy-note">Probing developer tools…</p>
-      </div>
-    </section>
-    <section class="panel" aria-label="homebrew">
-      <p class="signage">homebrew</p>
-      <div id="homebrew" aria-live="polite">
-        <p class="hb-note">Reading outdated formulae and casks…</p>
+        <p class="sec-summary">Probing developer tools…</p>
       </div>
     </section>
     <section class="panel" aria-label="docker">
       <p class="signage">docker</p>
       <div id="docker" aria-live="polite">
-        <p class="dk-note">Reaching the Docker daemon…</p>
+        <p class="sec-summary">Reaching the Docker daemon…</p>
       </div>
     </section>
   </main>

@@ -1,5 +1,9 @@
-// Board behaviour. M0: theme control only; Section fetches arrive with M1.
+// Board behaviour. Every Section leads with a one-line summary and lays its facts
+// out in a table beneath. Colour is reserved for the M6 Flag layer: sections stamp
+// a data-flag-key host cell and the flag layer badges it; neutral facts are told
+// apart by weight, a muted tone, and a label, never by hue.
 
+// ---------- theme control ----------
 (function () {
   "use strict";
 
@@ -31,22 +35,143 @@
   button.textContent = "theme: " + current();
 })();
 
-// Flag layer (M6): the cross-cutting anomaly layer. It gathers no facts of its
-// own — the server derives the at-rest Flags over /api/flags — but it owns the one
-// place a Flag ever shows: an inline amber (attention) or red (problem) badge on
-// the row carrying the fact, plus the single masthead tally of the open count.
-// Every flaggable row stamps a data-flag-key of "<section>:<target>", so a Flag
-// settles onto its row without this layer knowing how the row is drawn; a
-// MutationObserver re-decorates as panels and SSE updates land. Two Flags need a
-// background fetch to be known open (a repo behind its remote, a submodule behind
-// its tags); the workspace and submodule streams raise those through the small
-// add/clear API this exposes, so they badge their rows progressively.
+// ---------- shared table helpers ----------
+// One small toolkit every Section builds its table from, so the markup stays
+// consistent and safe (DOM nodes and textContent only, never innerHTML).
+window.wkxUI = (function () {
+  "use strict";
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function append(node, content) {
+    if (content == null) return;
+    if (typeof content === "string") node.append(document.createTextNode(content));
+    else if (Array.isArray(content)) {
+      content.forEach(function (c) {
+        append(node, c);
+      });
+    } else {
+      node.append(content);
+    }
+  }
+
+  // A scrollable table from column specs ({label, num}); returns the wrapper to
+  // mount and the empty tbody to append rows to.
+  function table(columns) {
+    const wrap = el("div", "tbl-wrap");
+    const t = el("table");
+    const thead = el("thead");
+    const headRow = el("tr");
+    columns.forEach(function (col) {
+      headRow.append(el("th", col.num ? "num" : null, col.label));
+    });
+    thead.append(headRow);
+    const tbody = el("tbody");
+    t.append(thead, tbody);
+    wrap.append(t);
+    return { wrap: wrap, tbody: tbody };
+  }
+
+  function td(content, className) {
+    const cell = el("td", className || null);
+    append(cell, content);
+    return cell;
+  }
+
+  function tr(cells) {
+    const row = el("tr");
+    cells.forEach(function (cell) {
+      row.append(cell);
+    });
+    return row;
+  }
+
+  function ok(text) {
+    return el("span", "ok", text);
+  }
+  function quiet(text) {
+    return el("span", "q", text);
+  }
+  function dash() {
+    return el("span", "dash", "—");
+  }
+  function strong(text) {
+    const node = el("span", "t-name", text);
+    node.style.fontWeight = "600";
+    return node;
+  }
+  // A decorative level marker for the summary (never touched by the flag layer,
+  // which only manages the .flag badges it places on rows).
+  function level(lvl, text) {
+    return el("span", "lvl lvl--" + (lvl === "problem" ? "problem" : "attention"), text);
+  }
+
+  function summaryLine(nodes) {
+    const p = el("p", "sec-summary");
+    nodes.forEach(function (n) {
+      append(p, n);
+    });
+    return p;
+  }
+
+  return {
+    el: el,
+    append: append,
+    table: table,
+    td: td,
+    tr: tr,
+    ok: ok,
+    quiet: quiet,
+    dash: dash,
+    strong: strong,
+    level: level,
+    summaryLine: summaryLine,
+  };
+})();
+
+// ---------- Flag layer (M6) + needs-attention summary ----------
+// The cross-cutting anomaly layer. It gathers no facts of its own — the server
+// derives the at-rest Flags over /api/flags — but it owns the two places a Flag
+// shows: an inline amber (attention) or red (problem) badge on the row carrying
+// the fact, and the needs-attention summary that groups every open Flag by
+// category. Every flaggable row stamps a data-flag-key of "<section>:<target>",
+// so a Flag settles onto its row without this layer knowing how the row is drawn;
+// a MutationObserver re-decorates as panels and SSE updates land. The summary
+// reads the same registry, so at-rest and SSE-raised Flags share one source of
+// truth and the summary updates the moment a background probe lands.
 (function () {
   "use strict";
 
+  const U = window.wkxUI;
   const board = document.querySelector(".board");
   const tally = document.getElementById("flag-tally");
+  const summaryMount = document.getElementById("summary");
   if (!board || !tally) return;
+
+  // The category each Flag code rolls up to in the summary.
+  const CATEGORY = {
+    "dirty-tree": "Dirty working trees",
+    "detached-head": "Detached HEAD",
+    "no-upstream": "No upstream",
+    "behind-remote": "Behind remote",
+    "brew-outdated": "Homebrew updates",
+    "python-pin-drift": "Python pin drift",
+    "tool-version-drift": "TypeScript version drift",
+    "submodule-tags-behind": "Submodules behind",
+    "docker-unreachable": "Docker daemon down",
+    "tool-missing": "Missing tool",
+    "skill-disabled": "Disabled skill",
+    "plugin-disabled": "Disabled plugin",
+    "skill-shadow": "Skill name shadowing",
+    "mcp-needs-auth": "MCP needs auth",
+    "mcp-two-scopes": "MCP in two scopes",
+  };
+  const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
   // Open Flags keyed by section|target|code, so a repeated add or an SSE re-fire
   // stays idempotent and the size is the true open count.
@@ -54,10 +179,7 @@
   let decorating = false;
 
   function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
+    return U.el(tag, className, text);
   }
 
   function keyOf(flag) {
@@ -69,12 +191,12 @@
   }
 
   function badge(flag) {
-    const level = flag.level === "problem" ? "problem" : "attention";
-    const node = el("span", "flag flag--" + level, flag.message);
+    const lvl = flag.level === "problem" ? "problem" : "attention";
+    const node = el("span", "flag flag--" + lvl, flag.message);
     node.dataset.flagCode = flag.code;
     node.title = flag.message;
     // The level is spoken as well as coloured, so it never rests on hue alone.
-    node.setAttribute("aria-label", level + ": " + flag.message);
+    node.setAttribute("aria-label", lvl + ": " + flag.message);
     return node;
   }
 
@@ -96,6 +218,110 @@
       );
     }
     tally.hidden = false;
+  }
+
+  function cleanTarget(target) {
+    let value = String(target).replace(TARGET_PREFIX, "");
+    if (value.indexOf("/") >= 0) value = value.split("/").pop();
+    return value;
+  }
+
+  function tile(n, label, kind) {
+    const cell = el("div", "tile" + (kind ? " tile--" + kind : ""));
+    cell.append(el("div", "n", String(n)), el("div", "l", label));
+    return cell;
+  }
+
+  // Render the needs-attention summary from the registry: three stat tiles over a
+  // table of categories, each with a magnitude bar and a level marker. Called on
+  // every registry change (the at-rest load and each SSE add/clear), never from
+  // decorate(), so rebuilding the summary can't feed the observer a loop.
+  function renderSummary() {
+    if (!summaryMount) return;
+    const flags = Array.from(registry.values());
+    if (flags.length === 0) {
+      summaryMount.replaceChildren(
+        U.summaryLine(["Every Section is clear — nothing wants attention right now."]),
+      );
+      return;
+    }
+
+    const order = [];
+    const groups = new Map();
+    flags.forEach(function (flag) {
+      const label = CATEGORY[flag.code] || flag.code;
+      if (!groups.has(label)) {
+        groups.set(label, { label: label, level: "attention", count: 0, targets: [] });
+        order.push(label);
+      }
+      const group = groups.get(label);
+      group.count++;
+      if (flag.level === "problem") group.level = "problem";
+      const clean = cleanTarget(flag.target);
+      if (group.targets.indexOf(clean) < 0) group.targets.push(clean);
+    });
+
+    const cats = order.map(function (label) {
+      return groups.get(label);
+    });
+    // Problems first, then by magnitude, so the sharpest items lead.
+    cats.sort(function (a, b) {
+      if (a.level !== b.level) return a.level === "problem" ? -1 : 1;
+      return b.count - a.count;
+    });
+
+    const problems = flags.filter(function (f) {
+      return f.level === "problem";
+    }).length;
+    const attention = flags.length - problems;
+    const max = cats.reduce(function (m, c) {
+      return Math.max(m, c.count);
+    }, 1);
+
+    const tiles = el("div", "tiles");
+    tiles.append(
+      tile(flags.length, "Total flags"),
+      tile(attention, "Attention", "attention"),
+      tile(problems, "Problems", "problem"),
+    );
+
+    const built = U.table([
+      { label: "Category" },
+      { label: "Level" },
+      { label: "Count" },
+      { label: "What wants attention" },
+    ]);
+    cats.forEach(function (cat) {
+      const pct = Math.max(6, Math.round((cat.count / max) * 100));
+      const bar = el("div", "cat-bar cat-bar--" + cat.level);
+      const fill = el("span");
+      fill.style.width = pct + "%";
+      bar.append(fill);
+      const barCell = el("div", "cat-bar-cell");
+      barCell.append(el("span", "cat-count", String(cat.count)), bar);
+
+      const shown =
+        cat.targets.slice(0, 5).join(", ") +
+        (cat.targets.length > 5 ? ", +" + (cat.targets.length - 5) + " more" : "");
+
+      built.tbody.append(
+        U.tr([
+          U.td(el("span", "t-name", cat.label)),
+          U.td(U.level(cat.level, cat.level)),
+          U.td(barCell),
+          U.td(shown, "q"),
+        ]),
+      );
+    });
+
+    const lead = U.summaryLine([
+      "Every open flag, at rest and from the background probes, grouped by category. Level reads by shape and word first, colour second: a round dot is ",
+      el("b", null, "attention"),
+      ", a square is a ",
+      el("b", null, "problem"),
+      ".",
+    ]);
+    summaryMount.replaceChildren(lead, tiles, built.wrap);
   }
 
   function decorate() {
@@ -137,10 +363,12 @@
     add: function (flag) {
       registry.set(keyOf(flag), flag);
       decorate();
+      renderSummary();
     },
     clear: function (section, target, code) {
       registry.delete(section + "|" + target + "|" + code);
       decorate();
+      renderSummary();
     },
   };
 
@@ -157,88 +385,108 @@
         registry.set(keyOf(flag), flag);
       });
       decorate();
+      renderSummary();
     })
     .catch(function () {
-      // Leave the tally hidden rather than assert a false "all clear".
+      if (summaryMount) {
+        summaryMount.replaceChildren(
+          U.summaryLine(["Could not derive the flags. Check that the board is still running."]),
+        );
+      }
     });
 })();
 
-// Workspace Section: fetch /api/workspace and render the discovered repos, then
-// open an SSE stream that fills each repo's ahead/behind in as its background
-// fetch lands. Values arrive already redacted and home-relative; the only
-// sensitive value on the page is each email's raw form, revealed on demand.
+// ---------- workspace (with submodules nested under their repo) ----------
+// Fetch /api/workspace and /api/submodules, render the repos as a table with each
+// submodule nested beneath its parent repo, then open the two SSE streams that
+// fill ahead/behind and each submodule's latest release in as their background
+// probes land. Values arrive already redacted and home-relative.
 (function () {
   "use strict";
 
+  const U = window.wkxUI;
   const mount = document.getElementById("workspace");
   if (!mount) return;
 
-  // Each repo's ahead/behind chip, keyed by its home-relative path, so an SSE
-  // event can fill the right row once its background fetch lands.
-  const abChips = new Map();
-
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
+  const abCells = new Map(); // repo path -> {ahead, behind} cells filled over SSE
+  const smRows = new Map(); // submodule path -> {latest, behind} cells filled over SSE
 
   function note(message) {
-    const p = el("p", "ws-note", message);
-    mount.replaceChildren(p);
+    mount.replaceChildren(U.summaryLine([message]));
   }
 
   function countChip(n, label) {
-    // Stat-tile idiom (dataviz skill): the magnitude is the loud element, the
-    // label stays recessive. No colour — that channel is reserved for M6 Flags.
-    const chip = el("span", "ws-chip");
-    chip.append(el("span", "num", String(n)), " ", el("span", "lbl", label));
+    const chip = U.el("span", "chip");
+    chip.append(U.el("span", "num", String(n)), " ", U.el("span", "lbl", label));
     return chip;
   }
 
-  function chips(repo) {
-    const row = el("div", "ws-chips");
-    if (repo.dirty) {
-      const counts = [
-        [repo.staged, "staged"],
-        [repo.unstaged, "unstaged"],
-        [repo.untracked, "untracked"],
-        [repo.unmerged, "unmerged"],
-      ];
-      counts.forEach(function (pair) {
-        if (pair[0] > 0) row.append(countChip(pair[0], pair[1]));
-      });
-    } else {
-      row.append(el("span", "ws-chip ws-chip--muted", "clean"));
-    }
-    if (repo.stashes > 0) row.append(countChip(repo.stashes, "stash"));
+  function branchCell(repo) {
+    if (repo.branch) return U.td(repo.branch);
+    if (repo.detached_sha) return U.td([U.quiet("detached "), repo.detached_sha]);
+    return U.td(U.quiet("no head"));
+  }
 
-    row.append(aheadBehindChip(repo));
+  function workingTree(repo) {
+    if (!repo.dirty) return U.quiet("clean");
+    const chips = [];
+    [
+      [repo.staged, "staged"],
+      [repo.unstaged, "unstaged"],
+      [repo.untracked, "untracked"],
+      [repo.unmerged, "unmerged"],
+    ].forEach(function (pair) {
+      if (pair[0] > 0) chips.push(countChip(pair[0], pair[1]));
+    });
+    return chips;
+  }
+
+  function repoRow(repo) {
+    const flags = U.td("", "flags-cell");
+    flags.dataset.flagKey = "workspace:" + repo.path;
+    const ahead = U.td(U.quiet("···"), "num");
+    const behind = U.td(U.quiet("···"), "num");
+    abCells.set(repo.path, { ahead: ahead, behind: behind });
+    return U.tr([
+      U.td(U.el("span", "t-name", repo.name)),
+      branchCell(repo),
+      U.td(repo.upstream ? U.el("span", "q", repo.upstream) : U.dash()),
+      ahead,
+      behind,
+      U.td(workingTree(repo)),
+      U.td(repo.stashes > 0 ? String(repo.stashes) : U.quiet("0"), "num"),
+      flags,
+    ]);
+  }
+
+  function subRow(sub) {
+    const name = U.td("", "sub-lead");
+    name.textContent = sub.name;
+
+    const pin = U.el("td");
+    pin.colSpan = 2;
+    pin.append(U.el("span", "q", "submodule · pinned "), U.el("span", "ver", sub.pinned || "—"));
+
+    const latest = U.el("td");
+    latest.colSpan = 2;
+    latest.append(U.el("span", "q", "latest "), U.quiet("listing…"));
+
+    const behind = U.el("td");
+    behind.colSpan = 2;
+    behind.append(U.dash());
+
+    const flags = U.el("td", "flags-cell");
+    flags.dataset.flagKey = "submodules:" + sub.path;
+
+    smRows.set(sub.path, { latest: latest, behind: behind });
+
+    const row = U.el("tr", "subrow");
+    row.append(name, pin, latest, behind, flags);
     return row;
   }
 
-  function aheadBehindChip(repo) {
-    // Starts as a quiet placeholder and is filled when the repo's background
-    // fetch lands over SSE. Colour stays reserved for M6 Flags, so the counts
-    // read by glyph and weight (the stat-tile idiom), never by hue.
-    const chip = el("span", "ws-chip ws-chip--ab ws-chip--muted");
-    chip.append(el("span", "num", "↕"), " ", el("span", "lbl", "fetching…"));
-    chip.title = "Ahead/behind arrives from a background fetch, streamed over SSE.";
-    abChips.set(repo.path, chip);
-    return chip;
-  }
-
-  function setChip(chip, glyph, label, muted) {
-    chip.classList.toggle("ws-chip--muted", muted);
-    chip.replaceChildren(el("span", "num", glyph), " ", el("span", "lbl", label));
-  }
-
+  // ---- ahead/behind stream ----
   function raiseBehind(repo, behind) {
-    // The behind-remote Flag can only be known once the background fetch lands, so
-    // the workspace stream raises it here rather than the server at rest. It is
-    // cleared whenever the repo is level, ahead-only, or its fetch is unknown, so a
-    // re-fetch never leaves a stale badge.
     if (!window.wkxFlags) return;
     if (behind > 0) {
       window.wkxFlags.add({
@@ -254,215 +502,39 @@
   }
 
   function fillAheadBehind(event) {
-    const chip = abChips.get(event.repo);
-    if (!chip) return;
-    chip.classList.add("ws-chip--filled");
+    const cells = abCells.get(event.repo);
+    if (!cells) return;
+    cells.ahead.classList.add("filled");
+    cells.behind.classList.add("filled");
     if (event.unknown) {
-      setChip(chip, "↕", "fetch unknown", true);
-      chip.title = "The background fetch could not reach the remote; it may need credentials.";
+      cells.ahead.replaceChildren(U.dash());
+      cells.behind.replaceChildren(U.quiet("unknown"));
+      cells.behind.title = "The background fetch could not reach the remote; it may need credentials.";
       raiseBehind(event.repo, 0);
       return;
     }
     if (event.ahead == null && event.behind == null) {
-      setChip(chip, "↕", "no upstream", true);
-      chip.title = "This branch has no upstream to compare against.";
+      cells.ahead.replaceChildren(U.dash());
+      cells.behind.replaceChildren(U.dash());
+      cells.behind.title = "This branch has no upstream to compare against.";
       raiseBehind(event.repo, 0);
       return;
     }
     raiseBehind(event.repo, event.behind);
-    if (event.ahead === 0 && event.behind === 0) {
-      setChip(chip, "↕", "level since last fetch", false);
+    cells.ahead.replaceChildren(document.createTextNode(String(event.ahead)));
+    if (event.behind > 0) {
+      const strong = U.el("span");
+      strong.style.fontWeight = "600";
+      strong.textContent = String(event.behind);
+      cells.behind.replaceChildren(strong);
     } else {
-      const parts = [];
-      if (event.ahead > 0) parts.push("↑" + event.ahead);
-      if (event.behind > 0) parts.push("↓" + event.behind);
-      setChip(chip, parts.join(" "), "since last fetch", false);
+      cells.behind.replaceChildren(document.createTextNode("0"));
     }
-    chip.title = "Commits ahead of and behind the upstream, since the last background fetch.";
+    cells.behind.title = "Commits behind the upstream, since the last background fetch.";
   }
 
-  function startFetchStream() {
-    // Native EventSource only: no library. The server closes the stream with a
-    // "done" event once every repo has reported, so this runs exactly once per
-    // load rather than reconnecting in a loop.
-    if (typeof EventSource === "undefined") return;
-    const source = new EventSource("/api/workspace/fetch");
-    source.addEventListener("message", function (message) {
-      try {
-        fillAheadBehind(JSON.parse(message.data));
-      } catch (_err) {
-        // Ignore a stray or malformed frame rather than tearing down the stream.
-      }
-    });
-    source.addEventListener("done", function () {
-      source.close();
-    });
-    source.addEventListener("error", function () {
-      source.close();
-    });
-  }
-
-  function refLine(repo) {
-    // The normal case (on a branch) is unadorned; the eyebrow is reserved to
-    // mark the abnormal states so an odd HEAD reads at a glance.
-    const line = el("div", "ws-ref");
-    if (repo.branch) {
-      line.append(el("span", "branch", repo.branch));
-    } else if (repo.detached_sha) {
-      line.append(el("span", "ws-eyebrow", "detached"), el("span", "branch", repo.detached_sha));
-    } else {
-      line.append(el("span", "ws-eyebrow", "no head"));
-    }
-    if (repo.upstream) line.append(el("span", "up", "→ " + repo.upstream));
-    return line;
-  }
-
-  function configRow(entry) {
-    const row = el("div", "ws-cfg-row");
-    row.append(el("span", "ws-cfg-key", entry.key), el("span", "ws-cfg-scope", entry.scope));
-    const value = el("span", "ws-cfg-val", entry.value);
-    row.append(value);
-    if (entry.raw) {
-      const reveal = el("button", "ws-reveal", "reveal");
-      reveal.type = "button";
-      reveal.setAttribute("aria-label", "Reveal the full " + entry.key);
-      let shown = false;
-      reveal.addEventListener("click", function () {
-        shown = !shown;
-        value.textContent = shown ? entry.raw : entry.value;
-        reveal.textContent = shown ? "hide" : "reveal";
-      });
-      row.append(reveal);
-    }
-    return row;
-  }
-
-  function configBlock(repo) {
-    const details = el("details", "ws-config");
-    details.append(el("summary", null, "git config"));
-    const body = el("div", "ws-cfg");
-    repo.config.forEach(function (entry) {
-      body.append(configRow(entry));
-    });
-    details.append(body);
-    return details;
-  }
-
-  function repoCard(repo) {
-    const card = el("div", "ws-card");
-    card.dataset.repo = repo.path;
-    // The row the M6 Flag layer badges: dirty tree, detached HEAD, no upstream
-    // (from /api/flags), and behind-remote (raised below as the fetch lands).
-    card.dataset.flagKey = "workspace:" + repo.path;
-    const head = el("div", "ws-head");
-    head.append(
-      el("span", "ws-dot " + (repo.dirty ? "ws-dot--dirty" : "ws-dot--clean")),
-      el("span", "ws-name", repo.name),
-      el("span", "ws-path", repo.path),
-    );
-    card.append(head, refLine(repo), chips(repo));
-    if (repo.config.length > 0) card.append(configBlock(repo));
-    return card;
-  }
-
-  function render(data) {
-    const roots = data.roots.join(", ");
-    if (data.repos.length === 0) {
-      note("No git repositories found under " + roots + ".");
-      return;
-    }
-    abChips.clear();
-    const summary = el("p", "ws-note");
-    summary.append(
-      el("span", "ws-count", String(data.repos.length)),
-      data.repos.length === 1 ? " repository under " : " repositories under ",
-      roots,
-    );
-    const grid = el("div", "ws-grid");
-    data.repos.forEach(function (repo) {
-      grid.append(repoCard(repo));
-    });
-    mount.replaceChildren(summary, grid);
-    startFetchStream();
-  }
-
-  fetch("/api/workspace")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load the workspace. Check that the board is still running.");
-    });
-})();
-
-// Submodules Section: fetch /api/submodules and render each submodule with its
-// locally-resolved pin, then open an SSE stream that fills each row's latest
-// release and tags-behind as its remote tag listing lands. Values arrive
-// home-relative; drift reads by weight and count, never colour, which stays
-// reserved for the M6 Flag layer.
-(function () {
-  "use strict";
-
-  const mount = document.getElementById("submodules");
-  if (!mount) return;
-
-  // Per submodule, the chips the SSE probe fills, keyed by home-relative path so
-  // an event settles into the right row once its remote tag listing lands.
-  const rows = new Map();
-
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
-  function note(message) {
-    mount.replaceChildren(el("p", "sm-note", message));
-  }
-
-  function countChip(n, label) {
-    // Stat-tile idiom (dataviz skill): the magnitude is the loud element, the
-    // label stays recessive, and no hue is spent here.
-    const chip = el("span", "sm-chip");
-    chip.append(el("span", "num", String(n)), " ", el("span", "lbl", label));
-    return chip;
-  }
-
-  function pinnedChip(sub) {
-    const chip = el("span", "sm-chip");
-    if (sub.pinned) {
-      chip.append(el("span", "lbl", "pinned"), " ", el("span", "num", sub.pinned));
-      chip.title = "The version the parent repo pins this submodule at.";
-    } else {
-      chip.classList.add("sm-chip--muted");
-      chip.append(el("span", "lbl", "pinned"), " ", el("span", "num", "untagged"));
-      chip.title = "The pinned commit is not on or after any tag.";
-    }
-    return chip;
-  }
-
-  function latestChip() {
-    // Quiet placeholder until the remote tag listing lands over SSE.
-    const chip = el("span", "sm-chip sm-chip--latest sm-chip--muted");
-    chip.append(el("span", "lbl", "latest"), " ", el("span", "num", "listing…"));
-    chip.title = "The latest release arrives from a remote tag listing, streamed over SSE.";
-    return chip;
-  }
-
-  function setLatest(chip, value, muted, title) {
-    chip.classList.toggle("sm-chip--muted", muted);
-    chip.replaceChildren(el("span", "lbl", "latest"), " ", el("span", "num", value));
-    chip.title = title;
-  }
-
-  function raiseBehind(path, behind) {
-    // The tags-behind Flag is only known once the remote tag listing lands, so the
-    // submodule stream raises it here. It is cleared for an unknown listing, a
-    // remote with no releases, an untagged pin, or a pin on the latest, so a
-    // re-fired event never leaves a stale badge.
+  // ---- submodule probe stream ----
+  function raiseSubBehind(path, behind) {
     if (!window.wkxFlags) return;
     if (behind > 0) {
       window.wkxFlags.add({
@@ -477,72 +549,50 @@
     }
   }
 
-  function fill(event) {
-    const row = rows.get(event.submodule);
-    if (!row) return;
-    row.chips.classList.add("sm-chips--filled");
-    // Drop any prior drift chip so a repeated event stays idempotent.
-    if (row.behind && row.behind.parentNode) row.behind.remove();
-    row.behind = null;
+  function setLatest(cell, value, muted, title) {
+    cell.replaceChildren(U.el("span", "q", "latest "), muted ? U.quiet(value) : U.el("span", "ver", value));
+    if (title) cell.title = title;
+  }
 
+  function fillSubmodule(event) {
+    const row = smRows.get(event.submodule);
+    if (!row) return;
+    row.latest.classList.add("filled");
     if (event.unknown) {
       setLatest(row.latest, "listing unknown", true, "The remote tags could not be listed; it may need credentials.");
-      raiseBehind(event.submodule, 0);
+      row.behind.replaceChildren(U.dash());
+      raiseSubBehind(event.submodule, 0);
       return;
     }
     if (event.latest == null) {
       setLatest(row.latest, "no releases", true, "The remote lists no version tags.");
-      raiseBehind(event.submodule, 0);
+      row.behind.replaceChildren(U.dash());
+      raiseSubBehind(event.submodule, 0);
       return;
     }
     setLatest(row.latest, event.latest, false, "The highest stable release the remote lists.");
-
     if (event.behind == null) {
-      // Latest is known, but the pin is untagged so a distance cannot be computed.
-      raiseBehind(event.submodule, 0);
+      row.behind.replaceChildren(U.quiet("untagged pin"));
+      raiseSubBehind(event.submodule, 0);
       return;
     }
-    raiseBehind(event.submodule, event.behind);
+    raiseSubBehind(event.submodule, event.behind);
     if (event.behind === 0) {
-      row.behind = el("span", "sm-chip sm-chip--behind sm-chip--muted");
-      row.behind.append(el("span", "num", "on latest"));
-      row.behind.title = "The pinned commit is the latest release.";
+      row.behind.replaceChildren(U.quiet("on latest"));
     } else {
-      const label = event.behind === 1 ? "release behind" : "releases behind";
-      row.behind = countChip(event.behind, label);
-      row.behind.classList.add("sm-chip--behind");
-      row.behind.title = "How many releases the pinned commit sits below the latest.";
+      const strong = U.el("span");
+      strong.style.fontWeight = "600";
+      strong.textContent = event.behind === 1 ? "1 release behind" : event.behind + " releases behind";
+      row.behind.replaceChildren(strong);
     }
-    row.chips.append(row.behind);
   }
 
-  function subCard(sub) {
-    const card = el("div", "sm-card");
-    card.dataset.sub = sub.path;
-    // The row the M6 Flag layer badges: submodule-tags-behind, raised in fill()
-    // once the remote tag listing lands over SSE.
-    card.dataset.flagKey = "submodules:" + sub.path;
-    const head = el("div", "sm-head");
-    head.append(el("span", "sm-name", sub.name), el("span", "sm-path", sub.path));
-    const ctx = el("div", "sm-ctx");
-    ctx.append(el("span", "sm-eyebrow", "in"), el("span", "sm-repo", sub.repo));
-    const chips = el("div", "sm-chips");
-    const latest = latestChip();
-    chips.append(pinnedChip(sub), latest);
-    rows.set(sub.path, { chips: chips, latest: latest, behind: null });
-    card.append(head, ctx, chips);
-    return card;
-  }
-
-  function startProbeStream() {
-    // Native EventSource only, matching the workspace fetch stream. The server
-    // closes with a "done" event once every submodule has reported, so this runs
-    // once per load rather than reconnecting.
+  function startStream(url, onMessage) {
     if (typeof EventSource === "undefined") return;
-    const source = new EventSource("/api/submodules/probe");
+    const source = new EventSource(url);
     source.addEventListener("message", function (message) {
       try {
-        fill(JSON.parse(message.data));
+        onMessage(JSON.parse(message.data));
       } catch (_err) {
         // Ignore a stray or malformed frame rather than tearing down the stream.
       }
@@ -555,206 +605,212 @@
     });
   }
 
-  function render(data) {
-    const subs = data.submodules;
-    if (!subs || subs.length === 0) {
-      note("No submodules in the discovered repositories.");
+  function render(workspace, submodules) {
+    const roots = workspace.roots.join(", ");
+    if (workspace.repos.length === 0) {
+      note("No git repositories found under " + roots + ".");
       return;
     }
-    rows.clear();
-    const summary = el("p", "sm-note");
-    summary.append(
-      el("span", "sm-count", String(subs.length)),
-      subs.length === 1 ? " submodule across the workspace" : " submodules across the workspace",
-    );
-    const grid = el("div", "sm-grid");
-    subs.forEach(function (sub) {
-      grid.append(subCard(sub));
+    abCells.clear();
+    smRows.clear();
+
+    const subsByRepo = new Map();
+    (submodules.submodules || []).forEach(function (sub) {
+      if (!subsByRepo.has(sub.repo)) subsByRepo.set(sub.repo, []);
+      subsByRepo.get(sub.repo).push(sub);
     });
-    mount.replaceChildren(summary, grid);
-    startProbeStream();
+
+    const dirty = workspace.repos.filter(function (r) {
+      return r.dirty;
+    }).length;
+    const noUpstream = workspace.repos.filter(function (r) {
+      return r.branch && !r.upstream;
+    }).length;
+    const subCount = (submodules.submodules || []).length;
+
+    const summary = U.summaryLine([
+      "Every git repo discovered under ",
+      U.el("b", null, roots),
+      ", with working-tree state and ahead/behind since the last background fetch. ",
+      U.el("b", null, String(dirty)),
+      dirty === 1 ? " dirty, " : " dirty, ",
+      U.el("b", null, String(noUpstream)),
+      " without an upstream. Submodules (",
+      U.el("b", null, String(subCount)),
+      ") sit nested beneath their repo, versioned as pinned · latest · releases-behind.",
+    ]);
+
+    const built = U.table([
+      { label: "Repo" },
+      { label: "Branch" },
+      { label: "Upstream" },
+      { label: "Ahead", num: true },
+      { label: "Behind", num: true },
+      { label: "Working tree" },
+      { label: "Stash", num: true },
+      { label: "Flags" },
+    ]);
+    workspace.repos.forEach(function (repo) {
+      built.tbody.append(repoRow(repo));
+      (subsByRepo.get(repo.path) || []).forEach(function (sub) {
+        built.tbody.append(subRow(sub));
+      });
+    });
+
+    mount.replaceChildren(summary, built.wrap);
+    startStream("/api/workspace/fetch", fillAheadBehind);
+    startStream("/api/submodules/probe", fillSubmodule);
   }
 
-  fetch("/api/submodules")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
+  Promise.all([
+    fetch("/api/workspace").then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }),
+    fetch("/api/submodules")
+      .then(function (r) {
+        return r.ok ? r.json() : { submodules: [] };
+      })
+      .catch(function () {
+        return { submodules: [] };
+      }),
+  ])
+    .then(function (results) {
+      render(results[0], results[1]);
     })
-    .then(render)
     .catch(function () {
-      note("Could not load submodules. Check that the board is still running.");
+      note("Could not load the workspace. Check that the board is still running.");
     });
 })();
 
-// Toolchains Section: fetch /api/toolchains and render the Python and the
-// Node/TypeScript facts side by side. Facts only, no judgement: drift between a
-// declared and an installed version reads by weight and adjacency, and an absent
-// tool reads as a plain "absent" fact. Colour stays reserved for the M6 Flag
-// layer, so nothing here is told apart by hue.
+// ---------- toolchains ----------
+// Fetch /api/toolchains and render the Python and Node/TypeScript facts as a set
+// of small tables. Facts only: drift reads by weight, and an absent tool reads as
+// a plain "absent" fact. The pin and TypeScript rows stamp a flag host so the M6
+// drift badges land on them.
 (function () {
   "use strict";
 
+  const U = window.wkxUI;
   const mount = document.getElementById("toolchains");
   if (!mount) return;
 
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
+  function base(path) {
+    return String(path).split("/").pop();
   }
 
   function note(message) {
-    mount.replaceChildren(el("p", "tc-note", message));
+    mount.replaceChildren(U.summaryLine([message]));
   }
 
-  // Stat-tile idiom (dataviz skill): the version is the loud element and its
-  // label stays recessive. No hue is spent — that channel is the M6 Flag layer's.
-  function valueChip(label, value, opts) {
-    const options = opts || {};
-    const chip = el("span", "tc-chip");
-    if (options.muted) chip.classList.add("tc-chip--muted");
-    if (options.labelFirst) {
-      chip.append(el("span", "lbl", label), " ", el("span", "num", value));
-    } else {
-      chip.append(el("span", "num", value), " ", el("span", "lbl", label));
-    }
-    if (options.title) chip.title = options.title;
-    return chip;
+  function toolState(tool) {
+    return tool.present ? U.ok(tool.version || "present") : U.quiet("absent");
   }
 
-  function toolChip(tool) {
-    if (tool.present && tool.version) {
-      return valueChip(tool.name, tool.version, { labelFirst: true });
-    }
-    return valueChip(tool.name, "absent", {
-      labelFirst: true,
-      muted: true,
-      title: tool.name + " is not installed on this machine.",
-    });
+  function subHead(text) {
+    return U.el("p", "sub-head", text);
   }
 
-  function group(title, body) {
-    const wrap = el("div", "tc-group");
-    wrap.append(el("p", "tc-group-head", title));
-    wrap.append(body);
-    return wrap;
-  }
-
-  function chipRow(children) {
-    const row = el("div", "tc-chips");
-    children.forEach(function (child) {
-      row.append(child);
-    });
-    return row;
-  }
-
-  function mutedLine(text) {
-    return el("p", "tc-muted", text);
-  }
-
-  function pinRows(pins) {
-    const rows = el("div", "tc-rows");
-    pins.forEach(function (pin) {
-      const row = el("div", "tc-row");
-      // The row the M6 Flag layer badges when the Python pin drifts across repos.
-      row.dataset.flagKey = "toolchains:pin:" + pin.repo;
-      row.append(el("span", "tc-repo", pin.repo), valueChip("pin", pin.version, { labelFirst: true }));
-      rows.append(row);
-    });
-    return rows;
-  }
-
-  function tsRows(repos) {
-    const rows = el("div", "tc-rows");
-    repos.forEach(function (repo) {
-      const row = el("div", "tc-row");
-      // The row the M6 Flag layer badges when the installed TypeScript version
-      // drifts across repos.
-      row.dataset.flagKey = "toolchains:ts:" + repo.repo;
-      row.append(el("span", "tc-repo", repo.repo));
-      const chips = el("span", "tc-chips");
-      chips.append(
-        repo.declared
-          ? valueChip("declared", repo.declared, { labelFirst: true })
-          : valueChip("declared", "none", { labelFirst: true, muted: true }),
+  function interpreterTable(python) {
+    const built = U.table([{ label: "Version" }, { label: "Implementation" }, { label: "State" }]);
+    python.interpreters.forEach(function (interp) {
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name ver", interp.version)),
+          U.td(interp.implementation, "q"),
+          U.td(interp.installed ? U.ok("installed") : U.quiet("available")),
+        ]),
       );
-      chips.append(
-        repo.installed
-          ? valueChip("installed", repo.installed, { labelFirst: true })
-          : valueChip("installed", "not installed", {
-              labelFirst: true,
-              muted: true,
-              title: "This repo declares TypeScript but has not installed it.",
-            }),
-      );
-      row.append(chips);
-      rows.append(row);
     });
-    return rows;
+    return built.wrap;
   }
 
-  function pythonLane(python) {
-    const lane = el("div", "tc-lane");
-    lane.append(el("p", "tc-lane-head", "python"));
-
-    const interpreters =
-      python.interpreters.length > 0
-        ? chipRow(
-            python.interpreters.map(function (interp) {
-              return valueChip(interp.implementation, interp.version, {
-                title: interp.path || undefined,
-              });
-            }),
-          )
-        : mutedLine("No uv-managed interpreters.");
-    lane.append(group("uv interpreters", interpreters));
-
-    const pins = chipRow([
-      python.global_pin
-        ? valueChip("global pin", python.global_pin, { labelFirst: true })
-        : valueChip("global pin", "unset", { labelFirst: true, muted: true }),
-      toolChip(python.system),
-    ]);
-    lane.append(group("global pin · system", pins));
-
-    lane.append(
-      group(
-        "repo pins",
-        python.repo_pins.length > 0 ? pinRows(python.repo_pins) : mutedLine("No repo pins a version."),
-      ),
-    );
-    return lane;
+  function pinTable(python) {
+    const built = U.table([{ label: "Repo" }, { label: "Pin" }, { label: "Against global" }, { label: "Flags" }]);
+    python.repo_pins.forEach(function (pin) {
+      const flags = U.td("", "flags-cell");
+      flags.dataset.flagKey = "toolchains:pin:" + pin.repo;
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", base(pin.repo))),
+          U.td(U.el("span", "ver", pin.version)),
+          U.td(pin.version === python.global_pin ? U.quiet("matches global") : U.quiet("differs")),
+          flags,
+        ]),
+      );
+    });
+    return built.wrap;
   }
 
-  function nodeLane(node) {
-    const lane = el("div", "tc-lane");
-    lane.append(el("p", "tc-lane-head", "node · typescript"));
-
-    lane.append(group("global", chipRow([toolChip(node.node), toolChip(node.npm), toolChip(node.tsc)])));
-
-    lane.append(
-      group(
-        "package managers",
-        node.package_managers.length > 0
-          ? chipRow(node.package_managers.map(toolChip))
-          : mutedLine("None present besides npm."),
-      ),
+  function nodeToolTable(node) {
+    const built = U.table([{ label: "Tool" }, { label: "Version" }, { label: "State" }]);
+    const rows = [
+      ["node", node.node],
+      ["npm", node.npm],
+      ["tsc", node.tsc],
+    ].concat(
+      node.package_managers.map(function (pm) {
+        return [pm.name, pm];
+      }),
     );
+    rows.forEach(function (pair) {
+      const tool = pair[1];
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", pair[0])),
+          U.td(tool.version ? U.el("span", "ver", tool.version) : U.dash()),
+          U.td(toolState(tool)),
+        ]),
+      );
+    });
+    return built.wrap;
+  }
 
-    lane.append(
-      group(
-        "typescript per repo",
-        node.repos.length > 0 ? tsRows(node.repos) : mutedLine("No repo declares TypeScript."),
-      ),
-    );
-    return lane;
+  function tsTable(node) {
+    const built = U.table([{ label: "Repo" }, { label: "Declared" }, { label: "Installed" }, { label: "Flags" }]);
+    node.repos.forEach(function (repo) {
+      const flags = U.td("", "flags-cell");
+      flags.dataset.flagKey = "toolchains:ts:" + repo.repo;
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", base(repo.repo))),
+          U.td(repo.declared ? U.el("span", "ver", repo.declared) : U.dash()),
+          U.td(repo.installed ? U.el("span", "ver", repo.installed) : U.quiet("not installed")),
+          flags,
+        ]),
+      );
+    });
+    return built.wrap;
   }
 
   function render(data) {
-    const lanes = el("div", "tc-lanes");
-    lanes.append(pythonLane(data.python), nodeLane(data.node));
-    mount.replaceChildren(lanes);
+    const py = data.python;
+    const node = data.node;
+    const nodes = [
+      U.summaryLine([
+        "The language story in one place. uv manages ",
+        U.el("b", null, String(py.interpreters.length)),
+        " interpreters; the global pin is ",
+        U.el("b", null, py.global_pin || "unset"),
+        " and system python3 is ",
+        U.el("b", null, py.system.version || "absent"),
+        ". Node is ",
+        U.el("b", null, node.node.present ? node.node.version : "absent"),
+        "; global tsc is ",
+        U.el("b", null, node.tsc.present ? node.tsc.version : "absent"),
+        ".",
+      ]),
+      subHead("Python · interpreters (uv-managed)"),
+      interpreterTable(py),
+    ];
+    if (py.repo_pins.length > 0) {
+      nodes.push(subHead("Python · per-repo pins (global " + (py.global_pin || "unset") + ")"), pinTable(py));
+    }
+    nodes.push(subHead("Node · global tools"), nodeToolTable(node));
+    if (node.repos.length > 0) {
+      nodes.push(subHead("TypeScript · per repo (declared vs installed)"), tsTable(node));
+    }
+    mount.replaceChildren.apply(mount, nodes);
   }
 
   fetch("/api/toolchains")
@@ -768,252 +824,125 @@
     });
 })();
 
-// System Section: fetch /api/system and render each configured developer CLI as
-// present-with-version or missing. The tools shown are whatever the machine
-// configured, in order, so the panel grows with configuration alone. Facts only:
-// a missing tool reads as a plain "missing" fact, told apart by weight and label,
-// never by hue, which stays reserved for the M6 Flag layer.
+// ---------- claude ----------
+// Fetch /api/claude and render three tables: plugins with the skills they ship
+// nested beneath each one; the independent (user- or project-authored) skills
+// standing alone; and the MCP servers. Every plugin is shown, enabled or not.
+// Values carry no secrets: an MCP server is a name, an Origin, a transport, and an
+// auth flag only.
 (function () {
   "use strict";
 
-  const mount = document.getElementById("system");
-  if (!mount) return;
-
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
-  function note(message) {
-    mount.replaceChildren(el("p", "sy-note", message));
-  }
-
-  // Stat-tile idiom (dataviz skill): the tool name labels, the version is the
-  // loud element. A missing tool is the same tile, quietened and reading
-  // "missing" in place of a version, so presence tells by weight, not colour.
-  function toolChip(tool) {
-    const present = tool.present && tool.version;
-    const chip = el("span", "sy-chip");
-    // The row the M6 Flag layer badges when a configured tool is not installed.
-    chip.dataset.flagKey = "system:" + tool.name;
-    if (!present) chip.classList.add("sy-chip--muted");
-    chip.append(
-      el("span", "lbl", tool.name),
-      " ",
-      el("span", "num", present ? tool.version : "missing"),
-    );
-    chip.title = present
-      ? tool.name + " " + tool.version
-      : tool.name + " is not installed on this machine.";
-    return chip;
-  }
-
-  function render(data) {
-    const tools = data.tools || [];
-    if (tools.length === 0) {
-      note("No developer tools are configured to probe.");
-      return;
-    }
-    const present = tools.filter(function (tool) {
-      return tool.present && tool.version;
-    }).length;
-    const summary = el("p", "sy-note");
-    summary.append(
-      el("span", "sy-count", String(present)),
-      " of ",
-      el("span", "sy-count", String(tools.length)),
-      " present",
-    );
-    const grid = el("div", "sy-chips");
-    tools.forEach(function (tool) {
-      grid.append(toolChip(tool));
-    });
-    mount.replaceChildren(summary, grid);
-  }
-
-  fetch("/api/system")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load system tools. Check that the board is still running.");
-    });
-})();
-
-// Claude Section: fetch /api/claude and render skills, plugins, and MCP servers,
-// each grouped by the one fact that ties this Section together — its Origin. Every
-// asset installed is shown; enabled/disabled and auth-needed are quiet facts told
-// apart by weight, an eyebrow, and a muted tag, never by hue, which stays reserved
-// for the M6 Flag layer. Values arrive already home-relative and carry no secrets:
-// an MCP server is a name, an Origin, a transport, and an auth flag, never its
-// command, URL, headers, or environment.
-(function () {
-  "use strict";
-
+  const U = window.wkxUI;
   const mount = document.getElementById("claude");
   if (!mount) return;
 
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
   function note(message) {
-    mount.replaceChildren(el("p", "cl-note", message));
+    mount.replaceChildren(U.summaryLine([message]));
   }
 
-  function count(n, ...rest) {
-    const p = el("p", "cl-lane-count");
-    p.append(el("span", "cl-count", String(n)), " " + rest.join(""));
-    return p;
+  function subHead(text) {
+    return U.el("p", "sub-head", text);
   }
 
-  function lane(title, subtitle) {
-    const wrap = el("div", "cl-lane");
-    const head = el("div", "cl-lane-head");
-    head.append(el("span", "cl-lane-name", title));
-    wrap.append(head, subtitle);
-    return wrap;
+  function isIndependent(skill) {
+    return skill.origin.indexOf("@") < 0; // user or project, never a <plugin>@<market> pair
   }
 
-  // The Origin is the structural spine: an eyebrow that reads "user", "project",
-  // or the "<plugin>@<marketplace>" pair verbatim.
-  function origin(text) {
-    return el("span", "cl-origin", text);
-  }
-
-  function tag(label, muted) {
-    return el("span", "cl-tag" + (muted ? " cl-tag--muted" : ""), label);
-  }
-
-  // Group a list by a key so each Origin's assets cluster under one heading.
-  function groupBy(items, keyOf) {
-    const order = [];
-    const map = new Map();
-    items.forEach(function (item) {
-      const key = keyOf(item);
-      if (!map.has(key)) {
-        map.set(key, []);
-        order.push(key);
-      }
-      map.get(key).push(item);
-    });
-    return order.map(function (key) {
-      return { key: key, items: map.get(key) };
-    });
-  }
-
-  function skillsLane(skills) {
-    const body = el("div", "cl-groups");
-    groupBy(skills, function (s) {
-      return s.origin;
-    }).forEach(function (grp) {
-      const block = el("div", "cl-group");
-      const head = el("div", "cl-group-head");
-      head.append(origin(grp.key));
-      // Skills share their owning plugin's enabled state, so a disabled origin is
-      // marked once on the group rather than on every skill.
-      if (grp.items.length > 0 && !grp.items[0].enabled) head.append(tag("disabled", true));
-      block.append(head);
-      const names = el("div", "cl-chips");
-      grp.items.forEach(function (skill) {
-        const chip = el("span", "cl-chip", skill.name);
-        // The row the M6 Flag layer badges: a disabled skill, or a name that
-        // shadows the same skill under another Origin.
-        chip.dataset.flagKey = "claude:skill:" + skill.name;
-        if (skill.description) chip.title = skill.description;
-        names.append(chip);
-      });
-      block.append(names);
-      body.append(block);
-    });
-    const enabled = skills.filter(function (s) {
-      return s.enabled;
-    }).length;
-    const summary =
-      enabled === skills.length
-        ? count(skills.length, skills.length === 1 ? " skill" : " skills")
-        : count(enabled, " of " + skills.length + " active");
-    const wrap = lane("skills", summary);
-    wrap.append(body);
-    return wrap;
-  }
-
-  function pluginRow(plugin) {
-    const row = el("div", "cl-row");
-    const line = el("div", "cl-row-main");
-    // The row the M6 Flag layer badges when a plugin is installed but disabled.
-    line.dataset.flagKey = "claude:plugin:" + plugin.name;
-    line.append(el("span", "cl-name", plugin.name));
-    line.append(el("span", "cl-ver", plugin.version));
-    if (!plugin.enabled) line.append(tag("disabled", true));
-    row.append(line);
-    const meta = el("div", "cl-row-meta");
-    meta.append(origin(plugin.marketplace));
-    if (plugin.repo) {
-      const repo = el("span", "cl-repo", plugin.repo);
-      repo.title = "Marketplace GitHub repo";
-      meta.append(repo);
-    }
-    row.append(meta);
-    return row;
-  }
-
-  function pluginsLane(plugins) {
-    const body = el("div", "cl-rows");
+  function pluginTable(plugins, skillsByOrigin) {
+    const built = U.table([
+      { label: "Plugin" },
+      { label: "Marketplace" },
+      { label: "Repo" },
+      { label: "Version" },
+      { label: "State" },
+      { label: "Skills", num: true },
+    ]);
     plugins.forEach(function (plugin) {
-      body.append(pluginRow(plugin));
+      const key = plugin.name + "@" + plugin.marketplace;
+      const skills = skillsByOrigin.get(key) || [];
+
+      const state = U.td("", "flags-cell");
+      state.dataset.flagKey = "claude:plugin:" + plugin.name;
+      state.append(U.quiet(plugin.enabled ? "enabled" : "disabled"));
+
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", plugin.name)),
+          U.td(plugin.marketplace, "q"),
+          U.td(plugin.repo ? plugin.repo : U.dash(), "q"),
+          U.td(plugin.version === "unknown" ? U.quiet("unknown") : U.el("span", "ver", plugin.version)),
+          state,
+          U.td(skills.length > 0 ? String(skills.length) : U.quiet("—"), "num"),
+        ]),
+      );
+
+      if (skills.length > 0) {
+        const wrap = U.el("div", "skill-wrap");
+        wrap.append(U.el("span", "k-lead", skills.length + " skills"));
+        skills.forEach(function (skill) {
+          const chip = U.el("span", "chip", skill.name);
+          // A skill can still be flagged (disabled, or shadowing another origin).
+          chip.dataset.flagKey = "claude:skill:" + skill.name;
+          if (skill.description) chip.title = skill.description;
+          wrap.append(chip);
+        });
+        const cell = U.el("td");
+        cell.colSpan = 6;
+        cell.append(wrap);
+        const row = U.el("tr", "skillrow");
+        row.append(cell);
+        built.tbody.append(row);
+      }
     });
-    const enabled = plugins.filter(function (p) {
-      return p.enabled;
-    }).length;
-    const wrap = lane("plugins", count(enabled, " of " + plugins.length + " enabled"));
-    wrap.append(body);
-    return wrap;
+    return built.wrap;
   }
 
-  function mcpRow(server) {
-    const row = el("div", "cl-row");
-    const line = el("div", "cl-row-main");
-    // The row the M6 Flag layer badges: a server needing auth, or one configured
-    // under more than one scope.
-    line.dataset.flagKey = "claude:mcp:" + server.name;
-    line.append(el("span", "cl-name", server.name));
-    line.append(el("span", "cl-transport", server.transport));
-    if (server.needs_auth) line.append(tag("auth needed", true));
-    row.append(line);
-    const meta = el("div", "cl-row-meta");
-    meta.append(origin(server.origin));
-    row.append(meta);
-    return row;
+  function skillTable(skills) {
+    const built = U.table([
+      { label: "Skill" },
+      { label: "Origin" },
+      { label: "State" },
+      { label: "Source" },
+      { label: "Description" },
+    ]);
+    skills.forEach(function (skill) {
+      const state = U.td("", "flags-cell");
+      state.dataset.flagKey = "claude:skill:" + skill.name;
+      state.append(U.quiet(skill.enabled ? "enabled" : "disabled"));
+
+      const desc = skill.description ? U.el("div", "clamp2", skill.description) : U.dash();
+      if (skill.description) desc.title = skill.description;
+
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", skill.name)),
+          U.td(skill.origin, "q"),
+          state,
+          U.td(skill.origin === "user" ? "~/.claude/skills" : skill.origin, "q"),
+          U.td(desc),
+        ]),
+      );
+    });
+    return built.wrap;
   }
 
-  function mcpLane(servers) {
-    const body = el("div", "cl-rows");
+  function mcpTable(servers) {
+    const built = U.table([{ label: "Server" }, { label: "Origin" }, { label: "Transport" }, { label: "Auth" }]);
     servers.forEach(function (server) {
-      body.append(mcpRow(server));
+      const auth = U.td("", "flags-cell");
+      auth.dataset.flagKey = "claude:mcp:" + server.name;
+      auth.append(U.quiet(server.needs_auth ? "needs auth" : "ready"));
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", server.name)),
+          U.td(server.origin, "q"),
+          U.td(server.transport, "q"),
+          auth,
+        ]),
+      );
     });
-    const auth = servers.filter(function (s) {
-      return s.needs_auth;
-    }).length;
-    const summary =
-      auth > 0
-        ? count(servers.length, servers.length === 1 ? " server, " : " servers, ", auth + " need auth")
-        : count(servers.length, servers.length === 1 ? " server" : " servers");
-    const wrap = lane("mcp servers", summary);
-    wrap.append(body);
-    return wrap;
-  }
-
-  function emptyLane(title, message) {
-    const wrap = lane(title, el("p", "cl-muted", message));
-    return wrap;
+    return built.wrap;
   }
 
   function render(data) {
@@ -1024,13 +953,37 @@
       note("No Claude skills, plugins, or MCP servers found.");
       return;
     }
-    const lanes = el("div", "cl-lanes");
-    lanes.append(
-      skills.length > 0 ? skillsLane(skills) : emptyLane("skills", "No skills installed."),
-      plugins.length > 0 ? pluginsLane(plugins) : emptyLane("plugins", "No plugins installed."),
-      servers.length > 0 ? mcpLane(servers) : emptyLane("mcp servers", "No MCP servers configured."),
-    );
-    mount.replaceChildren(lanes);
+
+    const skillsByOrigin = new Map();
+    skills.forEach(function (skill) {
+      if (!skillsByOrigin.has(skill.origin)) skillsByOrigin.set(skill.origin, []);
+      skillsByOrigin.get(skill.origin).push(skill);
+    });
+    const independent = skills.filter(isIndependent);
+    const pluginSkillCount = skills.length - independent.length;
+
+    const nodes = [
+      U.summaryLine([
+        "Skills that ship with a plugin belong to it, so they are nested beneath it (",
+        U.el("b", null, String(pluginSkillCount)),
+        " across ",
+        U.el("b", null, String(plugins.length)),
+        " plugins). Only ",
+        U.el("b", null, "independent"),
+        " skills, your own, stand alone in their own table. Origin answers where each asset came from.",
+      ]),
+      subHead("Plugins (with their skills nested)"),
+      pluginTable(plugins, skillsByOrigin),
+    ];
+    if (independent.length > 0) {
+      nodes.push(subHead("Independent skills (" + independent.length + ", your own)"), skillTable(independent));
+    } else {
+      nodes.push(subHead("Independent skills"), U.summaryLine(["No standalone user or project skills."]));
+    }
+    nodes.push(subHead("MCP servers (" + servers.length + ")"));
+    nodes.push(servers.length > 0 ? mcpTable(servers) : U.summaryLine(["No MCP servers configured."]));
+
+    mount.replaceChildren.apply(mount, nodes);
   }
 
   fetch("/api/claude")
@@ -1044,58 +997,94 @@
     });
 })();
 
-// Homebrew Section: fetch /api/homebrew and render the outdated formulae and casks
-// as two grouped lists with a headline count. Facts only: an outdated package is a
-// version bump (installed → current), told apart by weight and adjacency, never by
-// hue, which stays reserved for the M6 Flag layer. Homebrew's absence is a plain
-// fact, not an error.
+// ---------- system ----------
+// Fetch /api/system and render each configured developer CLI as present-with-
+// version or missing. A missing tool reads as "—" plus the M6 "not installed"
+// badge in its flag host; a present one shows its version.
 (function () {
   "use strict";
 
+  const U = window.wkxUI;
+  const mount = document.getElementById("system");
+  if (!mount) return;
+
+  function note(message) {
+    mount.replaceChildren(U.summaryLine([message]));
+  }
+
+  function render(data) {
+    const tools = data.tools || [];
+    if (tools.length === 0) {
+      note("No developer tools are configured to probe.");
+      return;
+    }
+    const present = tools.filter(function (tool) {
+      return tool.present && tool.version;
+    }).length;
+
+    const summary = U.summaryLine([
+      "The configured developer CLIs, each a bare present-or-missing fact with its version. ",
+      U.el("b", null, String(present)),
+      " of ",
+      U.el("b", null, String(tools.length)),
+      " present.",
+    ]);
+
+    const built = U.table([{ label: "Tool" }, { label: "Version" }, { label: "Flags" }]);
+    tools.forEach(function (tool) {
+      const flags = U.td("", "flags-cell");
+      flags.dataset.flagKey = "system:" + tool.name;
+      const version = tool.present && tool.version ? U.el("span", "ver", tool.version) : U.dash();
+      built.tbody.append(U.tr([U.td(U.el("span", "t-name", tool.name)), U.td(version), flags]));
+    });
+
+    mount.replaceChildren(summary, built.wrap);
+  }
+
+  fetch("/api/system")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not load system tools. Check that the board is still running.");
+    });
+})();
+
+// ---------- homebrew ----------
+// Fetch /api/homebrew and render the outdated formulae (and casks, when any) as a
+// table of installed → current bumps. Each row stamps a flag host so the M6
+// "update available" badge lands on it; Homebrew's absence is a plain fact.
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
   const mount = document.getElementById("homebrew");
   if (!mount) return;
 
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
   function note(message) {
-    mount.replaceChildren(el("p", "hb-note", message));
+    mount.replaceChildren(U.summaryLine([message]));
   }
 
-  // One outdated package: its name, then the bump from the installed version to
-  // the current one. The current version is the loud element (the target of the
-  // upgrade); the installed version stays recessive.
-  function pkgRow(kind, pkg) {
-    const row = el("div", "hb-row");
-    // The row the M6 Flag layer badges when the package is outdated. The kind
-    // prefixes the key so a formula and a cask of the same name never collide.
-    row.dataset.flagKey = "homebrew:" + kind + ":" + pkg.name;
-    row.append(el("span", "hb-name", pkg.name));
-    const bump = el("span", "hb-bump");
-    bump.append(
-      el("span", "hb-from", pkg.installed || "—"),
-      el("span", "hb-arrow", "→"),
-      el("span", "hb-to", pkg.current || "—"),
+  function bump(pkg) {
+    const span = U.el("span", "bump");
+    span.append(
+      U.el("span", "from", pkg.installed || "—"),
+      U.el("span", "arr", "→"),
+      U.el("span", "to", pkg.current || "—"),
     );
-    row.append(bump);
-    return row;
+    return span;
   }
 
-  function group(kind, label, packages) {
-    const wrap = el("div", "hb-group");
-    const head = el("p", "hb-group-head");
-    head.append(el("span", "hb-count", String(packages.length)), " " + label);
-    wrap.append(head);
-    const rows = el("div", "hb-rows");
+  function pkgTable(kind, packages) {
+    const built = U.table([{ label: "Package" }, { label: "Installed → current" }, { label: "Flags" }]);
     packages.forEach(function (pkg) {
-      rows.append(pkgRow(kind, pkg));
+      const flags = U.td("", "flags-cell");
+      flags.dataset.flagKey = "homebrew:" + kind + ":" + pkg.name;
+      built.tbody.append(U.tr([U.td(U.el("span", "t-name", pkg.name)), U.td(bump(pkg)), flags]));
     });
-    wrap.append(rows);
-    return wrap;
+    return built.wrap;
   }
 
   function render(data) {
@@ -1110,15 +1099,21 @@
       note("Every formula and cask is current.");
       return;
     }
-    const summary = el("p", "hb-note");
-    summary.append(
-      el("span", "hb-count", String(total)),
-      total === 1 ? " package outdated" : " packages outdated",
-    );
-    const groups = el("div", "hb-groups");
-    if (formulae.length > 0) groups.append(group("formula", "formulae", formulae));
-    if (casks.length > 0) groups.append(group("cask", "casks", casks));
-    mount.replaceChildren(summary, groups);
+    const summary = U.summaryLine([
+      "Packages a brew upgrade would move forward: ",
+      U.el("b", null, String(formulae.length)),
+      " formulae, ",
+      U.el("b", null, String(casks.length)),
+      " casks. The version it would land on is bold, the one installed now recessive.",
+    ]);
+    const nodes = [summary];
+    if (formulae.length > 0) {
+      nodes.push(U.el("p", "sub-head", "Formulae (" + formulae.length + ")"), pkgTable("formula", formulae));
+    }
+    if (casks.length > 0) {
+      nodes.push(U.el("p", "sub-head", "Casks (" + casks.length + ")"), pkgTable("cask", casks));
+    }
+    mount.replaceChildren.apply(mount, nodes);
   }
 
   fetch("/api/homebrew")
@@ -1132,84 +1127,52 @@
     });
 })();
 
-// Docker Section: fetch /api/docker and render the daemon state with a small row
-// of stat tiles — containers, images, and reclaimable disk. A daemon that cannot
-// be reached renders as a fact, never an error: the down state is stated plainly
-// and the meaningless zero counts are withheld rather than shown as real. Colour
-// stays reserved for the M6 Flag layer, so reachable and down are told apart by
-// weight and label, never by hue.
+// ---------- docker ----------
+// Fetch /api/docker and render the daemon state with its container, image, and
+// reclaimable-disk facts in one row. A daemon that cannot be reached is a fact,
+// not an error: the daemon cell hosts the M6 "daemon unreachable" badge and the
+// counts are withheld rather than shown as meaningless zeros.
 (function () {
   "use strict";
 
+  const U = window.wkxUI;
   const mount = document.getElementById("docker");
   if (!mount) return;
 
-  function el(tag, className, text) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text != null) node.textContent = text;
-    return node;
-  }
-
   function note(message) {
-    mount.replaceChildren(el("p", "dk-note", message));
-  }
-
-  // Stat-tile idiom (dataviz skill): the figure is the loud element, its label
-  // recessive. No hue is spent — that channel is the M6 Flag layer's.
-  function tile(value, label, title) {
-    const cell = el("div", "dk-tile");
-    cell.append(el("span", "dk-num", value), el("span", "dk-lbl", label));
-    if (title) cell.title = title;
-    return cell;
-  }
-
-  // The daemon fact as an eyebrow pill: reachable or unreachable, told apart by
-  // weight and word, not colour.
-  function daemon(reachable) {
-    const pill = el("div", "dk-daemon" + (reachable ? "" : " dk-daemon--down"));
-    pill.append(
-      el("span", "dk-daemon-lbl", "daemon"),
-      el("span", "dk-daemon-state", reachable ? "reachable" : "unreachable"),
-    );
-    return pill;
+    mount.replaceChildren(U.summaryLine([message]));
   }
 
   function render(data) {
     const reachable = data.daemon_reachable;
-    const wrap = el("div", "dk-wrap");
-    // The row the M6 Flag layer badges when the daemon cannot be reached.
-    wrap.dataset.flagKey = "docker:daemon";
-    wrap.append(daemon(reachable));
-    if (!reachable) {
-      wrap.append(
-        el(
-          "p",
-          "dk-muted",
-          "The Docker daemon is not reachable. Start Docker to see containers, images, and reclaimable disk.",
-        ),
+    const summary = U.summaryLine([
+      "The Docker daemon and a few read-only disk-and-container facts. A daemon that cannot be reached renders as a fact, never an error.",
+    ]);
+
+    const built = U.table([
+      { label: "Daemon" },
+      { label: "Containers", num: true },
+      { label: "Images", num: true },
+      { label: "Reclaimable", num: true },
+    ]);
+    const daemon = U.td("", "flags-cell");
+    daemon.dataset.flagKey = "docker:daemon";
+    daemon.append(U.quiet(reachable ? "reachable" : "unreachable"));
+
+    if (reachable) {
+      built.tbody.append(
+        U.tr([
+          daemon,
+          U.td(data.containers_running + " / " + data.containers_total, "num"),
+          U.td(String(data.images), "num"),
+          U.td(data.reclaimable != null ? data.reclaimable : U.quiet("unknown"), "num"),
+        ]),
       );
-      mount.replaceChildren(wrap);
-      return;
+    } else {
+      built.tbody.append(U.tr([daemon, U.td(U.dash(), "num"), U.td(U.dash(), "num"), U.td(U.dash(), "num")]));
     }
-    const tiles = el("div", "dk-tiles");
-    tiles.append(
-      tile(
-        data.containers_running + " / " + data.containers_total,
-        "containers running / total",
-        data.containers_running + " running of " + data.containers_total + " total",
-      ),
-      tile(String(data.images), data.images === 1 ? "image" : "images"),
-      tile(
-        data.reclaimable != null ? data.reclaimable : "unknown",
-        "reclaimable",
-        data.reclaimable != null
-          ? "Disk that pruning could reclaim, summed across images, containers, volumes, and build cache."
-          : "The reclaimable disk could not be read.",
-      ),
-    );
-    wrap.append(tiles);
-    mount.replaceChildren(wrap);
+
+    mount.replaceChildren(summary, built.wrap);
   }
 
   fetch("/api/docker")
