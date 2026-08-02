@@ -550,29 +550,34 @@ window.wkxFlags = (function () {
     ]);
   }
 
+  function subPart(label, valueNode) {
+    const part = U.el("span", "sub-part");
+    part.append(U.el("span", "q", label + " "), valueNode);
+    return part;
+  }
+  function sep() {
+    return U.el("span", "sub-sep", "·");
+  }
+
   function subRow(sub) {
-    const name = U.td("", "sub-lead");
-    name.textContent = sub.name;
+    // One nested detail line spanning the row rather than data spread across
+    // columns it has no values for. The cell is itself the flag host, so a
+    // "releases behind" badge lands inline at the end of the line.
+    const cell = U.el("td", "sub-cell flags-cell");
+    cell.colSpan = 8;
+    cell.dataset.flagKey = "submodules:" + sub.path;
 
-    const pin = U.el("td");
-    pin.colSpan = 2;
-    pin.append(U.el("span", "q", "submodule · pinned "), U.el("span", "ver", sub.pinned || "—"));
-
-    const latest = U.el("td");
-    latest.colSpan = 2;
-    latest.append(U.el("span", "q", "latest "), U.quiet("listing…"));
-
-    const behind = U.el("td");
-    behind.colSpan = 2;
+    const lead = U.el("span", "sub-lead", sub.name);
+    const pinned = subPart("pinned", sub.pinned ? U.el("span", "ver", sub.pinned) : U.quiet("untagged"));
+    const latest = subPart("latest", U.quiet("listing…"));
+    const behind = U.el("span", "sub-part sub-status");
     behind.append(U.dash());
-
-    const flags = U.el("td", "flags-cell");
-    flags.dataset.flagKey = "submodules:" + sub.path;
 
     smRows.set(sub.path, { latest: latest, behind: behind });
 
+    cell.append(lead, sep(), pinned, sep(), latest, sep(), behind);
     const row = U.el("tr", "subrow");
-    row.append(name, pin, latest, behind, flags);
+    row.append(cell);
     return row;
   }
 

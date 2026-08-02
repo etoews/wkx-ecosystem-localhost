@@ -261,11 +261,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   max-width: 62ch;
 }
 
-/* nested submodule row, beneath its parent repo. */
+/* Nested submodule row: one indented detail line beneath its parent repo, its
+ * facts strung on separators rather than spread across columns it has no values
+ * for. The cell is the flag host, so a "releases behind" badge lands inline. */
 tr.subrow td { background: var(--deep); }
 tr.subrow:hover td { background: var(--hull); }
+.sub-cell { padding-left: 1.4rem; }
 .sub-lead { color: var(--fog); overflow-wrap: anywhere; }
 .sub-lead::before { content: "\21B3\00a0\00a0"; color: var(--fog); }
+.sub-part { display: inline-flex; align-items: baseline; gap: .28rem; white-space: nowrap; }
+.sub-sep { color: var(--fog); opacity: .5; }
 
 /* An expandable plugin row: click (or Enter/Space) to reveal the skills it ships,
  * collapsed by default. A caret turns to point down when open. */
