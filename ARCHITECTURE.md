@@ -1,0 +1,112 @@
+# Architecture
+
+WKX Ecosystem localhost is a single service and a single page. The service
+inventories the machine through read-only probes and serialises what it finds;
+the page renders those facts and never asks for anything but JSON. Requests
+flow down through one narrow seam, facts flow back up as typed models, and
+colour appears only when the data raises a Flag.
+
+The vocabulary used here (Collector, Section, Origin, Flag) is defined in
+[CONTEXT.md](CONTEXT.md).
+
+![Simplified architecture, five layers from the board down to the dev machine](docs/architecture.svg)
+
+## The board
+
+`src/wkx_ecosystem_localhost/static/` is the whole frontend: `index.html` (the
+shell), `styles.css` (the wkx-namespace look and feel), and `app.js`. There is
+no build step. On load the board issues one `GET /api/<section>` request per
+Section, renders each as stat tiles over sortable tables, then opens two native
+`EventSource` streams for the slow network truths. Colour is reserved for the
+Flag layer. Neutral facts are told apart by weight, a muted tone, and a label,
+never by hue.
+
+## The service
+
+`app.py` exposes `create_app(settings, machine, home)`, a FastAPI application
+factory. Every route reads its configuration from the typed `Settings` and
+reaches the host only through the `Machine` seam, which is what lets tests run
+the real app end to end on a fake.
+
+| Route | Serves |
+| --- | --- |
+| `/`, `/static/*` | the board shell and its assets |
+| `/api/health` | liveness for the board's own JS and for smoke tests |
+| `/api/workspace` | discovered repos with branch, working tree state, and stashes |
+| `/api/workspace/fetch` | SSE, each repo's ahead/behind as its background fetch lands |
+| `/api/submodules` | each repo's submodules with pins resolved |
+| `/api/submodules/probe` | SSE, each submodule's latest release and tags-behind |
+| `/api/toolchains` | Python and TypeScript/Node, global and per repo |
+| `/api/claude` | skills, plugins, and MCP servers, each with its Origin |
+| `/api/system` | configured dev CLIs, present with version or missing |
+| `/api/homebrew` | outdated formulae and casks, or Homebrew's absence |
+| `/api/docker` | daemon reachability, container and image counts, reclaimable disk |
+| `/api/flags` | open Flags, each naming the Section and row it badges |
+
+The supporting modules are shared by every route: `config.py` (typed
+`Settings` with computed, machine-neutral defaults), `models.py` (the Section
+models the API serialises verbatim), `sse.py` (SSE framing for `EventSource`),
+`redaction.py`, `semver.py`, `_logging.py`, and `exceptions.py`.
+
+`__main__.py` is the typer entry point. `serve` builds `Settings` once, binds
+uvicorn to `127.0.0.1:8787`, and opens the board in a browser. The bind host is
+deliberately not a setting; loopback-only is a security property of the app.
+
+## Collectors
+
+Each file in `collectors/` is a Collector: a pure function from `Machine` probe
+results to a typed model, one per Section plus `fetch.py` for the streamed
+counts. A Collector never touches subprocess or the filesystem directly, and a
+probe that fails is a fact for the Collector to interpret, never an exception.
+It degrades its Section, not the board.
+
+## The Machine seam
+
+`machine.py` is the one boundary between the app and the host. The `Machine`
+protocol is deliberately narrow, three primitives only: `run(argv, timeout)`,
+`read_file`, and `list_dir`. Production wires `RealMachine` (subprocess and the
+filesystem); tests wire a `FakeMachine` loaded with synthetic fixtures and
+drive the real app through it. Keeping this the only boundary is what lets the
+whole suite run on any machine and keeps the public repo free of captured
+machine data.
+
+## Progressive fill-in over SSE
+
+Two truths need the network and would otherwise stall the board, so both
+arrive over Server-Sent Events on a bounded worker pool, each result pushed
+the moment it is ready. `/api/workspace/fetch` runs a non-interactive
+background `git fetch` per repo, bounded and timed out. This is the one write
+the app performs anywhere, and it touches remote-tracking refs only, never a
+working tree. `/api/submodules/probe` lists each submodule's remote tags to
+compute latest and releases-behind; no submodule objects are fetched.
+
+## Flags
+
+`flags.py` is the cross-cutting Flag layer, not a panel. It reruns the
+Collectors whose facts a Flag can be derived from and returns the open Flags,
+each naming the Section and row it badges, amber for attention and red for a
+problem. There is no external ruleset; a Flag states only what the data makes
+obvious. Flags that need the network to be known (behind remote,
+releases-behind) are raised by the board itself as the SSE events land.
+
+## Redaction
+
+Facts are made safe to display in `redaction.py`, once, before a value reaches
+a model: emails are masked, credentials are stripped from remotes, and paths
+are relativised to the home directory. No downstream code has to remember to
+redact, which is what keeps a casual screenshot of the board from leaking an
+identity, a token, or a username.
+
+## Security posture
+
+- Binds to `127.0.0.1` only, with no auth, because loopback plus read-only.
+- Every Collector is a probe with a fixed argv and a timeout; the one write is
+  the background `git fetch` described above.
+- The repo is machine-neutral: no literal paths in code or docs, computed
+  configuration defaults, and synthetic fixture data.
+
+## The diagram
+
+[docs/architecture.svg](docs/architecture.svg) is drawn in the `wkx-namespace`
+design system and carries both its palettes; it follows the night theme by
+default and the day theme when the viewer prefers light.

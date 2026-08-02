@@ -1,0 +1,209 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 980" role="img" aria-label="Simplified architecture of WKX Ecosystem localhost">
+  <style>
+    svg {
+      /* night, the identity default */
+      --deep: #0A141E;
+      --water: #0E1C2A;
+      --hull: #14273A;
+      --line: #21374C;
+      --text: #E8F0F6;
+      --fog: #8AA3B5;
+      --add: #3DDC97;
+      --del: #FF6257;
+      --chg: #F5B84A;
+      --masthead: #FFFFFF;
+    }
+    @media (prefers-color-scheme: light) {
+      svg {
+        --deep: #EEF3F6;
+        --water: #FFFFFF;
+        --hull: #DFE8EE;
+        --line: #C6D3DC;
+        --text: #182634;
+        --fog: #5B7284;
+        --add: #0F8A5F;
+        --del: #C3362B;
+        --chg: #A06E00;
+        --masthead: #0A141E;
+      }
+    }
+    /* when inline in a page, the viewer's theme toggle wins in both directions */
+    :root[data-theme="light"] svg {
+      --deep: #EEF3F6;
+      --water: #FFFFFF;
+      --hull: #DFE8EE;
+      --line: #C6D3DC;
+      --text: #182634;
+      --fog: #5B7284;
+      --add: #0F8A5F;
+      --del: #C3362B;
+      --chg: #A06E00;
+      --masthead: #0A141E;
+    }
+    :root[data-theme="dark"] svg {
+      --deep: #0A141E;
+      --water: #0E1C2A;
+      --hull: #14273A;
+      --line: #21374C;
+      --text: #E8F0F6;
+      --fog: #8AA3B5;
+      --add: #3DDC97;
+      --del: #FF6257;
+      --chg: #F5B84A;
+      --masthead: #FFFFFF;
+    }
+
+    text { font-family: "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .mast { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 34px; font-weight: 700; letter-spacing: 4px; fill: var(--masthead); }
+    .dim  { fill: var(--fog); font-weight: 500; }
+    .sub  { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--fog); }
+    .sign { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 2.5px; fill: var(--fog); }
+    .path { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12.5px; font-weight: 400; letter-spacing: 0; fill: var(--text); }
+    .tile-t { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 1.5px; fill: var(--text); }
+    .mono { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12.5px; fill: var(--text); }
+    .lblt { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--text); }
+    .lblf { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--fog); }
+    .small { font-size: 12px; fill: var(--fog); }
+    .warn-t { fill: var(--chg); }
+
+    .bg   { fill: var(--deep); }
+    .deck { fill: var(--water); stroke: var(--line); }
+    .bar  { fill: var(--fog); }
+    .chip { fill: var(--hull); stroke: var(--line); }
+    .tile { fill: var(--deep); stroke: var(--line); }
+    .rail { stroke: var(--fog); stroke-width: 2; }
+    .head { fill: var(--fog); }
+    .rail-w { stroke: var(--chg); stroke-width: 2; }
+    .head-w { fill: var(--chg); }
+    .dot-a { fill: var(--chg); }
+    .dot-r { fill: var(--del); }
+  </style>
+
+  <rect class="bg" width="920" height="980"/>
+
+  <!-- masthead -->
+  <text class="mast" x="40" y="64">WKX <tspan class="dim">ECOSYSTEM LOCALHOST</tspan></text>
+  <text class="sub" x="880" y="60" text-anchor="end">high-level architecture</text>
+
+  <!-- ============ deck 1 · the board ============ -->
+  <rect class="deck" x="40" y="100" width="840" height="118"/>
+  <rect class="bar" x="40" y="100" width="840" height="3"/>
+  <text class="sign" x="60" y="126"><tspan class="path">static/</tspan>  ·  THE BOARD  ·  NO BUILD STEP</text>
+
+  <rect class="tile" x="60"  y="142" width="150" height="32" rx="4"/>
+  <circle class="dot-a" cx="74" cy="158" r="5"/>
+  <circle class="dot-r" cx="90" cy="158" r="5"/>
+  <text class="tile-t" x="102" y="162">NEEDS ATTENTION</text>
+  <rect class="tile" x="219" y="142" width="96"  height="32" rx="4"/>
+  <text class="tile-t" x="267" y="162" text-anchor="middle">WORKSPACE</text>
+  <rect class="tile" x="324" y="142" width="100" height="32" rx="4"/>
+  <text class="tile-t" x="374" y="162" text-anchor="middle">TOOLCHAINS</text>
+  <rect class="tile" x="433" y="142" width="72"  height="32" rx="4"/>
+  <text class="tile-t" x="469" y="162" text-anchor="middle">CLAUDE</text>
+  <rect class="tile" x="514" y="142" width="74"  height="32" rx="4"/>
+  <text class="tile-t" x="551" y="162" text-anchor="middle">SYSTEM</text>
+  <rect class="tile" x="597" y="142" width="96"  height="32" rx="4"/>
+  <text class="tile-t" x="645" y="162" text-anchor="middle">HOMEBREW</text>
+  <rect class="tile" x="702" y="142" width="70"  height="32" rx="4"/>
+  <text class="tile-t" x="737" y="162" text-anchor="middle">DOCKER</text>
+
+  <text class="small" x="60" y="202">one page of static HTML and JS · every table sorts · Flags badge their rows inline, amber attention or red problem</text>
+
+  <!-- seam 1 -->
+  <line class="rail" x1="260" y1="224" x2="260" y2="277"/>
+  <path class="head" d="M255,277 h10 l-5,8 z"/>
+  <text class="lblt" x="274" y="245">GET /api/&lt;Section&gt;</text>
+  <text class="lblf" x="274" y="262">one JSON document each</text>
+  <line class="rail" x1="545" y1="224" x2="545" y2="277"/>
+  <path class="head" d="M540,277 h10 l-5,8 z"/>
+  <text class="lblt" x="559" y="245">EventSource ×2 · SSE</text>
+  <text class="lblf" x="559" y="262">fetch and submodule probes fill in</text>
+
+  <!-- ============ deck 2 · the service ============ -->
+  <rect class="deck" x="40" y="288" width="840" height="104"/>
+  <rect class="bar" x="40" y="288" width="840" height="3"/>
+  <text class="sign" x="60" y="314"><tspan class="path">app.py</tspan>  ·  THE SERVICE  ·  FASTAPI  ·  127.0.0.1 ONLY</text>
+  <text class="mono" x="60" y="344">create_app(Settings) · eleven routes under /api · two of them SSE streams</text>
+  <text class="small" x="60" y="370">supported by typed Settings · Section models, serialised verbatim · SSE framing · redaction, once, before values reach a model</text>
+
+  <!-- seam 2 -->
+  <line class="rail" x1="340" y1="398" x2="340" y2="451"/>
+  <path class="head" d="M335,451 h10 l-5,8 z"/>
+  <text class="lblt" x="354" y="419">collect_&lt;section&gt;(machine, settings)</text>
+  <text class="lblf" x="354" y="436">pure functions · typed models come back</text>
+
+  <!-- ============ deck 3 · the Collectors ============ -->
+  <rect class="deck" x="40" y="462" width="840" height="130"/>
+  <rect class="bar" x="40" y="462" width="840" height="3"/>
+  <text class="sign" x="60" y="488"><tspan class="path">collectors/</tspan>  ·  COLLECTORS  ·  PROBES, NEVER MUTATIONS</text>
+
+  <rect class="chip" x="60"  y="502" width="90"  height="30" rx="4"/>
+  <text class="mono" x="105" y="521" text-anchor="middle">workspace</text>
+  <rect class="chip" x="159" y="502" width="105" height="30" rx="4"/>
+  <text class="mono" x="211" y="521" text-anchor="middle">submodules</text>
+  <rect class="chip" x="273" y="502" width="65"  height="30" rx="4"/>
+  <text class="mono" x="305" y="521" text-anchor="middle">fetch</text>
+  <rect class="chip" x="347" y="502" width="100" height="30" rx="4"/>
+  <text class="mono" x="397" y="521" text-anchor="middle">toolchains</text>
+  <rect class="chip" x="456" y="502" width="75"  height="30" rx="4"/>
+  <text class="mono" x="493" y="521" text-anchor="middle">claude</text>
+  <rect class="chip" x="540" y="502" width="78"  height="30" rx="4"/>
+  <text class="mono" x="579" y="521" text-anchor="middle">system</text>
+  <rect class="chip" x="627" y="502" width="95"  height="30" rx="4"/>
+  <text class="mono" x="674" y="521" text-anchor="middle">homebrew</text>
+  <rect class="chip" x="731" y="502" width="75"  height="30" rx="4"/>
+  <text class="mono" x="768" y="521" text-anchor="middle">docker</text>
+
+  <rect class="chip" x="60" y="540" width="746" height="30" rx="4"/>
+  <circle class="dot-a" cx="76" cy="555" r="5"/>
+  <circle class="dot-r" cx="92" cy="555" r="5"/>
+  <text class="mono" x="106" y="559">flags · the cross-cutting Flag layer · derived from the facts, no external ruleset</text>
+
+  <!-- seam 3 -->
+  <line class="rail" x1="340" y1="598" x2="340" y2="651"/>
+  <path class="head" d="M335,651 h10 l-5,8 z"/>
+  <text class="lblt" x="354" y="619">run(argv, timeout) · read_file · list_dir</text>
+  <text class="lblf" x="354" y="636">the only three primitives</text>
+
+  <!-- ============ deck 4 · the Machine seam ============ -->
+  <rect class="deck" x="40" y="662" width="840" height="94"/>
+  <rect class="bar" x="40" y="662" width="840" height="3"/>
+  <text class="sign" x="60" y="688"><tspan class="path">machine.py</tspan>  ·  THE MACHINE SEAM  ·  ONE BOUNDARY TO THE HOST</text>
+  <rect class="chip" x="60"  y="704" width="413" height="30" rx="4"/>
+  <text class="mono" x="76" y="723">RealMachine · production, subprocess and filesystem</text>
+  <rect class="chip" x="485" y="704" width="330" height="30" rx="4"/>
+  <text class="mono" x="501" y="723">FakeMachine · tests, synthetic fixtures</text>
+
+  <!-- seam 4 -->
+  <line class="rail" x1="200" y1="762" x2="200" y2="815"/>
+  <path class="head" d="M195,815 h10 l-5,8 z"/>
+  <text class="lblt" x="214" y="783">read-only probes</text>
+  <text class="lblf" x="214" y="800">fixed argv, bounded, timed out</text>
+  <line class="rail-w" x1="520" y1="762" x2="520" y2="815"/>
+  <path class="head-w" d="M515,815 h10 l-5,8 z"/>
+  <text class="lblt warn-t" x="534" y="783">the one write · a background git fetch</text>
+  <text class="lblf warn-t" x="534" y="800">remote-tracking refs only, never a working tree</text>
+
+  <!-- ============ deck 5 · the dev machine ============ -->
+  <rect class="deck" x="40" y="826" width="840" height="96"/>
+  <rect class="bar" x="40" y="826" width="840" height="3"/>
+  <text class="sign" x="60" y="852">THE DEV MACHINE  ·  FACTS ONLY, NEVER CHANGED</text>
+  <rect class="chip" x="60"  y="866" width="92"  height="30" rx="4"/>
+  <text class="mono" x="106" y="885" text-anchor="middle">git repos</text>
+  <rect class="chip" x="161" y="866" width="105" height="30" rx="4"/>
+  <text class="mono" x="213" y="885" text-anchor="middle">uv · Python</text>
+  <rect class="chip" x="275" y="866" width="56"  height="30" rx="4"/>
+  <text class="mono" x="303" y="885" text-anchor="middle">Node</text>
+  <rect class="chip" x="340" y="866" width="92"  height="30" rx="4"/>
+  <text class="mono" x="386" y="885" text-anchor="middle">~/.claude</text>
+  <rect class="chip" x="441" y="866" width="56"  height="30" rx="4"/>
+  <text class="mono" x="469" y="885" text-anchor="middle">brew</text>
+  <rect class="chip" x="506" y="866" width="122" height="30" rx="4"/>
+  <text class="mono" x="567" y="885" text-anchor="middle">docker daemon</text>
+  <rect class="chip" x="637" y="866" width="84"  height="30" rx="4"/>
+  <text class="mono" x="679" y="885" text-anchor="middle">dev CLIs</text>
+
+  <!-- footer -->
+  <text class="small" x="40" y="956">wkx-namespace design system · colour is reserved for Flags: amber attention · red problem</text>
+  <text class="sub" x="880" y="956" text-anchor="end">requests flow down · facts flow back up</text>
+</svg>

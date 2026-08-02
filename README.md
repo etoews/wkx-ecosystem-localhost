@@ -7,7 +7,7 @@ anomalies inline, and never changes the machine.
 
 The board is built end to end, from the workspace slice to the flag layer.
 [ROADMAP.md](ROADMAP.md) is the build order; [CONTEXT.md](CONTEXT.md) is the
-glossary.
+glossary; [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together.
 
 ## The board
 
