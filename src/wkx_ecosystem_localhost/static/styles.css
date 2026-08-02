@@ -267,6 +267,19 @@ tr.subrow:hover td { background: var(--hull); }
 .sub-lead { color: var(--fog); overflow-wrap: anywhere; }
 .sub-lead::before { content: "\21B3\00a0\00a0"; color: var(--fog); }
 
+/* An expandable plugin row: click (or Enter/Space) to reveal the skills it ships,
+ * collapsed by default. A caret turns to point down when open. */
+tr[hidden] { display: none; }
+tr.expandable { cursor: pointer; }
+.exp-caret {
+  display: inline-block;
+  color: var(--fog);
+  margin-right: .4rem;
+  font-size: .8em;
+  transition: transform .15s ease;
+}
+tr.expandable.open .exp-caret { transform: rotate(90deg); }
+
 /* nested plugin-skills row: the chips of skills a plugin ships, beneath it. */
 tr.skillrow td { background: var(--deep); padding-top: .35rem; padding-bottom: .55rem; }
 tr.skillrow:hover td { background: var(--deep); }
@@ -284,18 +297,30 @@ tr.skillrow:hover td { background: var(--deep); }
 .filled { animation: fade-in .3s ease-out; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------- needs-attention summary ---------- */
+/* ---------- stat tiles (each Section's summary, and the needs-attention head) ----------
+ * Every Section leads with a wrapping row of these instead of a prose sentence,
+ * so the summary is scanned, not read. Auto-fit so a wide Section spreads its
+ * tiles and a narrow panel (system, docker) wraps them without scrolling. */
 .tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: .55rem;
   margin: .1rem 0 1rem;
 }
 .tile { background: var(--deep); border: 1px solid var(--line); border-radius: 8px; padding: .6rem .75rem; }
-.tile .n { font-family: var(--mono); font-size: 1.7rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.tile .n {
+  font-family: var(--mono);
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .tile .l { font-family: var(--mono); font-size: .58rem; letter-spacing: .07em; text-transform: uppercase; color: var(--fog); margin-top: .3rem; }
 .tile--attention .n { color: var(--chg); }
 .tile--problem .n { color: var(--del); }
+/* a tile that hosts a flag (the docker daemon) stacks the badge under its label */
+.tile .flag { margin-top: .4rem; }
 
 .cat-bar-cell { display: flex; align-items: center; gap: .5rem; min-width: 140px; }
 .cat-count { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 1.6ch; text-align: right; }

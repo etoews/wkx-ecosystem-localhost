@@ -223,6 +223,27 @@ window.wkxUI = (function () {
     return p;
   }
 
+  // A stat tile: a big value over a small label. opts.kind tints the value
+  // (attention/problem); opts.flagKey makes the tile a flag host.
+  function tile(value, label, opts) {
+    opts = opts || {};
+    const cell = el("div", "tile" + (opts.kind ? " tile--" + opts.kind : ""));
+    const n = el("div", "n");
+    append(n, value);
+    cell.append(n, el("div", "l", label));
+    if (opts.flagKey) cell.dataset.flagKey = opts.flagKey;
+    return cell;
+  }
+
+  // A Section's summary: a wrapping row of tiles from [{value, label, kind?, flagKey?}].
+  function tiles(specs) {
+    const wrap = el("div", "tiles");
+    specs.forEach(function (spec) {
+      wrap.append(tile(spec.value, spec.label, spec));
+    });
+    return wrap;
+  }
+
   return {
     el: el,
     append: append,
@@ -234,6 +255,8 @@ window.wkxUI = (function () {
     dash: dash,
     level: level,
     summaryLine: summaryLine,
+    tile: tile,
+    tiles: tiles,
   };
 })();
 
@@ -323,12 +346,6 @@ window.wkxFlags = (function () {
     return value;
   }
 
-  function tile(n, label, kind) {
-    const cell = el("div", "tile" + (kind ? " tile--" + kind : ""));
-    cell.append(el("div", "n", String(n)), el("div", "l", label));
-    return cell;
-  }
-
   function renderSummary() {
     if (!summaryMount) return;
     const flags = Array.from(registry.values());
@@ -370,12 +387,11 @@ window.wkxFlags = (function () {
       return Math.max(m, c.count);
     }, 1);
 
-    const tiles = el("div", "tiles");
-    tiles.append(
-      tile(flags.length, "Total flags"),
-      tile(attention, "Attention", "attention"),
-      tile(problems, "Problems", "problem"),
-    );
+    const tiles = U.tiles([
+      { value: flags.length, label: "Total flags" },
+      { value: attention, label: "Attention", kind: "attention" },
+      { value: problems, label: "Problems", kind: "problem" },
+    ]);
 
     const built = U.table([
       { label: "Category" },
@@ -707,16 +723,11 @@ window.wkxFlags = (function () {
     }).length;
     const subCount = (submodules.submodules || []).length;
 
-    const summary = U.summaryLine([
-      "Every git repo discovered under ",
-      U.el("b", null, roots),
-      ", with working-tree state and ahead/behind since the last background fetch. ",
-      U.el("b", null, String(dirty)),
-      " dirty, ",
-      U.el("b", null, String(noUpstream)),
-      " without an upstream. Submodules (",
-      U.el("b", null, String(subCount)),
-      ") sit nested beneath their repo, versioned as pinned · latest · releases-behind.",
+    const summary = U.tiles([
+      { value: workspace.repos.length, label: "Repos" },
+      { value: dirty, label: "Dirty" },
+      { value: noUpstream, label: "No upstream" },
+      { value: subCount, label: "Submodules" },
     ]);
 
     const built = U.table([
@@ -872,18 +883,11 @@ window.wkxFlags = (function () {
     const py = data.python;
     const node = data.node;
     const nodes = [
-      U.summaryLine([
-        "The language story in one place. uv manages ",
-        U.el("b", null, String(py.interpreters.length)),
-        " interpreters; the global pin is ",
-        U.el("b", null, py.global_pin || "unset"),
-        " and system python3 is ",
-        U.el("b", null, py.system.version || "absent"),
-        ". Node is ",
-        U.el("b", null, node.node.present ? node.node.version : "absent"),
-        "; global tsc is ",
-        U.el("b", null, node.tsc.present ? node.tsc.version : "absent"),
-        ".",
+      U.tiles([
+        { value: py.interpreters.length, label: "Interpreters" },
+        { value: py.repo_pins.length, label: "Python pins" },
+        { value: 3 + node.package_managers.length, label: "Node tools" },
+        { value: node.repos.length, label: "TS repos" },
       ]),
       subHead("Python · interpreters (uv-managed)"),
       interpreterTable(py),
@@ -910,10 +914,10 @@ window.wkxFlags = (function () {
 })();
 
 // ---------- claude ----------
-// Plugins (metadata + the count of skills each ships), then the skills split by
-// provenance into two subsections that share one shape: My skills (yours, under
-// ~/.claude/skills) and OSS skills (shipped by an installed plugin). MCP servers
-// last. Values carry no secrets.
+// Plugins with a count of the skills each ships — expand a plugin row to reveal
+// those skills, the only place a plugin's skills appear. Then My skills (yours,
+// under ~/.claude/skills) in their own table, and the MCP servers last. Values
+// carry no secrets.
 (function () {
   "use strict";
 
@@ -939,7 +943,27 @@ window.wkxFlags = (function () {
     return skill.origin.indexOf("@") < 0; // user or project, never a <plugin>@<market> pair
   }
 
-  function pluginTable(plugins, countByOrigin) {
+  // The skills a plugin ships, as a hidden chip row revealed when its plugin
+  // row is expanded. These are the only place plugin skills appear.
+  function skillChipsRow(skills) {
+    const wrap = U.el("div", "skill-wrap");
+    wrap.append(U.el("span", "k-lead", skills.length + " skills"));
+    skills.forEach(function (skill) {
+      const chip = U.el("span", "chip", skill.name);
+      chip.dataset.flagKey = "claude:skill:" + skill.name;
+      if (skill.description) chip.title = skill.description;
+      wrap.append(chip);
+    });
+    const cell = U.el("td");
+    cell.colSpan = 6;
+    cell.append(wrap);
+    const row = U.el("tr", "skillrow");
+    row.hidden = true;
+    row.append(cell);
+    return row;
+  }
+
+  function pluginTable(plugins, skillsByOrigin) {
     const built = U.table([
       { label: "Plugin" },
       { label: "Marketplace" },
@@ -949,21 +973,49 @@ window.wkxFlags = (function () {
       { label: "Skills", num: true },
     ]);
     plugins.forEach(function (plugin) {
-      const count = countByOrigin.get(plugin.name + "@" + plugin.marketplace) || 0;
+      const skills = skillsByOrigin.get(plugin.name + "@" + plugin.marketplace) || [];
+      const hasSkills = skills.length > 0;
+
+      const nameCell = U.el("td");
+      if (hasSkills) nameCell.append(U.el("span", "exp-caret", "▸"));
+      nameCell.append(U.el("span", "t-name", plugin.name));
+
       const state = U.td(U.quiet(plugin.enabled ? "enabled" : "disabled"), "flags-cell");
       state.dataset.flagKey = "claude:plugin:" + plugin.name;
-      const countCell = U.td(count > 0 ? String(count) : U.quiet("—"), "num");
-      countCell.setAttribute("data-sort", String(count));
-      built.tbody.append(
-        U.tr([
-          U.td(U.el("span", "t-name", plugin.name)),
-          U.td(plugin.marketplace, "q"),
-          U.td(plugin.repo ? plugin.repo : U.dash(), "q"),
-          U.td(plugin.version === "unknown" ? U.quiet("unknown") : U.el("span", "ver", plugin.version)),
-          state,
-          countCell,
-        ]),
-      );
+
+      const countCell = U.td(hasSkills ? String(skills.length) : U.quiet("—"), "num");
+      countCell.setAttribute("data-sort", String(skills.length));
+
+      const row = U.tr([
+        nameCell,
+        U.td(plugin.marketplace, "q"),
+        U.td(plugin.repo ? plugin.repo : U.dash(), "q"),
+        U.td(plugin.version === "unknown" ? U.quiet("unknown") : U.el("span", "ver", plugin.version)),
+        state,
+        countCell,
+      ]);
+      built.tbody.append(row);
+
+      if (hasSkills) {
+        const skillrow = skillChipsRow(skills);
+        built.tbody.append(skillrow);
+        row.classList.add("expandable");
+        row.setAttribute("role", "button");
+        row.tabIndex = 0;
+        row.setAttribute("aria-expanded", "false");
+        const toggle = function () {
+          const open = row.classList.toggle("open");
+          skillrow.hidden = !open;
+          row.setAttribute("aria-expanded", open ? "true" : "false");
+        };
+        row.addEventListener("click", toggle);
+        row.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            toggle();
+          }
+        });
+      }
     });
     return built.wrap;
   }
@@ -1008,28 +1060,23 @@ window.wkxFlags = (function () {
       return;
     }
 
-    const countByOrigin = new Map();
+    const skillsByOrigin = new Map();
     skills.forEach(function (skill) {
-      countByOrigin.set(skill.origin, (countByOrigin.get(skill.origin) || 0) + 1);
+      if (!skillsByOrigin.has(skill.origin)) skillsByOrigin.set(skill.origin, []);
+      skillsByOrigin.get(skill.origin).push(skill);
     });
     const mine = skills.filter(isMine);
-    const oss = skills.filter(function (s) {
-      return !isMine(s);
-    });
+    const oss = skills.length - mine.length;
 
     const nodes = [
-      U.summaryLine([
-        U.el("b", null, String(plugins.length)),
-        " installed plugins, and ",
-        U.el("b", null, String(skills.length)),
-        " skills split by where they came from: ",
-        U.el("b", null, String(mine.length)),
-        " your own, ",
-        U.el("b", null, String(oss.length)),
-        " shipped by a plugin. Origin answers where each asset came from.",
+      U.tiles([
+        { value: plugins.length, label: "Plugins" },
+        { value: mine.length, label: "My skills" },
+        { value: oss, label: "OSS skills" },
+        { value: servers.length, label: "MCP servers" },
       ]),
-      subHead("Plugins (" + plugins.length + ")"),
-      pluginTable(plugins, countByOrigin),
+      subHead("Plugins (" + plugins.length + ") — expand a row for the skills it ships"),
+      pluginTable(plugins, skillsByOrigin),
       subHead("My skills (" + mine.length + ", under ~/.claude/skills)"),
     ];
     nodes.push(
@@ -1038,14 +1085,6 @@ window.wkxFlags = (function () {
             return s.origin;
           })
         : U.summaryLine(["No standalone user or project skills."]),
-    );
-    nodes.push(subHead("OSS skills (" + oss.length + ", shipped by a plugin)"));
-    nodes.push(
-      oss.length > 0
-        ? skillTable(oss, function (s) {
-            return s.origin.split("@")[0];
-          })
-        : U.summaryLine(["No plugin ships a skill."]),
     );
     nodes.push(subHead("MCP servers (" + servers.length + ")"));
     nodes.push(servers.length > 0 ? mcpTable(servers) : U.summaryLine(["No MCP servers configured."]));
@@ -1086,12 +1125,10 @@ window.wkxFlags = (function () {
       return tool.present && tool.version;
     }).length;
 
-    const summary = U.summaryLine([
-      "The configured developer CLIs, each a bare present-or-missing fact with its version. ",
-      U.el("b", null, String(present)),
-      " of ",
-      U.el("b", null, String(tools.length)),
-      " present.",
+    const summary = U.tiles([
+      { value: tools.length, label: "Tools" },
+      { value: present, label: "Present" },
+      { value: tools.length - present, label: "Missing" },
     ]);
 
     const built = U.table([{ label: "Tool" }, { label: "Version" }, { label: "Flags" }]);
@@ -1168,12 +1205,10 @@ window.wkxFlags = (function () {
       note("Every formula and cask is current.");
       return;
     }
-    const summary = U.summaryLine([
-      "Packages a brew upgrade would move forward: ",
-      U.el("b", null, String(formulae.length)),
-      " formulae, ",
-      U.el("b", null, String(casks.length)),
-      " casks. The version it would land on is bold, the one installed now recessive.",
+    const summary = U.tiles([
+      { value: total, label: "Outdated" },
+      { value: formulae.length, label: "Formulae" },
+      { value: casks.length, label: "Casks" },
     ]);
     const nodes = [summary];
     if (formulae.length > 0) {
@@ -1210,33 +1245,24 @@ window.wkxFlags = (function () {
 
   function render(data) {
     const reachable = data.daemon_reachable;
-    const summary = U.summaryLine([
-      "The Docker daemon and a few read-only disk-and-container facts. A daemon that cannot be reached renders as a fact, never an error.",
-    ]);
-
-    const built = U.table([
-      { label: "Daemon" },
-      { label: "Containers", num: true },
-      { label: "Images", num: true },
-      { label: "Reclaimable", num: true },
-    ]);
-    const daemon = U.td(U.quiet(reachable ? "reachable" : "unreachable"), "flags-cell");
-    daemon.dataset.flagKey = "docker:daemon";
-
+    // Tiles only, so the Section never scrolls sideways in its narrow panel. The
+    // daemon tile is the M6 flag host; a down daemon shows its facts as "—" rather
+    // than as meaningless zeros.
+    const specs = [{ value: reachable ? "up" : "down", label: "Daemon", flagKey: "docker:daemon" }];
     if (reachable) {
-      built.tbody.append(
-        U.tr([
-          daemon,
-          U.td(data.containers_running + " / " + data.containers_total, "num"),
-          U.td(String(data.images), "num"),
-          U.td(data.reclaimable != null ? data.reclaimable : U.quiet("unknown"), "num"),
-        ]),
+      specs.push(
+        { value: data.containers_running + " / " + data.containers_total, label: "Containers running / total" },
+        { value: String(data.images), label: "Images" },
+        { value: data.reclaimable != null ? data.reclaimable : "unknown", label: "Reclaimable" },
       );
     } else {
-      built.tbody.append(U.tr([daemon, U.td(U.dash(), "num"), U.td(U.dash(), "num"), U.td(U.dash(), "num")]));
+      specs.push(
+        { value: "—", label: "Containers" },
+        { value: "—", label: "Images" },
+        { value: "—", label: "Reclaimable" },
+      );
     }
-
-    mount.replaceChildren(summary, built.wrap);
+    mount.replaceChildren(U.tiles(specs));
   }
 
   fetch("/api/docker")

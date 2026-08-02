@@ -11,7 +11,7 @@ glossary.
 
 ## The board
 
-Each Section leads with a one-line summary and a table beneath; every table sorts
+Each Section leads with a row of stat tiles and a table beneath; every table sorts
 on any column.
 
 - **Needs attention**: every open flag rolled up by category, problems first,
@@ -21,9 +21,9 @@ on any column.
   releases-behind".
 - **Toolchains**: Python and TypeScript/Node, global and per repo, every subtable
   in one shape (name · version · detail · state) so the columns align.
-- **Claude**: plugins with a count of the skills each ships, then those skills
-  split into your own and the plugin-shipped (OSS) ones, each in its own table,
-  and MCP servers, each with its Origin.
+- **Claude**: plugins with a count of the skills each ships (expand a plugin row
+  to reveal them), your own skills in their own table, and MCP servers, each with
+  its Origin.
 - **System**: a configurable probe of dev CLIs, present or missing, with versions.
 - **Homebrew**: outdated formulae and casks.
 - **Docker**: daemon state, containers, images, reclaimable disk.
