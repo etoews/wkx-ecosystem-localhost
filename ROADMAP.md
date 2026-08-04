@@ -30,12 +30,12 @@ are the cross-cutting decisions every milestone inherits.
 | Milestone | Size | Status |
 |-----------|------|--------|
 | [M0: Scaffold](#m0-scaffold) | S | ✅ Complete |
-| [M1: Workspace slice](#m1-workspace-slice) | M | ⬜ Next |
-| [M2: Background fetch + SSE](#m2-background-fetch--sse) | M | ⬜ Not started |
-| [M3: Toolchains + System tools](#m3-toolchains--system-tools) | M | ⬜ Not started |
-| [M4: Claude environment](#m4-claude-environment) | M | ⬜ Not started |
-| [M5: Homebrew + Docker](#m5-homebrew--docker) | S | ⬜ Not started |
-| [M6: Flag layer](#m6-flag-layer) | M | ⬜ Not started |
+| [M1: Workspace slice](#m1-workspace-slice) | M | ✅ Complete |
+| [M2: Background fetch + SSE](#m2-background-fetch--sse) | M | ✅ Complete |
+| [M3: Toolchains + System tools](#m3-toolchains--system-tools) | M | ✅ Complete |
+| [M4: Claude environment](#m4-claude-environment) | M | ✅ Complete |
+| [M5: Homebrew + Docker](#m5-homebrew--docker) | S | ✅ Complete |
+| [M6: Flag layer](#m6-flag-layer) | M | ✅ Complete |
 | [M7: Deferred additions](#m7-deferred-additions) | M | ⬜ Deferred |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
 | [M9: GitHub Releases API](#m9-github-releases-api) | S | ⬜ Deferred |
@@ -72,79 +72,79 @@ M6 needs the collectors it flags. M7–M9 are opt-in.
 The tracer bullet: one Collector wired end-to-end (Collector → pydantic model → JSON API → styled panel) to prove the whole pipeline.
 
 **Deliverables**
-- [ ] Repo discovery: recurse each configured root, **stop descending at the first `.git`**, skip `node_modules`/`.venv`/hidden, generous safety depth cap.
-- [ ] Per-repo status via `git status --porcelain=v2 --branch` + `git stash list`: branch (or `detached @ <sha>`), upstream, staged/unstaged/untracked counts, dirty/clean, stash count. **ahead/behind deferred to M2** (shown as "pending").
-- [ ] Git config: scope-labelled whitelist of safe keys; `user.email` masked by default (raw on demand); credentials stripped from remote URLs; no key material.
-- [ ] Relativise paths to `~` in the UI.
-- [ ] `/api/workspace` returns the typed model; the Workspace panel renders it.
-- [ ] Collectors are pure functions over synthetic fixtures in tests (no captured machine data).
+- [x] Repo discovery: recurse each configured root, **stop descending at the first `.git`**, skip `node_modules`/`.venv`/hidden, generous safety depth cap.
+- [x] Per-repo status via `git status --porcelain=v2 --branch` + `git stash list`: branch (or `detached @ <sha>`), upstream, staged/unstaged/untracked counts, dirty/clean, stash count. **ahead/behind deferred to M2** (shown as "pending").
+- [x] Git config: scope-labelled whitelist of safe keys; `user.email` masked by default (raw on demand); credentials stripped from remote URLs; no key material.
+- [x] Relativise paths to `~` in the UI.
+- [x] `/api/workspace` returns the typed model; the Workspace panel renders it.
+- [x] Collectors are pure functions over synthetic fixtures in tests (no captured machine data).
 
 **Hands-on artefact**
-- [ ] Board shows discovered repos with branch and dirty/clean state.
-- [ ] A README screenshot uses the synthetic fixture, not real repos.
+- [x] Board shows discovered repos with branch and dirty/clean state.
+- [x] A README screenshot uses the synthetic fixture, not real repos.
 
 ---
 
 ## M2: Background fetch + SSE
 
 **Deliverables**
-- [ ] Non-interactive background `git fetch` (`GIT_TERMINAL_PROMPT=0`, per-fetch timeout, no submodule recursion, no gc) on a bounded thread pool.
-- [ ] ahead/behind computed from local refs after fetch, labelled "since last fetch".
-- [ ] SSE endpoint streams `{repo, ahead, behind}` as each fetch lands; `app.js` fills the fields in via `EventSource` (native, no library).
-- [ ] Submodules: `git ls-remote --tags <url>` + semver (no `v` prefix required, pre-releases excluded), `git describe --tags` for the pinned version, shown as "pinned · latest · N tags behind".
+- [x] Non-interactive background `git fetch` (`GIT_TERMINAL_PROMPT=0`, per-fetch timeout, no submodule recursion, no gc) on a bounded thread pool.
+- [x] ahead/behind computed from local refs after fetch, labelled "since last fetch".
+- [x] SSE endpoint streams `{repo, ahead, behind}` as each fetch lands; `app.js` fills the fields in via `EventSource` (native, no library).
+- [x] Submodules: `git ls-remote --tags <url>` + semver (no `v` prefix required, pre-releases excluded), `git describe --tags` for the pinned version, shown as "pinned · latest · N tags behind".
 
 **Hands-on artefact**
-- [ ] Open the board; ahead/behind fields fill in progressively.
-- [ ] This repo's own `standards/python/` submodule reports `pinned 1.0.0`.
+- [x] Open the board; ahead/behind fields fill in progressively.
+- [x] This repo's own `standards/python/` submodule reports `pinned 1.0.0`.
 
 ---
 
 ## M3: Toolchains + System tools
 
 **Deliverables**
-- [ ] Python: `uv python list`, global pin (`~/.config/uv/.python-version`), per-repo `.python-version`, system `python3`.
-- [ ] TypeScript/Node: global `tsc`/`node`/`npm` (+ `pnpm`/`bun` if present); per-repo TypeScript from `package.json` and installed `node_modules/typescript`.
-- [ ] System tools: configurable list with a generic default (`git`, `gh`, `uv`, `ruff`, `ty`, `pre-commit`, `docker`, `terraform`, `aws`, `code`, `node`); present-or-missing + version each.
+- [x] Python: `uv python list`, global pin (`~/.config/uv/.python-version`), per-repo `.python-version`, system `python3`.
+- [x] TypeScript/Node: global `tsc`/`node`/`npm` (+ `pnpm`/`bun` if present); per-repo TypeScript from `package.json` and installed `node_modules/typescript`.
+- [x] System tools: configurable list with a generic default (`git`, `gh`, `uv`, `ruff`, `ty`, `pre-commit`, `docker`, `terraform`, `aws`, `code`, `node`); present-or-missing + version each.
 
 **Hands-on artefact**
-- [ ] Toolchains and System panels populate for the real machine.
+- [x] Toolchains and System panels populate for the real machine.
 
 ---
 
 ## M4: Claude environment
 
 **Deliverables**
-- [ ] Skills: user (`~/.claude/skills/`) + plugin skills, each with Origin; all shown, enabled/disabled badged.
-- [ ] Plugins: from `installed_plugins.json` + `known_marketplaces.json` + `settings.json` enabled state; Origin as marketplace → GitHub repo, plus version. installPaths relativised.
-- [ ] MCPs: plugin-provided + user/project + built-in, with Origin and auth-needed state (`mcp-needs-auth-cache.json`).
-- [ ] **Narrow read** of `~/.claude.json`: only `mcpServers` and per-project `mcpServers`; never userID/machineID/oauth/telemetry.
+- [x] Skills: user (`~/.claude/skills/`) + plugin skills, each with Origin; all shown, enabled/disabled badged.
+- [x] Plugins: from `installed_plugins.json` + `known_marketplaces.json` + `settings.json` enabled state; Origin as marketplace → GitHub repo, plus version. installPaths relativised.
+- [x] MCPs: plugin-provided + user/project + built-in, with Origin and auth-needed state (`mcp-needs-auth-cache.json`).
+- [x] **Narrow read** of `~/.claude.json`: only `mcpServers` and per-project `mcpServers`; never userID/machineID/oauth/telemetry.
 
 **Hands-on artefact**
-- [ ] Skills, Plugins, MCPs panels populate with correct Origins.
+- [x] Skills, Plugins, MCPs panels populate with correct Origins.
 
 ---
 
 ## M5: Homebrew + Docker
 
 **Deliverables**
-- [ ] Homebrew: `brew outdated` (formulae + casks), list + count.
-- [ ] Docker: daemon reachable (`docker info`), running/total containers, image count, reclaimable disk (`docker system df`). Read-only.
+- [x] Homebrew: `brew outdated` (formulae + casks), list + count.
+- [x] Docker: daemon reachable (`docker info`), running/total containers, image count, reclaimable disk (`docker system df`). Read-only.
 
 **Hands-on artefact**
-- [ ] Homebrew and Docker panels populate; daemon-down renders gracefully.
+- [x] Homebrew and Docker panels populate; daemon-down renders gracefully.
 
 ---
 
 ## M6: Flag layer
 
 **Deliverables**
-- [ ] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
-- [ ] Cross-item flags: tool version drift across repos, `.python-version` drift, skill-name shadowing across Origins, MCP configured in two scopes.
-- [ ] Inline amber (attention) / red (problem) badges on affected rows, reusing `--chg` / `--del` colours but not the `Status` words.
-- [ ] Single header tally ("N want attention"). No dedicated flags panel.
+- [x] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
+- [x] Cross-item flags: tool version drift across repos, `.python-version` drift, skill-name shadowing across Origins, MCP configured in two scopes.
+- [x] Inline amber (attention) / red (problem) badges on affected rows, reusing `--chg` / `--del` colours but not the `Status` words.
+- [x] Single header tally ("N want attention"). No dedicated flags panel.
 
 **Hands-on artefact**
-- [ ] Dirty a repo → amber badge appears and the header tally increments.
+- [x] Dirty a repo → amber badge appears and the header tally increments.
 
 ---
 
