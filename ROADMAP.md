@@ -39,11 +39,13 @@ are the cross-cutting decisions every milestone inherits.
 | [M7: Deferred additions](#m7-deferred-additions) | M | ⬜ Deferred |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
 | [M9: GitHub Releases API](#m9-github-releases-api) | S | ⬜ Deferred |
+| [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
 **Critical path:** M0 → M1 → M2 is sequential. M3, M4, M5 parallelise after M1.
-M6 needs the collectors it flags. M7–M9 are opt-in.
+M6 needs the collectors it flags. M7–M9 are opt-in. M10 builds on the Sections
+and Flags from M1–M6 and is otherwise independent.
 
 ---
 
@@ -173,3 +175,29 @@ The single bundled roadmap item for the remaining resources.
 **Deliverables**
 - [ ] Optional precise submodule "latest release" via `/repos/{owner}/{repo}/releases/latest`, for repos where GitHub's release differs from the highest tag.
 - [ ] Gated on an optional token (`SecretStr` in config, masked, never committed); tag-based comparison stays the default.
+
+---
+
+## M10: Configurable board
+
+Consolidate the configuration that has accreted across earlier milestones (repo
+scan roots from M0, the system tools list from M3) into one documented, typed
+surface, and add the switches that let an operator shape what the board shows:
+which Sections appear, which repos and paths discovery skips, and which Flags are
+muted. Configuration stays file-based and read-only from the UI's side, so the
+board remains an observer with no auth and no write path.
+
+**Deliverables**
+- [ ] Single typed configuration model (extend the existing `pydantic-settings` config), loaded from `.env` and an optional config file, with computed defaults only (never a literal machine path). The real config file is gitignored; a committed example documents the contract with placeholders. Invalid config fails fast with a clear, logged pydantic error.
+- [ ] Repo discovery: multiple scan roots, plus per-root include/exclude globs and an ignore list of repos or paths to skip. Folds in the existing single-root default without changing it.
+- [ ] Section visibility: turn any Section (workspace, toolchains, claude, system) off. A server-side default in config, plus a client-side view toggle persisted in `localStorage` that mirrors the theme toggle, so hiding a Section needs no server write.
+- [ ] Muted Flags: a typed ignore list that drops named Flags (by category, or by item plus category) from the row badges and the Needs attention tally. This is noise suppression, a view preference, never a conformance ruleset. The header still reports "N muted" so nothing is hidden silently.
+- [ ] The system tools list (configurable since M3) folded into the consolidated surface and documented alongside the rest.
+- [ ] The board never writes server config: all persisted configuration is edited in the file(s). The UI may show what is configured but never mutates it.
+- [ ] Config parsing, Section-visibility, and Flag-muting logic covered by unit tests over synthetic fixtures (no captured machine data).
+
+**Hands-on artefact**
+- [ ] Point config at a different repo root, or add an ignore glob; the Workspace Section reflects it on reload.
+- [ ] Turn a Section off in config and via the client toggle; its panel disappears and comes back.
+- [ ] Add a Flag category to the ignore list; its badges vanish, the tally drops by that count, and the header notes "N muted".
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
