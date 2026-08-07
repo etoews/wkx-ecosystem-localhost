@@ -61,7 +61,19 @@ uv sync
 uv run wkx-ecosystem-localhost serve
 ```
 
-Then open `http://127.0.0.1:8787`.
+Then open `http://127.0.0.1:8787`. Pass `--port <n>` to bind elsewhere or
+`--open-browser` to open it automatically.
+
+While developing, add `--reload` to restart the server on code changes:
+
+```sh
+uv run wkx-ecosystem-localhost serve --reload
+```
+
+This is for development only, not the always-on service. It re-reads
+configuration on each restart, so config changes are picked up too. Frontend
+files under `static/` are served from disk and are already live on a browser
+refresh without it.
 
 To launch and drive the board programmatically, use the
 `run-wkx-ecosystem-localhost` skill (`/run`): it starts the app and leaves it

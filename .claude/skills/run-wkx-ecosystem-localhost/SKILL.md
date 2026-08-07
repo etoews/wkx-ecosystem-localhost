@@ -120,6 +120,10 @@ Then open `http://127.0.0.1:8787`. Add `--open-browser` to open it
 automatically, or `--port <n>` to bind elsewhere. Ctrl-C to stop. This is the
 real product surface; headless, use the driver instead.
 
+Add `--reload` to restart on code changes while developing (development only,
+not the always-on service). It watches the package source and re-reads config on
+each restart; `static/` files are already live on a browser refresh regardless.
+
 ## Direct invocation (the layer most changes touch)
 
 Every Collector is a pure function over the `Machine` seam (`src/.../machine.py`),

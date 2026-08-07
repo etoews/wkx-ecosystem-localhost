@@ -217,3 +217,15 @@ def create_app(
 
     logger.debug("app created with %d scan root(s)", len(settings.scan_roots))
     return app
+
+
+def create_app_from_env() -> FastAPI:
+    """Zero-argument application factory for uvicorn's reloader.
+
+    ``serve --reload`` runs uvicorn's autoreloader, which re-imports its target in a
+    fresh subprocess on every code change, so it needs an import-string factory it
+    can call with no arguments rather than a pre-built instance. Settings are read
+    afresh here, so a reload also picks up configuration changes. Production
+    (non-reload) serving keeps passing a built app to ``uvicorn.run`` directly.
+    """
+    return create_app(Settings())
