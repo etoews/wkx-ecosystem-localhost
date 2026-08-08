@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import pytest
 
-from wkx_ecosystem_localhost.github import github_link, parse_owner_repo
+from wkx_ecosystem_localhost.github import (
+    github_link,
+    parse_owner_repo,
+    release_differs,
+    release_tag_from_redirect,
+    releases_latest_url,
+)
 
 
 @pytest.mark.parametrize(
@@ -74,3 +80,76 @@ def test_github_link_never_carries_a_credential_that_rode_in_the_remote() -> Non
 
     assert link == "https://github.com/octocat/Hello-World"
     assert "ghp_secret" not in (link or "")
+
+
+def test_releases_latest_url_builds_the_public_redirect_target_for_a_github_remote() -> None:
+    assert releases_latest_url("git@github.com:octocat/Hello-World.git") == (
+        "https://github.com/octocat/Hello-World/releases/latest"
+    )
+
+
+def test_releases_latest_url_is_none_for_a_non_github_remote() -> None:
+    assert releases_latest_url("https://example.com/acme/widgets.git") is None
+
+
+def test_releases_latest_url_never_carries_a_credential_that_rode_in_the_remote() -> None:
+    url = releases_latest_url("https://ada:ghp_secret@github.com/octocat/Hello-World.git")
+
+    assert url == "https://github.com/octocat/Hello-World/releases/latest"
+    assert "ghp_secret" not in (url or "")
+
+
+@pytest.mark.parametrize(
+    ("redirect", "expected"),
+    [
+        # A released repo redirects releases/latest to releases/tag/<TAG>.
+        ("https://github.com/acme/widgets/releases/tag/1.3.0", "1.3.0"),
+        ("https://github.com/acme/widgets/releases/tag/v2.0.0", "v2.0.0"),
+        # A trailing slash on the resolved URL is trimmed.
+        ("https://github.com/acme/widgets/releases/tag/1.3.0/", "1.3.0"),
+        # A tag carrying a slash arrives percent-encoded and is decoded back.
+        ("https://github.com/acme/widgets/releases/tag/release%2Fnightly", "release/nightly"),
+    ],
+)
+def test_release_tag_from_redirect_extracts_the_tag(redirect: str, expected: str) -> None:
+    assert release_tag_from_redirect(redirect) == expected
+
+
+@pytest.mark.parametrize(
+    "redirect",
+    [
+        # A repo with no release redirects to the bare releases page: no /tag/.
+        "https://github.com/acme/widgets/releases",
+        "https://github.com/acme/widgets/releases/",
+        # Nothing usable at all.
+        "",
+        "https://github.com/acme/widgets",
+    ],
+)
+def test_release_tag_from_redirect_is_none_without_a_tag_segment(redirect: str) -> None:
+    assert release_tag_from_redirect(redirect) is None
+
+
+@pytest.mark.parametrize(
+    ("release", "latest", "expected"),
+    [
+        # The blessed release names an older version than the highest tag: differs.
+        ("1.9.0", "2.0.0", True),
+        # The blessed release names a version git's semver ranking cannot see.
+        ("nightly", "2.0.0", True),
+        # A release but no tag-based latest to sit beside: surface it.
+        ("2.0.0", None, True),
+        # They name the same version, so nothing extra is shown.
+        ("2.0.0", "2.0.0", False),
+        # The same version formatted differently is still the same version.
+        ("v2.0.0", "2.0.0", False),
+        ("2.0.0", "v2.0.0", False),
+        # No release means nothing differs.
+        (None, "2.0.0", False),
+        (None, None, False),
+    ],
+)
+def test_release_differs_decides_when_to_surface_the_blessed_release(
+    release: str | None, latest: str | None, expected: bool
+) -> None:
+    assert release_differs(release, latest) is expected

@@ -783,14 +783,18 @@ window.wkxTokens = (function () {
     const lead = U.el("span", "sub-lead", sub.name);
     const pinned = subPart("pinned", sub.pinned ? U.token("version", sub.pinned, "ver") : U.quiet("untagged"));
     const latest = subPart("latest", U.quiet("listing…"));
+    // The GitHub-blessed release, shown labelled beside the tag-based latest only
+    // when the probe finds the two disagree; empty (and separator-free) otherwise,
+    // so the common case where they agree stays quiet.
+    const release = U.el("span", "sub-release");
     const behind = U.el("span", "sub-part sub-status");
     behind.append(U.dash());
 
-    smRows.set(sub.path, { latest: latest, behind: behind });
+    smRows.set(sub.path, { latest: latest, release: release, behind: behind });
 
     const parts = [lead];
     if (sub.github) parts.push(sep(), githubLink(sub.github));
-    parts.push(sep(), pinned, sep(), latest, sep(), behind);
+    parts.push(sep(), pinned, sep(), latest, release, sep(), behind);
     const cell = U.flagsTd(parts, "submodules:" + sub.path, "sub-cell");
     cell.colSpan = 8;
     const row = U.el("tr", "subrow");
@@ -869,10 +873,25 @@ window.wkxTokens = (function () {
     cell.replaceChildren(U.el("span", "q", "latest "), muted ? U.quiet(value) : U.token("version", value, "ver"));
   }
 
+  // Surface the GitHub-blessed release beside the tag-based latest only when the
+  // backend sent one and it names a different tag; otherwise leave the slot empty
+  // so nothing extra is drawn. The backend already keeps the agreeing case quiet;
+  // the value check here is the second guard the operator's eye can trust.
+  function fillRelease(node, event) {
+    if (event.github_release && event.github_release !== event.latest) {
+      node.replaceChildren(sep(), U.el("span", "q", "release "), U.el("span", "ver", event.github_release));
+      node.title = "GitHub blesses " + event.github_release + " as its latest release, which differs from the highest tag.";
+    } else {
+      node.replaceChildren();
+      node.removeAttribute("title");
+    }
+  }
+
   function fillSubmodule(event) {
     const row = smRows.get(event.submodule);
     if (!row) return;
     row.latest.classList.add("filled");
+    fillRelease(row.release, event);
     if (event.unknown) {
       setLatest(row.latest, "listing unknown", true);
       row.latest.title = "The remote tags could not be listed — check your network or the remote's credentials.";

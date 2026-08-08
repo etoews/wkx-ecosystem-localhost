@@ -38,7 +38,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M6: Flag layer](#m6-flag-layer) | M | ✅ Complete |
 | [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
-| [M9: GitHub releases](#m9-github-releases) | M | ⬜ Deferred |
+| [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
 | [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
@@ -202,16 +202,16 @@ request is a bounded read.
 
 **Deliverables**
 - [x] A clickable link to the GitHub repository on every GitHub-hosted item: each discovered repo and each submodule. The link is derived from the primary remote, and a non-GitHub remote gets none. It exposes only the owner and repo, which M1 already shows credential-stripped, so "redact remotes by default" still holds.
-- [ ] Submodule "latest release", token-free: a bounded `curl` through the Machine seam reads the redirect of `https://github.com/<owner>/<repo>/releases/latest` to learn the release tag GitHub blesses. No token, no `SecretStr`, no authenticated API.
-- [ ] The tag-based "latest" and the "N behind" count stay as they are, from `git ls-remote`. The GitHub release augments them only when it differs from the highest semver tag, shown labelled so both the tag and the release are legible. Usually they agree; the mismatch is the uncommon case worth surfacing.
-- [ ] The release fetch rides the existing submodule SSE probe and degrades gracefully: an unreachable, rate-limited, or release-less repo falls back to the tag-based latest, never an error. Non-GitHub submodules stay tag-based.
-- [ ] The tag and the release are distinct model fields (for example `latest_tag` and `github_release`) with clear UI labels; no CONTEXT.md term.
-- [ ] Collectors and parsers stay pure over synthetic fixtures in tests (the fake seam returns a canned redirect); no captured machine data.
+- [x] Submodule "latest release", token-free: a bounded `curl` through the Machine seam reads the redirect of `https://github.com/<owner>/<repo>/releases/latest` to learn the release tag GitHub blesses. No token, no `SecretStr`, no authenticated API.
+- [x] The tag-based "latest" and the "N behind" count stay as they are, from `git ls-remote`. The GitHub release augments them only when it differs from the highest semver tag, shown labelled so both the tag and the release are legible. Usually they agree; the mismatch is the uncommon case worth surfacing.
+- [x] The release fetch rides the existing submodule SSE probe and degrades gracefully: an unreachable, rate-limited, or release-less repo falls back to the tag-based latest, never an error. Non-GitHub submodules stay tag-based.
+- [x] The tag and the release are distinct model fields (`latest` and `github_release`) with clear UI labels; no CONTEXT.md term.
+- [x] Collectors and parsers stay pure over synthetic fixtures in tests (the fake seam returns a canned redirect); no captured machine data.
 
 **Hands-on artefact**
-- [ ] A submodule whose GitHub release differs from its highest tag shows both, labelled; one whose release matches shows just the tag.
+- [x] A submodule whose GitHub release differs from its highest tag shows both, labelled; one whose release matches shows just the tag.
 - [x] Every GitHub repo and submodule carries a working link to its repository; a non-GitHub one carries none.
-- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+- [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 

@@ -26,6 +26,7 @@ from wkx_ecosystem_localhost.collectors.submodules import (
     DESCRIBE_ARGV,
     GITMODULES,
     ls_remote_tags_argv,
+    releases_latest_argv,
 )
 from wkx_ecosystem_localhost.collectors.toolchains import (
     NODE_VERSION_ARGV,
@@ -207,6 +208,13 @@ LS_REMOTE_KIT = (
     "7777777777777777777777777777777777777777\trefs/tags/v3.1.0\n"
 )
 
+# The curl argv that follows widgets' public releases/latest redirect, and the
+# URL it resolves to. GitHub blesses 1.3.0 as the latest release while the highest
+# semver tag is 2.0.0, so the two facts disagree and the release is surfaced. All
+# invented; no network. curl writes the final URL to stdout (no trailing newline).
+WIDGETS_RELEASE_ARGV = releases_latest_argv("https://github.com/acme/widgets/releases/latest")
+WIDGETS_RELEASE_REDIRECT = "https://github.com/acme/widgets/releases/tag/1.3.0"
+
 
 def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine whose repos exercise the submodule-drift Collector.
@@ -216,9 +224,10 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     excluded), and ``tools/kit`` is pinned on the highest v-prefixed tag (latest
     v3.1.0, nothing behind). ``api`` has one submodule whose remote cannot be
     reached, so it lands unknown. ``widgets`` is a GitHub remote so it earns a
-    repository link; ``kit`` and the unreachable submodule are non-GitHub so they
-    earn none. Returns the machine plus the home and roots to construct the app
-    with.
+    repository link and a token-free release lookup that lands 1.3.0, which differs
+    from its tag-based latest 2.0.0 and so is surfaced; ``kit`` and the unreachable
+    submodule are non-GitHub so they earn neither a link nor a lookup. Returns the
+    machine plus the home and roots to construct the app with.
     """
     machine = FakeMachine(
         dirs={DEV, DEV / "acme", APP, API, WIDGETS, KIT, GONE},
@@ -233,6 +242,10 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (GONE, DESCRIBE_ARGV): _ok("0.4.0\n"),
             (None, ls_remote_tags_argv(WIDGETS_URL)): _ok(LS_REMOTE_WIDGETS),
             (None, ls_remote_tags_argv(KIT_URL)): _ok(LS_REMOTE_KIT),
+            # widgets is on GitHub, so the release lookup runs and lands 1.3.0,
+            # which differs from the tag-based latest 2.0.0. kit and the
+            # unreachable submodule are non-GitHub, so no lookup is registered.
+            (None, WIDGETS_RELEASE_ARGV): _ok(WIDGETS_RELEASE_REDIRECT),
         },
     )
     return machine, HOME, [DEV]

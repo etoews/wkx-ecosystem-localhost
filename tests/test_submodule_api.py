@@ -43,6 +43,8 @@ def test_submodules_endpoint_returns_pins_without_the_remote_truth(
     # The network truth is deferred to the SSE probe.
     assert widgets["latest"] is None
     assert widgets["behind"] is None
+    # The GitHub release rides the same probe, so it is pending here too.
+    assert widgets["github_release"] is None
 
 
 def test_submodules_link_a_github_remote_and_leave_a_non_github_one_unlinked(
@@ -84,6 +86,29 @@ def test_probe_stream_fills_latest_and_behind_for_a_drifted_submodule(
     assert widgets["latest"] == "2.0.0"
     assert widgets["behind"] == 2
     assert widgets["unknown"] is False
+
+
+def test_probe_stream_augments_with_the_github_release_when_it_differs(
+    submodule_client: TestClient,
+) -> None:
+    widgets = _probe_events(submodule_client)["~/dev/acme/app/libs/widgets"]
+
+    # GitHub blesses 1.3.0 as latest while the highest tag is 2.0.0, so the release
+    # is streamed alongside; the tag-based latest and behind are unchanged.
+    assert widgets["github_release"] == "1.3.0"
+    assert widgets["latest"] == "2.0.0"
+    assert widgets["behind"] == 2
+
+
+def test_probe_stream_leaves_a_non_github_submodule_release_free(
+    submodule_client: TestClient,
+) -> None:
+    events = _probe_events(submodule_client)
+
+    # kit is a non-GitHub remote and remote-gone is unreachable, so neither gets a
+    # release lookup: both fall back to the tag-based facts alone.
+    assert events["~/dev/acme/app/tools/kit"]["github_release"] is None
+    assert events["~/dev/acme/api/vendor/remote-gone"]["github_release"] is None
 
 
 def test_probe_stream_reports_zero_behind_when_pinned_on_the_latest(

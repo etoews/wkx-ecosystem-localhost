@@ -75,6 +75,12 @@ class Submodule(BaseModel):
     state rather than an invented count. ``github`` is the
     ``https://github.com/owner/repo`` link derived from the submodule's remote, or
     None when that remote is not a GitHub remote; it exposes only owner and repo.
+    ``github_release`` is the release GitHub blesses as latest, read token-free over
+    the same SSE probe (ADR 0002) and surfaced only when it differs from the
+    tag-based ``latest``; it stays None for a non-GitHub submodule, an unreachable
+    or release-less repo, or when it names the version already shown, so the common
+    case stays quiet. Like ``latest`` and ``behind`` it is None here until the probe
+    lands.
     """
 
     name: str
@@ -85,6 +91,7 @@ class Submodule(BaseModel):
     behind: int | None = None
     unknown: bool = False
     github: str | None = None
+    github_release: str | None = None
 
 
 class SubmoduleSection(BaseModel):
@@ -101,12 +108,18 @@ class SubmoduleEvent(BaseModel):
     ``behind`` the number of releases the pinned commit is below it; both are None
     when the remote has no usable version tags. ``unknown`` is True when the remote
     could not be reached, so the row shows a labelled unknown state.
+    ``github_release`` is the release GitHub blesses as latest for a GitHub
+    submodule, surfaced only when it differs from the tag-based ``latest`` (ADR
+    0002); it is None for a non-GitHub, unreachable, or release-less submodule, or
+    when it names the version already shown, so the board augments the row only when
+    the two facts genuinely disagree.
     """
 
     submodule: str
     latest: str | None = None
     behind: int | None = None
     unknown: bool = False
+    github_release: str | None = None
 
 
 class UvPython(BaseModel):

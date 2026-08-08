@@ -284,6 +284,11 @@ tr.subrow:hover td { background: var(--hull); }
 .sub-lead { color: var(--fog); overflow-wrap: anywhere; }
 .sub-lead::before { content: "\21B3\00a0\00a0"; color: var(--fog); }
 .sub-part { display: inline-flex; align-items: baseline; gap: .28rem; white-space: nowrap; }
+/* The GitHub-blessed release, drawn only when it differs from the tag-based
+ * latest. When empty it collapses out of the line's flex flow, so the common
+ * case where the release agrees adds neither a value nor a stray gap. */
+.sub-release { display: inline-flex; align-items: baseline; gap: .28rem; white-space: nowrap; }
+.sub-release:empty { display: none; }
 .sub-sep { color: var(--fog); opacity: .5; }
 
 /* An expandable plugin row: click (or Enter/Space) to reveal the skills it ships,

@@ -168,6 +168,7 @@ def create_app(
                 home=app.state.home,
                 max_workers=settings.fetch_workers,
                 ls_remote_timeout=settings.fetch_timeout,
+                curl_timeout=settings.fetch_timeout,
             ):
                 yield sse.pack(event)
             yield sse.done()
