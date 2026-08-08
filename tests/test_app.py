@@ -40,3 +40,16 @@ def test_app_js_persists_theme_choice(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert "wkx-theme" in response.text
+
+
+def test_the_shell_and_assets_revalidate_so_the_browser_never_runs_stale_code(
+    client: TestClient,
+) -> None:
+    # The board is a live dashboard, often run under serve --reload; without
+    # no-cache a browser can keep running an old app.js after a change, so a
+    # newly added panel never fills. The shell and every static asset must carry
+    # Cache-Control: no-cache so each load revalidates (unchanged files still 304).
+    for path in ("/", "/static/app.js", "/static/styles.css"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers.get("cache-control") == "no-cache", path

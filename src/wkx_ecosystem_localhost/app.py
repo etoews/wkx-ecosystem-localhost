@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.types import Scope
 
 from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost._logging import configure as configure_logging
@@ -45,6 +47,23 @@ from wkx_ecosystem_localhost.models import (
 logger = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
+
+
+class _NoCacheStaticFiles(StaticFiles):
+    """Static files that always revalidate, so the board never runs stale assets.
+
+    The board is a live dashboard, often served with ``--reload``. A browser that
+    heuristically caches ``app.js`` or ``styles.css`` (neither carries an explicit
+    freshness lifetime) would keep running old code after a change, so a newly
+    shipped panel would sit forever on its placeholder. ``no-cache`` forces a
+    conditional request on every load: an unchanged asset still 304s cheaply on its
+    ETag, a changed one is re-fetched.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def create_app(
@@ -261,11 +280,11 @@ def create_app(
         """
         return collect_flags(app.state.machine, settings, home=app.state.home)
 
-    app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+    app.mount("/static", _NoCacheStaticFiles(directory=_STATIC), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(_STATIC / "index.html")
+        return FileResponse(_STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
     logger.debug("app created with %d scan root(s)", len(settings.scan_roots))
     return app
