@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from wkx_ecosystem_localhost import sse
+from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.docker import collect_docker
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
@@ -227,5 +228,11 @@ def create_app_from_env() -> FastAPI:
     can call with no arguments rather than a pre-built instance. Settings are read
     afresh here, so a reload also picks up configuration changes. Production
     (non-reload) serving keeps passing a built app to ``uvicorn.run`` directly.
+
+    Logging is configured here because the reloader runs the app in a worker
+    subprocess that imports this factory and never runs the CLI callback. Without
+    it the worker's root logger has no handler and its records fall through to
+    ``logging.lastResort`` (bare, on stderr, WARNING and above only).
     """
+    configure_logging()
     return create_app(Settings())

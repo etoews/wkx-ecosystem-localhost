@@ -50,19 +50,21 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8787/api/health
 
 The board is at `http://localhost:8787/`. `--reload` watches the package source
 (`src/wkx_ecosystem_localhost/`). Static files under `static/` are live on a
-browser refresh regardless. Confirm the board is up with the health curl above,
-not from the log. In `--reload` mode the server runs in a worker under a reloader
-parent, so only the reloader's lines are captured, not the worker's own startup
-or per-request access lines:
+browser refresh regardless. The reloader parent and the worker it supervises both
+log in the configured format, so startup, collector warnings, and one access line
+per request are all visible:
 
 ```
 Serving the board at http://127.0.0.1:8787/
 INFO     uvicorn.error: Will watch for changes in these directories: ['.../src/wkx_ecosystem_localhost']
 INFO     uvicorn.error: Uvicorn running on http://127.0.0.1:8787 (Press CTRL+C to quit)
 INFO     uvicorn.error: Started reloader process [NNNNN] using StatReload
+INFO     uvicorn.error: Started server process [NNNNN]
+INFO     uvicorn.error: Application startup complete.
+INFO     uvicorn.access: 127.0.0.1 - "GET /api/health HTTP/1.1" 200
 ```
 
-On a code change the log adds a `Reloading` line:
+On a code change the log adds a `Reloading` line, then the worker starts again:
 
 ```
 WARNING  uvicorn.error: StatReload detected changes in 'src/wkx_ecosystem_localhost/app.py'. Reloading...
