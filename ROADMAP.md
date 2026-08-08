@@ -156,9 +156,8 @@ The single bundled roadmap item for the remaining resources.
 
 **Deliverables**
 - [ ] Dev disk footprint (`.venv`s, `node_modules`, Docker disk).
-- [ ] Shell + env health (presence, never values, of `PIP_REQUIRE_VIRTUALENV`, `~/.config/uv/uv.toml`, the global pin).
 - [ ] Editor: VS Code + installed extensions.
-- [ ] Commit-signing / SSH: presence only, never key material.
+- [ ] Git config inventory. Display git config in a human readable way and look for conflicting config or misconfig.
 - [ ] Dotfiles repo status alongside the other repos.
 
 ---
