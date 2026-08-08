@@ -23,7 +23,7 @@ STATIC = Path(__file__).parent.parent / "src" / "wkx_ecosystem_localhost" / "sta
 
 # The two halves of a token cell's identity, stamped through the element dataset.
 TOKEN_IDENTITY = ("tokenKind", "tokenValue")
-# classList.add("…") — the runtime switch that paints a match. tok-* names only.
+# classList.add("…") is the runtime switch that paints a match. tok-* names only.
 CLASSLIST_ADD = re.compile(r"classList\.add\(([^)]*)\)")
 TOK_CLASS = re.compile(r'"(tok-[A-Za-z0-9_-]+)"')
 # One flat CSS rule. Media/keyframe wrappers parse sloppily, but their inner

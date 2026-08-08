@@ -146,8 +146,11 @@ def main() -> int:
             page.wait_for_timeout(200)
             lit = _state(page)
             page.screenshot(path=str(SHOT_DIR / "lit.png"), full_page=True)
-            if lit["match"] + lit["origin"] != total or lit["origin"] < 1:
-                failures.append(f"(a) hover lit {lit['match']}+{lit['origin']} of {total} cells")
+            # The origin carries both tok-match and tok-origin, so tok-match
+            # already counts every lit cell including the origin; do not add the
+            # origin again.
+            if lit["match"] != total or lit["origin"] != 1:
+                failures.append(f"(a) lit {lit['match']}/{total} cells, origin {lit['origin']}")
             if lit["pinned"] != 0:
                 failures.append("(a) hover should not pin anything yet")
 
@@ -158,7 +161,7 @@ def main() -> int:
             page.wait_for_timeout(250)
             pinned = _state(page)
             page.screenshot(path=str(SHOT_DIR / "pinned.png"), full_page=True)
-            if pinned["match"] + pinned["origin"] != total:
+            if pinned["match"] != total:
                 failures.append(f"(b) pin lost matches after pointer-leave: {pinned}")
             if pinned["pinned"] != 1 or pinned["pressed"] != 1:
                 failures.append(f"(b) pin state not committed to AT: {pinned}")

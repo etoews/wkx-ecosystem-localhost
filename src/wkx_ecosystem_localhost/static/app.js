@@ -671,12 +671,13 @@ window.wkxTokens = (function () {
   });
 
   // A click that misses every token releases the pin, but only when it lands on
-  // genuine empty space: a click on another interactive cell (a sortable header,
-  // an expandable row, both role=button) keeps the pin so the two gestures
-  // coexist. A token's own click never reaches here (it stops propagation).
+  // genuine empty space: a click on another interactive cell (a sortable header
+  // or an expandable row, both role=button) or a link (a GitHub repo link) keeps
+  // the pin so the gestures coexist and a comparison survives opening a repo. A
+  // token's own click never reaches here (it stops propagation).
   board.addEventListener("click", function (event) {
     if (tokenAt(event.target)) return;
-    if (event.target.closest && event.target.closest('[role="button"]')) return;
+    if (event.target.closest && event.target.closest('[role="button"], a')) return;
     release();
   });
 
@@ -879,7 +880,7 @@ window.wkxTokens = (function () {
   // the value check here is the second guard the operator's eye can trust.
   function fillRelease(node, event) {
     if (event.github_release && event.github_release !== event.latest) {
-      node.replaceChildren(sep(), U.el("span", "q", "release "), U.el("span", "ver", event.github_release));
+      node.replaceChildren(sep(), U.el("span", "q", "release "), U.token("version", event.github_release, "ver"));
       node.title = "GitHub blesses " + event.github_release + " as its latest release, which differs from the highest tag.";
     } else {
       node.replaceChildren();

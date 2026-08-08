@@ -22,6 +22,7 @@ from wkx_ecosystem_localhost.collectors.footprint import collect_footprint
 from wkx_ecosystem_localhost.collectors.git_config import collect_git_config
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.submodules import (
+    CURL_TIMEOUT_S,
     collect_submodules,
     stream_submodule_probes,
 )
@@ -168,7 +169,10 @@ def create_app(
                 home=app.state.home,
                 max_workers=settings.fetch_workers,
                 ls_remote_timeout=settings.fetch_timeout,
-                curl_timeout=settings.fetch_timeout,
+                # The release lookup is a best-effort augment, so bound it to its
+                # own ceiling rather than the full fetch budget: it must not double
+                # a GitHub submodule's worst-case probe tail behind the ls-remote.
+                curl_timeout=min(settings.fetch_timeout, CURL_TIMEOUT_S),
             ):
                 yield sse.pack(event)
             yield sse.done()
