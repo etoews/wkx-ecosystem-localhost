@@ -737,7 +737,7 @@ window.wkxTokens = (function () {
   // the link is safe to show and to share in a screenshot. A non-GitHub item is
   // never passed one, so it shows no link at all.
   function githubLink(href) {
-    const link = el("a", "gh-link", "↗");
+    const link = U.el("a", "gh-link", "↗");
     link.href = href;
     link.target = "_blank";
     link.rel = "noopener noreferrer";
