@@ -38,38 +38,48 @@ Launch `serve` as a background process. In Claude Code, run it with
 can Read; the portable equivalent is `… serve > "$log" 2>&1 &`.
 
 ```sh
-uv run wkx-ecosystem-localhost serve --port 8787
+uv run wkx-ecosystem-localhost serve --reload --port 8787
 ```
 
-Confirm it is up:
+`--reload` restarts the server on a code change, so the left-running instance
+always serves your latest code. Confirm it is up:
 
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8787/api/health
 ```
 
-The board is at `http://localhost:8787/`. The background log shows startup and
-one access line per request, and is what "Claude Code can see the output" means
-here:
+The board is at `http://localhost:8787/`. `--reload` watches the package source
+(`src/wkx_ecosystem_localhost/`). Static files under `static/` are live on a
+browser refresh regardless. Confirm the board is up with the health curl above,
+not from the log. In `--reload` mode the server runs in a worker under a reloader
+parent, so only the reloader's lines are captured, not the worker's own startup
+or per-request access lines:
 
 ```
 Serving the board at http://127.0.0.1:8787/
-INFO     uvicorn.error: Application startup complete.
+INFO     uvicorn.error: Will watch for changes in these directories: ['.../src/wkx_ecosystem_localhost']
 INFO     uvicorn.error: Uvicorn running on http://127.0.0.1:8787 (Press CTRL+C to quit)
-INFO     uvicorn.access: 127.0.0.1 - "GET /api/health HTTP/1.1" 200
+INFO     uvicorn.error: Started reloader process [NNNNN] using StatReload
 ```
 
-It stays up until stopped. Stop it by killing the background task (Claude Code),
-or portably:
+On a code change the log adds a `Reloading` line:
+
+```
+WARNING  uvicorn.error: StatReload detected changes in 'src/wkx_ecosystem_localhost/app.py'. Reloading...
+```
+
+It stays up until stopped. Killing the background task (Claude Code), or `pkill`,
+brings down both the reloader and its worker with no orphan:
 
 ```sh
 pkill -f 'wkx-ecosystem-localhost serve'
 ```
 
-A bare run launches the app and **leaves it running** (a background `serve`) so
-its output is visible. To verify it end to end, the `smoke.sh` driver launches
-its own instance, curls every endpoint, checks the two SSE streams, screenshots
-the board with headless Chrome, then stops. Paths below are relative to the repo
-root.
+A bare run launches the app and **leaves it running** (a background
+`serve --reload`) that picks up your code changes automatically. To verify it end
+to end, the `smoke.sh` driver launches its own instance (no `--reload`), curls
+every endpoint, checks the two SSE streams, screenshots the board with headless
+Chrome, then stops. Paths below are relative to the repo root.
 
 
 ## Smoke test — verify end to end
