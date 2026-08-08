@@ -38,7 +38,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M6: Flag layer](#m6-flag-layer) | M | ✅ Complete |
 | [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
-| [M9: GitHub Releases API](#m9-github-releases-api) | S | ⬜ Deferred |
+| [M9: GitHub releases](#m9-github-releases) | M | ⬜ Deferred |
 | [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
@@ -172,16 +172,46 @@ Section; no new Section.
 
 ## M8: Token-highlighting
 
+The `wkx-namespace` signature interaction, repurposed for the board: hover or
+keyboard-focus a recurring value and every other occurrence lights up, so a repo,
+a tool, or a version reads across the whole board at a glance. A pure UI
+interaction, with no Collector, no new API, and no CONTEXT.md term.
+
 **Deliverables**
-- [ ] The `wkx-namespace` signature interaction repurposed: hover/focus a repo, tool, or version to light up every other occurrence; click to pin; Esc to release.
+- [ ] Tokens are curated: a repo name, a tool name, or a version string. Incidental strings (branches, origins, paths) are not tokens.
+- [ ] Two cells match when they share a kind and an identical value: `3.14.4` lights other `3.14.4`, `3.14` does not match `3.14.4`, and there is no semver interpretation. Real divergence is already the drift Flags' job.
+- [ ] Hover or keyboard-focus lights the matches; click, Enter, or Space pins the highlight so it survives the pointer leaving; Esc or a click on empty space releases it.
+- [ ] Highlighting reaches the whole board, so a value recurring across Sections (a repo in workspace and footprint, a version in toolchains and system) lights up everywhere it appears.
+- [ ] The matches take the reserved `--match` colour as a highlighter background, the pinned or hovered one a touch stronger. All other colour stays with the Flag layer, and reduced motion is respected.
+- [ ] Tokens are tagged client-side over the rendered cells; no Collector or model changes.
+
+**Hands-on artefact**
+- [ ] Hover a version several repos share; every matching cell lights up across panels. Click to pin it, move away, and it stays lit; Esc clears it.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 
-## M9: GitHub Releases API
+## M9: GitHub releases
+
+Link every GitHub-hosted item to its repository, and give submodules a more
+precise "latest" by reading GitHub's blessed release. A GitHub release is platform
+metadata layered on a git tag, so git cannot report it; the board learns the latest
+release token-free by following the public `releases/latest` redirect. This is the
+board's first outbound non-git network call (see [ADR 0002](docs/adr/0002-github-release-lookup-outbound-http.md)); it stays an observer, the
+request is a bounded read.
 
 **Deliverables**
-- [ ] Optional precise submodule "latest release" via `/repos/{owner}/{repo}/releases/latest`, for repos where GitHub's release differs from the highest tag.
-- [ ] Gated on an optional token (`SecretStr` in config, masked, never committed); tag-based comparison stays the default.
+- [ ] A clickable link to the GitHub repository on every GitHub-hosted item: each discovered repo and each submodule. The link is derived from the primary remote, and a non-GitHub remote gets none. It exposes only the owner and repo, which M1 already shows credential-stripped, so "redact remotes by default" still holds.
+- [ ] Submodule "latest release", token-free: a bounded `curl` through the Machine seam reads the redirect of `https://github.com/<owner>/<repo>/releases/latest` to learn the release tag GitHub blesses. No token, no `SecretStr`, no authenticated API.
+- [ ] The tag-based "latest" and the "N behind" count stay as they are, from `git ls-remote`. The GitHub release augments them only when it differs from the highest semver tag, shown labelled so both the tag and the release are legible. Usually they agree; the mismatch is the uncommon case worth surfacing.
+- [ ] The release fetch rides the existing submodule SSE probe and degrades gracefully: an unreachable, rate-limited, or release-less repo falls back to the tag-based latest, never an error. Non-GitHub submodules stay tag-based.
+- [ ] The tag and the release are distinct model fields (for example `latest_tag` and `github_release`) with clear UI labels; no CONTEXT.md term.
+- [ ] Collectors and parsers stay pure over synthetic fixtures in tests (the fake seam returns a canned redirect); no captured machine data.
+
+**Hands-on artefact**
+- [ ] A submodule whose GitHub release differs from its highest tag shows both, labelled; one whose release matches shows just the tag.
+- [ ] Every GitHub repo and submodule carries a working link to its repository; a non-GitHub one carries none.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 
