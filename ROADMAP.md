@@ -158,7 +158,6 @@ The single bundled roadmap item for the remaining resources.
 - [ ] Dev disk footprint (`.venv`s, `node_modules`, Docker disk).
 - [ ] Editor: VS Code + installed extensions.
 - [ ] Git config inventory. Display git config in a human readable way and look for conflicting config or misconfig.
-- [ ] Dotfiles repo status alongside the other repos.
 
 ---
 
