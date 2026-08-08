@@ -343,9 +343,10 @@ class Flag(BaseModel):
 class FlagsSection(BaseModel):
     """The Flag layer: every open Flag derivable from the Sections at rest.
 
-    A cross-cutting layer, not a panel: the board badges each Flag onto the row it
-    names and tallies the open count in the masthead, with no Flags Section of its
-    own. Two Flags need a background fetch to know they are open (a repo behind its
+    A cross-cutting layer: the board badges each Flag onto the row it names and
+    rolls the open count up in the Needs attention summary panel (tally tiles plus
+    a per-category breakdown), with no Section of its own. Two Flags need a
+    background fetch to know they are open (a repo behind its
     remote, a submodule behind its tags); those arrive over SSE and are raised by
     the board as those events land, so they are deliberately absent from this
     at-rest list.

@@ -143,10 +143,10 @@ The tracer bullet: one Collector wired end-to-end (Collector → pydantic model 
 - [x] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
 - [x] Cross-item flags: tool version drift across repos, `.python-version` drift, skill-name shadowing across Origins, MCP configured in two scopes.
 - [x] Inline amber (attention) / red (problem) badges on affected rows, reusing `--chg` / `--del` colours but not the `Status` words.
-- [x] Single header tally ("N want attention"). No dedicated flags panel.
+- [x] Needs attention summary panel with tally tiles (total, attention, problems) and a per-category breakdown. Originally scoped as a single masthead tally; shipped as a panel instead.
 
 **Hands-on artefact**
-- [x] Dirty a repo → amber badge appears and the header tally increments.
+- [x] Dirty a repo → amber badge appears and the Needs attention tally increments.
 
 ---
 
