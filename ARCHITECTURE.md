@@ -40,7 +40,10 @@ the real app end to end on a fake.
 | `/api/claude` | skills, plugins, and MCP servers, each with its Origin |
 | `/api/system` | configured dev CLIs, present with version or missing |
 | `/api/homebrew` | outdated formulae and casks, or Homebrew's absence |
-| `/api/docker` | daemon reachability, container and image counts, reclaimable disk |
+| `/api/docker` | daemon reachability, container and image counts, total and reclaimable disk |
+| `/api/git-config` | the global gitconfig chain: keys, includes, and identity, redacted per ADR 0001 |
+| `/api/editor` | VS Code presence and version, with its installed extensions |
+| `/api/footprint` | per-repo `.venv` and `node_modules` disk sizes alongside the Docker disk, cached |
 | `/api/flags` | open Flags, each naming the Section and row it badges |
 
 The supporting modules are shared by every route: `config.py` (typed

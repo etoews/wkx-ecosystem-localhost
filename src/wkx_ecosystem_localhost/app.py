@@ -10,10 +10,14 @@ from fastapi.staticfiles import StaticFiles
 
 from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost._logging import configure as configure_logging
+from wkx_ecosystem_localhost.cache import TtlCache
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.docker import collect_docker
+from wkx_ecosystem_localhost.collectors.editor import collect_editor
 from wkx_ecosystem_localhost.collectors.fetch import stream_fetches
 from wkx_ecosystem_localhost.collectors.flags import collect_flags
+from wkx_ecosystem_localhost.collectors.footprint import collect_footprint
+from wkx_ecosystem_localhost.collectors.git_config import collect_git_config
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.submodules import (
     collect_submodules,
@@ -27,7 +31,10 @@ from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
     DockerSection,
+    EditorSection,
     FlagsSection,
+    FootprintSection,
+    GitConfigSection,
     HomebrewSection,
     SubmoduleSection,
     SystemToolsSection,
@@ -60,6 +67,9 @@ def create_app(
     app.state.settings = settings
     app.state.machine = machine if machine is not None else RealMachine()
     app.state.home = home if home is not None else Path.home()
+    # The footprint probe walks whole trees with ``du``, so its Section is computed
+    # synchronously behind a short-lived cache rather than on every request.
+    app.state.footprint_cache = TtlCache[FootprintSection](settings.footprint_cache_ttl)
 
     @app.get("/api/health")
     def health() -> dict[str, bool]:
@@ -180,6 +190,18 @@ def create_app(
         """
         return collect_claude(app.state.machine, home=app.state.home)
 
+    @app.get("/api/git-config")
+    def git_config() -> GitConfigSection:
+        """The whole global gitconfig chain, every key shown with targeted redaction.
+
+        Unlike the M1 per-repo view this is deny-nothing: every key is inventoried,
+        with the secret-bearing families masked and URL credentials stripped (ADR
+        0001). Include directives are lifted out and existence-checked, and the
+        conflict, broken-include, credential, and no-identity anomalies are left for
+        the Flag layer to badge.
+        """
+        return collect_git_config(app.state.machine, home=app.state.home)
+
     @app.get("/api/homebrew")
     def homebrew() -> HomebrewSection:
         """Outdated formulae and casks, or Homebrew's absence, for the homebrew Section.
@@ -197,6 +219,35 @@ def create_app(
         on the board, never an error page; the counts stay at their empty defaults.
         """
         return collect_docker(app.state.machine)
+
+    @app.get("/api/editor")
+    def editor() -> EditorSection:
+        """VS Code's presence, CLI version, and installed extensions.
+
+        A ``code`` CLI that cannot be run (absent, or not on the path) renders as a
+        fact on the board, never an error page; the version and extensions stay at
+        their empty defaults.
+        """
+        return collect_editor(app.state.machine)
+
+    @app.get("/api/footprint")
+    def footprint() -> FootprintSection:
+        """Per-repo ``.venv``/``node_modules`` disk usage plus the Docker disk.
+
+        The design calls for this synchronous probe to sit behind a cache: ``du``
+        walks whole directory trees, so a fresh cached Section is returned straight
+        away and the probe only re-runs once the TTL lapses. Repos are discovered
+        with the same walk as the rest of the board so the rows line up.
+        """
+        cached = app.state.footprint_cache.get()
+        if cached is not None:
+            return cached
+        repo_paths = discover_repos(
+            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+        )
+        section = collect_footprint(app.state.machine, repo_paths, home=app.state.home)
+        app.state.footprint_cache.set(section)
+        return section
 
     @app.get("/api/flags")
     def flags() -> FlagsSection:

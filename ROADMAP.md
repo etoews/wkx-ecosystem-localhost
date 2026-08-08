@@ -36,7 +36,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M4: Claude environment](#m4-claude-environment) | M | ✅ Complete |
 | [M5: Homebrew + Docker](#m5-homebrew--docker) | S | ✅ Complete |
 | [M6: Flag layer](#m6-flag-layer) | M | ✅ Complete |
-| [M7: Deferred additions](#m7-deferred-additions) | M | ⬜ Deferred |
+| [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
 | [M9: GitHub Releases API](#m9-github-releases-api) | S | ⬜ Deferred |
 | [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
@@ -157,16 +157,16 @@ editor, and the git config inventory. Three new panels under the system
 Section; no new Section.
 
 **Deliverables**
-- [ ] Dev disk footprint: `.venv` and `node_modules` sizes for each discovered repo, per-repo rows plus a total, and Docker disk as total and reclaimable. Sizing via `du` through the Machine seam, synchronous with a cache. The Docker figures reuse the M5 probe, extended to retain the totals it currently discards. No footprint Flags; sizes are facts, thresholds would be a ruleset.
-- [ ] Editor: VS Code presence and version, plus the installed extensions as a full list with versions, count in the panel heading.
-- [ ] Git config inventory: the global gitconfig and any config files it points to via include/includeIf, displayed human readably with each key's origin file. Values shown allow-by-default with a targeted redaction pass; secret-bearing families masked, credentials stripped from URL-shaped values, `user.email` unmasked. The divergence from M1's whitelist posture is recorded in an ADR.
-- [ ] Git config Flags: conflicting config (same key defined more than once across the chain with different values, amber), broken include (red), embedded credentials in a value (red), no identity in the global config (amber).
-- [ ] Collectors stay pure functions over synthetic fixtures in tests (no captured machine data).
+- [x] Dev disk footprint: `.venv` and `node_modules` sizes for each discovered repo, per-repo rows plus a total, and Docker disk as total and reclaimable. Sizing via `du` through the Machine seam, synchronous with a cache. The Docker figures reuse the M5 probe, extended to retain the totals it currently discards. No footprint Flags; sizes are facts, thresholds would be a ruleset.
+- [x] Editor: VS Code presence and version, plus the installed extensions as a full list with versions, count in the panel heading.
+- [x] Git config inventory: the global gitconfig and any config files it points to via include/includeIf, displayed human readably with each key's origin file. Values shown allow-by-default with a targeted redaction pass; secret-bearing families masked, credentials stripped from URL-shaped values, `user.email` unmasked. The divergence from M1's whitelist posture is recorded in an ADR.
+- [x] Git config Flags: conflicting config (same key defined more than once across the chain with different values, amber), broken include (red), embedded credentials in a value (red), no identity in the global config (amber).
+- [x] Collectors stay pure functions over synthetic fixtures in tests (no captured machine data).
 
 **Hands-on artefact**
-- [ ] Footprint, Editor, and Git config panels populate for the real machine.
-- [ ] Add a conflicting key to an included gitconfig file → the amber flag appears and the Needs attention tally increments.
-- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+- [x] Footprint, Editor, and Git config panels populate for the real machine.
+- [x] Add a conflicting key to an included gitconfig file → the amber flag appears and the Needs attention tally increments.
+- [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 

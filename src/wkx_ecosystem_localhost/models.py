@@ -308,16 +308,56 @@ class DockerSection(BaseModel):
     (down, or the CLI absent); the board renders that as a fact, never an error,
     and the remaining fields stay at their empty defaults. When reachable,
     ``containers_running`` and ``containers_total`` are the running and the total
-    container counts, ``images`` the image count, and ``reclaimable`` the
-    display-ready reclaimable disk total (for example ``3.23 GB``) summed across
-    what ``docker system df`` reports, or None when that probe cannot be read.
+    container counts, ``images`` the image count, ``total_disk`` the display-ready
+    total disk usage (for example ``4.62 GB``) summed across what ``docker system
+    df`` reports, and ``reclaimable`` the reclaimable slice of that (for example
+    ``3.23 GB``); each is None when that probe cannot be read.
     """
 
     daemon_reachable: bool
     containers_running: int = 0
     containers_total: int = 0
     images: int = 0
+    total_disk: str | None = None
     reclaimable: str | None = None
+
+
+class RepoFootprint(BaseModel):
+    """One repo's disk footprint: its regenerable ``.venv`` and ``node_modules``.
+
+    ``path`` is home-relative. ``venv`` and ``node_modules`` are the display-ready
+    sizes of those two directories (for example ``92.27 MB``), each None when that
+    directory is absent, so a repo carrying only one still shows the one it has.
+    ``total`` is the display-ready sum of whichever are present, and ``total_bytes``
+    the same sum kept raw and unrounded so the board can rank repos by true size
+    before rendering the humanised figures.
+    """
+
+    name: str
+    path: str
+    venv: str | None
+    node_modules: str | None
+    total: str
+    total_bytes: int
+
+
+class FootprintSection(BaseModel):
+    """The footprint Section: per-repo disk usage alongside the Docker disk.
+
+    ``repos`` carries one entry per repo that has a ``.venv`` or ``node_modules``,
+    biggest first, and ``repos_total`` is the display-ready sum across them.
+    ``docker_reachable`` mirrors the docker Section: when False the daemon could
+    not be reached and ``docker_total`` and ``docker_reclaimable`` stay None; when
+    True they are the display-ready total and reclaimable Docker disk, either None
+    when that probe could not be read. No Flags derive from footprint: it is a
+    plain size accounting, not a judgement.
+    """
+
+    repos: list[RepoFootprint]
+    repos_total: str
+    docker_reachable: bool
+    docker_total: str | None
+    docker_reclaimable: str | None
 
 
 class Flag(BaseModel):
@@ -353,6 +393,88 @@ class FlagsSection(BaseModel):
     """
 
     flags: list[Flag]
+
+
+class EditorExtension(BaseModel):
+    """One installed VS Code extension, as a bare fact.
+
+    ``id`` is the ``publisher.name`` identifier as ``code`` reports it, and
+    ``version`` its installed version verbatim; ``version`` is None when the line
+    carried no ``@version`` suffix, so a version-less entry still shows the one
+    fact it has rather than being dropped.
+    """
+
+    id: str
+    version: str | None = None
+
+
+class EditorSection(BaseModel):
+    """The editor Section: VS Code's presence, version, and installed extensions.
+
+    ``installed`` is False when ``code --version`` cannot be run (VS Code's CLI
+    absent, or not on the path); the board renders that as a fact, never an error,
+    and the remaining fields stay at their empty defaults. When installed,
+    ``version`` is the parsed CLI version and ``extensions`` the installed
+    extensions in the order ``code`` lists them (empty when the extensions probe
+    itself could not be read).
+    """
+
+    installed: bool
+    version: str | None = None
+    extensions: list[EditorExtension] = []
+
+
+class GitConfigEntry(BaseModel):
+    """One key in the global gitconfig chain, shown with targeted redaction.
+
+    ``value`` is already display-ready per ADR 0001: a secret-bearing family is
+    masked to bullets, a URL value is credential-stripped, and any home path in it
+    is rewritten to ``~``. ``origin`` is the home-relative file the key was read
+    from (an included file appears with its own path). ``masked`` is True when the
+    value was replaced rather than shown, ``credentials`` is True when the raw value
+    carried embedded URL credentials (which also forces the value masked), and
+    ``shadowed`` is True when a later entry sets the same single-valued key to a
+    different value, so git's last-wins means this earlier one has no effect.
+    """
+
+    key: str
+    value: str
+    origin: str
+    masked: bool = False
+    shadowed: bool = False
+    credentials: bool = False
+
+
+class GitInclude(BaseModel):
+    """One ``include``/``includeIf`` directive from the global gitconfig chain.
+
+    ``condition`` is None for a plain ``include.path`` and the ``includeIf``
+    condition (for example ``gitdir:~/dev/etoews/``) for a conditional one.
+    ``path`` is the home-relative target file, resolved from a ``~/`` prefix or
+    against the including file's directory. ``exists`` is whether that target file
+    could be read, so a directive pointing at a missing file shows as broken rather
+    than silently doing nothing.
+    """
+
+    condition: str | None
+    path: str
+    exists: bool
+
+
+class GitConfigSection(BaseModel):
+    """The git-config Section: the whole global gitconfig chain as facts.
+
+    ``entries`` is every non-include key in origin order, each display-ready and
+    self-describing (masked, shadowed, or carrying credentials). ``includes`` is the
+    include directives with their targets resolved and existence checked.
+    ``identity_present`` is whether a ``user.email`` is set anywhere in the chain, so
+    a machine with no committing identity shows as a plain fact. Unlike the M1
+    per-repo view this is deny-nothing: every key is shown, secrets masked (ADR 0001).
+    """
+
+    entries: list[GitConfigEntry]
+    includes: list[GitInclude]
+    identity_present: bool
 
 
 class FetchEvent(BaseModel):

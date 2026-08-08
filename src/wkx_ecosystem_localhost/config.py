@@ -86,3 +86,9 @@ class Settings(BaseSettings):
     # can never swamp the machine or hang on an unreachable remote.
     fetch_workers: int = 4
     fetch_timeout: float = 10.0
+
+    # How long, in seconds, a computed footprint Section is served from cache
+    # before it is recomputed. The footprint probe walks whole directory trees
+    # with ``du``, so it is run synchronously behind this cache rather than on
+    # every request.
+    footprint_cache_ttl: float = 60.0

@@ -17,7 +17,10 @@ from pathlib import Path
 from fakes import FakeMachine
 
 from wkx_ecosystem_localhost.collectors.docker import DOCKER_DF_ARGV, DOCKER_INFO_ARGV
+from wkx_ecosystem_localhost.collectors.editor import CODE_EXTENSIONS_ARGV, CODE_VERSION_ARGV
 from wkx_ecosystem_localhost.collectors.fetch import AHEAD_BEHIND_ARGV, FETCH_ARGV
+from wkx_ecosystem_localhost.collectors.footprint import DU_ARGV_PREFIX
+from wkx_ecosystem_localhost.collectors.git_config import GITCONFIG_ARGV
 from wkx_ecosystem_localhost.collectors.homebrew import BREW_OUTDATED_ARGV
 from wkx_ecosystem_localhost.collectors.submodules import (
     DESCRIBE_ARGV,
@@ -657,6 +660,47 @@ def build_docker_down() -> FakeMachine:
     )
 
 
+# ------------------------- editor fixtures -------------------------
+# The version banner and installed extensions of a synthetic VS Code. Every
+# version and extension id is invented, never captured from a real machine.
+# ``code --version`` prints three lines (version, commit hash, arch); ``code
+# --list-extensions --show-versions`` prints one ``publisher.name@version`` per
+# line.
+CODE_VERSION_BANNER = "1.96.0\n138f619c86f1199955d53b4166bef66ef252935c\narm64\n"
+CODE_EXTENSIONS = (
+    "ms-python.python@2024.22.0\n"
+    "esbenp.prettier-vscode@11.0.0\n"
+    "dbaeumer.vscode-eslint@3.0.10\n"
+    "charliermarsh.ruff@2025.22.0\n"
+)
+
+
+def build_editor_workspace() -> FakeMachine:
+    """Build a fake machine whose VS Code CLI is installed with extensions.
+
+    ``code --version`` reports 1.96.0 and ``code --list-extensions
+    --show-versions`` reports four extensions, so the version and the extension
+    ids and versions are produced exactly as production would. Returns the machine
+    to build the app with.
+    """
+    return FakeMachine(
+        commands={
+            (None, CODE_VERSION_ARGV): _ok(CODE_VERSION_BANNER),
+            (None, CODE_EXTENSIONS_ARGV): _ok(CODE_EXTENSIONS),
+        }
+    )
+
+
+def build_editor_absent() -> FakeMachine:
+    """Build a fake machine with no VS Code CLI at all.
+
+    No ``code`` command is registered, so the fake returns a non-zero result,
+    standing in for a machine where the ``code`` CLI is not installed. The Section
+    must render this as a plain absent fact, never an error. Returns the machine.
+    """
+    return FakeMachine()
+
+
 # ------------------------- flag-layer fixtures -------------------------
 # A machine that lights up the whole Flag layer at once: per-item Flags across the
 # workspace, system, Claude, Homebrew, and Docker Sections, and cross-item drift
@@ -805,10 +849,56 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
             (None, ("git", "--version")): _ok(GIT_VERSION),
             (None, BREW_OUTDATED_ARGV): _ok(BREW_OUTDATED_JSON),
             (None, DOCKER_INFO_ARGV): CommandResult(1, "", DOCKER_DAEMON_DOWN_STDERR),
+            # A clean global gitconfig with an identity present, so the git-config
+            # layer stays quiet here and no spurious git-no-identity Flag appears.
+            (None, GITCONFIG_ARGV): _ok("file:/home/.gitconfig\tuser.email=ada@example.com\n"),
             # ty is deliberately unregistered: the fake returns 127 (not installed).
         },
     )
     return machine, HOME, [DEV], FLAGS_SYSTEM_TOOLS
+
+
+# ------------------------- git-config fixtures -------------------------
+# One synthetic ``git config --global --list --show-origin --includes`` block that
+# exercises the whole Collector. Every value is invented, never captured from a
+# real machine. It carries: a clean user.email (identity present); a genuine
+# single-valued conflict (core.editor set to two different values, the second from
+# an included file); a multi-valued url.<base>.insteadof duplicated with different
+# values that must NOT read as a conflict; a value with embedded credentials that
+# must be masked; a working include.path (its target present); and a broken
+# includeIf.path (its target absent).
+GITCONFIG_WORK = HOME / ".gitconfig-work"
+GITCONFIG_MISSING = HOME / ".gitconfig-missing"
+
+GIT_CONFIG_INVENTORY = (
+    "file:/home/.gitconfig\tuser.email=ada@example.com\n"
+    "file:/home/.gitconfig\tuser.name=Ada Lovelace\n"
+    "file:/home/.gitconfig\tcore.editor=vim\n"
+    "file:/home/.gitconfig\turl.git@github.com:.insteadof=https://github.com/\n"
+    "file:/home/.gitconfig\turl.git@github.com:.insteadof=git://github.com/\n"
+    f"file:/home/.gitconfig\tmyservice.endpoint=https://ada:{SECRET_TOKEN}@example.com/api\n"
+    "file:/home/.gitconfig\tinclude.path=~/.gitconfig-work\n"
+    "file:/home/.gitconfig\tincludeif.gitdir:~/work/.path=~/.gitconfig-missing\n"
+    "file:/home/.gitconfig-work\tcore.editor=code --wait\n"
+)
+
+
+def build_git_config_workspace() -> tuple[FakeMachine, Path]:
+    """Build a fake machine exercising the git-config Collector end to end.
+
+    The global chain sets ``user.email`` (so identity is present), sets
+    ``core.editor`` twice to different values across two origins (a real conflict,
+    the second value coming from an included file), lists ``url.<base>.insteadof``
+    twice with different values (a multi-valued key that must not read as a
+    conflict), carries a value with an embedded credential (masked), and declares
+    two includes: ``include.path`` whose target is present and a conditional
+    include whose target is absent (broken). Returns the machine and its home.
+    """
+    machine = FakeMachine(
+        files={GITCONFIG_WORK: "[core]\n\teditor = code --wait\n"},
+        commands={(None, GITCONFIG_ARGV): _ok(GIT_CONFIG_INVENTORY)},
+    )
+    return machine, HOME
 
 
 def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
@@ -826,6 +916,54 @@ def build_fetch_workspace() -> tuple[FakeMachine, Path, list[Path]]:
         commands={
             (WEB, FETCH_ARGV): _ok(""),
             (WEB, AHEAD_BEHIND_ARGV): _ok(AHEAD_BEHIND_WEB),
+        },
+    )
+    return machine, HOME, [DEV]
+
+
+# ------------------------- footprint fixtures -------------------------
+# The disk footprint of a few synthetic repos, measured with ``du -sk`` (1024-byte
+# blocks), plus a reachable Docker reusing the df/info fixtures above. Every size
+# is invented, never captured from a real machine. ``web`` carries both a .venv
+# and a node_modules, ``api`` only a .venv, ``cli`` only a node_modules, and
+# ``quiet`` neither so it is excluded. The KiB counts times 1024 give bytes:
+# web  = (90104 + 512000) KiB -> 616,554,496 B, the largest;
+# cli  = 250000 KiB          -> 256,000,000 B;
+# api  = 45000 KiB           ->  46,080,000 B, the smallest.
+QUIET = DEV / "acme" / "quiet"
+
+
+def _du_argv(path: Path) -> tuple[str, ...]:
+    """The exact ``du -sk <path>`` argv the footprint Collector emits for a path."""
+    return (*DU_ARGV_PREFIX, str(path))
+
+
+def _du(kib: int, path: Path) -> CommandResult:
+    """A successful ``du -sk`` result: ``<KiB>\\t<path>`` on stdout."""
+    return _ok(f"{kib}\t{path}\n")
+
+
+def build_footprint_workspace() -> tuple[FakeMachine, Path, list[Path]]:
+    """Build a fake machine exercising the footprint Collector end to end.
+
+    Four repos under ``~/dev/acme``: ``web`` has both a ``.venv`` (90104 KiB) and a
+    ``node_modules`` (512000 KiB), ``api`` has only a ``.venv`` (45000 KiB),
+    ``cli`` has only a ``node_modules`` (250000 KiB), and ``quiet`` has neither, so
+    it is excluded entirely. Ranked by true bytes the order is web, cli, api. The
+    Docker daemon is reachable and reports 4.62 GB total with 3.23 GB reclaimable,
+    reusing the docker df/info fixtures. Returns the machine plus the home and
+    roots to construct the app with.
+    """
+    machine = FakeMachine(
+        dirs={DEV, DEV / "acme", WEB, API, CLI, QUIET},
+        repos={WEB, API, CLI, QUIET},
+        commands={
+            (None, _du_argv(WEB / ".venv")): _du(90104, WEB / ".venv"),
+            (None, _du_argv(WEB / "node_modules")): _du(512000, WEB / "node_modules"),
+            (None, _du_argv(API / ".venv")): _du(45000, API / ".venv"),
+            (None, _du_argv(CLI / "node_modules")): _du(250000, CLI / "node_modules"),
+            (None, DOCKER_INFO_ARGV): _ok(DOCKER_INFO_JSON),
+            (None, DOCKER_DF_ARGV): _ok(DOCKER_DF_JSON),
         },
     )
     return machine, HOME, [DEV]

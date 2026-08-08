@@ -1,8 +1,8 @@
 """The docker Collector: daemon reachability and a few container-and-disk facts.
 
 Two read-only probes through the ``Machine`` seam: ``docker info`` for the daemon
-and its container and image counts, and ``docker system df`` for the reclaimable
-disk. A daemon that cannot be reached (down, or the CLI absent) is a fact, never
+and its container and image counts, and ``docker system df`` for the total and
+reclaimable disk. A daemon that cannot be reached (down, or the CLI absent) is a fact, never
 an error: the Section reports ``daemon_reachable=False`` and the board renders it
 plainly. The count reader and the size parsers are pure, so their edge cases pin
 directly against synthetic fixtures. Facts only; anomaly judgement is the separate
@@ -116,18 +116,25 @@ def _int_field(data: dict[str, object], key: str) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
-def _reclaimable(machine: Machine, *, timeout: float) -> str | None:
-    """Sum the reclaimable disk ``docker system df`` reports, display-ready.
+def _disk(machine: Machine, *, timeout: float) -> tuple[str | None, str | None]:
+    """Sum the total and reclaimable disk ``docker system df`` reports, display-ready.
 
-    Each line is one resource type carrying a reclaimable field; the byte counts
-    are summed and humanised. Returns None when the probe cannot be read at all,
-    so the board shows a labelled unknown rather than an invented zero.
+    Each line is one resource type carrying a total ``Size`` and a
+    ``Reclaimable`` slice of it; both are summed across the resource types in one
+    pass and humanised. Either figure is None when no line yielded a readable
+    value, so the board shows a labelled unknown rather than an invented zero, and
+    both are None when the probe cannot be read at all.
+
+    Returns:
+        A ``(total_disk, reclaimable)`` pair, each a display-ready size or None.
     """
     result = machine.run(DOCKER_DF_ARGV, timeout=timeout)
     if not result.ok:
-        return None
+        return None, None
     total = 0.0
-    seen = False
+    reclaimable = 0.0
+    total_seen = False
+    reclaimable_seen = False
     for line in result.stdout.splitlines():
         line = line.strip()
         if not line:
@@ -138,14 +145,22 @@ def _reclaimable(machine: Machine, *, timeout: float) -> str | None:
             continue
         if not isinstance(row, dict):
             continue
-        field = row.get("Reclaimable")
-        if not isinstance(field, str):
-            continue
-        reclaimable = parse_reclaimable(field)
-        if reclaimable is not None:
-            total += reclaimable
-            seen = True
-    return humanise_size(total) if seen else None
+        size_field = row.get("Size")
+        if isinstance(size_field, str):
+            size = parse_size(size_field)
+            if size is not None:
+                total += size
+                total_seen = True
+        reclaimable_field = row.get("Reclaimable")
+        if isinstance(reclaimable_field, str):
+            slice_ = parse_reclaimable(reclaimable_field)
+            if slice_ is not None:
+                reclaimable += slice_
+                reclaimable_seen = True
+    return (
+        humanise_size(total) if total_seen else None,
+        humanise_size(reclaimable) if reclaimable_seen else None,
+    )
 
 
 def collect_docker(machine: Machine, *, timeout: float = PROBE_TIMEOUT_S) -> DockerSection:
@@ -174,10 +189,12 @@ def collect_docker(machine: Machine, *, timeout: float = PROBE_TIMEOUT_S) -> Doc
         data = None
     if not isinstance(data, dict):
         return DockerSection(daemon_reachable=False)
+    total_disk, reclaimable = _disk(machine, timeout=timeout)
     return DockerSection(
         daemon_reachable=True,
         containers_running=_int_field(data, "ContainersRunning"),
         containers_total=_int_field(data, "Containers"),
         images=_int_field(data, "Images"),
-        reclaimable=_reclaimable(machine, timeout=timeout),
+        total_disk=total_disk,
+        reclaimable=reclaimable,
     )

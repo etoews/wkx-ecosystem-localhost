@@ -53,6 +53,7 @@ def test_parse_reclaimable_absent_when_empty() -> None:
         (1_500_000_000, "1.5 GB"),
         (2_000_000_000, "2 GB"),
         (3_230_000_000, "3.23 GB"),
+        (4_620_000_000, "4.62 GB"),
     ],
 )
 def test_humanise_size_trims_and_labels(num_bytes: float, expected: str) -> None:

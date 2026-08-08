@@ -143,6 +143,61 @@ def docker_down_client() -> TestClient:
 
 
 @pytest.fixture
+def editor_client() -> TestClient:
+    """A client wired to a fake machine whose VS Code CLI is installed.
+
+    Drives the real app and Collector over HTTP: the CLI version and four
+    installed extensions with their ids and versions are produced exactly as
+    production would, only the machine seam faked.
+    """
+    machine = fixtures.build_editor_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
+def editor_absent_client() -> TestClient:
+    """A client wired to a fake machine with no VS Code CLI installed.
+
+    Drives the real app and Collector over HTTP so the absent state is produced
+    exactly as production would: installed is False and the extension list is
+    empty, a plain fact rather than an error.
+    """
+    machine = fixtures.build_editor_absent()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+
+
+@pytest.fixture
+def footprint_client() -> TestClient:
+    """A client wired to a fake machine whose repos carry .venv and node_modules.
+
+    Drives the real app and Collector over HTTP: three repos with differing
+    footprints ranked biggest-first, one repo with neither directory excluded, the
+    humanised per-repo and total sizes, and the embedded Docker disk figures are
+    all produced exactly as production would, only the machine seam faked.
+    """
+    machine, home, roots = fixtures.build_footprint_workspace()
+    settings = Settings(_env_file=None, scan_roots=roots)
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
+def git_config_client() -> TestClient:
+    """A client wired to a fake machine whose global gitconfig chain is synthetic.
+
+    Drives the real app and Collector over HTTP: every key shown with targeted
+    redaction, a single-valued conflict marking its shadowed entry, a multi-valued
+    key left unshadowed, an embedded credential masked, and the resolved,
+    existence-checked include directives are all produced exactly as production
+    would, only the machine seam faked.
+    """
+    machine, home = fixtures.build_git_config_workspace()
+    settings = Settings(_env_file=None, scan_roots=[fixtures.DEV])
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+@pytest.fixture
 def flags_client() -> TestClient:
     """A client wired to a fake machine that lights up the whole at-rest Flag layer.
 

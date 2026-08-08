@@ -26,6 +26,12 @@ def test_docker_reports_the_reclaimable_disk_total(docker_client: TestClient) ->
     assert body["reclaimable"] == "3.23 GB"
 
 
+def test_docker_reports_the_total_disk(docker_client: TestClient) -> None:
+    body = docker_client.get("/api/docker").json()
+
+    assert body["total_disk"] == "4.62 GB"
+
+
 def test_docker_daemon_down_renders_gracefully_as_a_fact(docker_down_client: TestClient) -> None:
     response = docker_down_client.get("/api/docker")
 
@@ -36,3 +42,4 @@ def test_docker_daemon_down_renders_gracefully_as_a_fact(docker_down_client: Tes
     assert body["containers_total"] == 0
     assert body["images"] == 0
     assert body["reclaimable"] is None
+    assert body["total_disk"] is None

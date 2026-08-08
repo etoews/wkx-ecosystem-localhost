@@ -12,6 +12,9 @@ from wkx_ecosystem_localhost.collectors.flags import ATTENTION, PROBLEM, derive_
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
     DockerSection,
+    GitConfigEntry,
+    GitConfigSection,
+    GitInclude,
     HomebrewSection,
     McpServer,
     NodeToolchain,
@@ -105,6 +108,24 @@ def _up_docker() -> DockerSection:
     return DockerSection(daemon_reachable=True)
 
 
+def _clean_git_config() -> GitConfigSection:
+    """A quiet git-config Section: an identity present and nothing anomalous."""
+    return GitConfigSection(entries=[], includes=[], identity_present=True)
+
+
+def _git_config(
+    *,
+    entries: list[GitConfigEntry] | None = None,
+    includes: list[GitInclude] | None = None,
+    identity_present: bool = True,
+) -> GitConfigSection:
+    return GitConfigSection(
+        entries=entries or [],
+        includes=includes or [],
+        identity_present=identity_present,
+    )
+
+
 def _derive(
     *,
     workspace: WorkspaceSection | None = None,
@@ -113,6 +134,7 @@ def _derive(
     claude: ClaudeSection | None = None,
     homebrew: HomebrewSection | None = None,
     docker: DockerSection | None = None,
+    git_config: GitConfigSection | None = None,
 ) -> list:
     return derive_flags(
         workspace=workspace or _workspace(),
@@ -121,6 +143,7 @@ def _derive(
         claude=claude or _claude(),
         homebrew=homebrew or _empty_homebrew(),
         docker=docker or _up_docker(),
+        git_config=git_config or _clean_git_config(),
     )
 
 
@@ -326,6 +349,120 @@ def test_mcp_configured_in_two_scopes_flags_the_server_once() -> None:
     assert len(two_scope) == 1
     assert two_scope[0].target == "mcp:repo-mcp"
     assert two_scope[0].level == ATTENTION
+
+
+# ------------------------- git-config -------------------------
+
+
+def _entry(
+    key: str,
+    value: str,
+    *,
+    credentials: bool = False,
+    shadowed: bool = False,
+    masked: bool = False,
+) -> GitConfigEntry:
+    return GitConfigEntry(
+        key=key,
+        value=value,
+        origin="~/.gitconfig",
+        masked=masked,
+        shadowed=shadowed,
+        credentials=credentials,
+    )
+
+
+def test_git_config_conflict_flags_a_single_valued_key_set_two_ways() -> None:
+    git_config = _git_config(
+        entries=[
+            _entry("core.editor", "vim", shadowed=True),
+            _entry("core.editor", "code --wait"),
+        ]
+    )
+    flags = _derive(git_config=git_config)
+    conflict = [f for f in flags if f.code == "git-config-conflict"]
+    assert len(conflict) == 1
+    assert conflict[0].section == "git-config"
+    assert conflict[0].target == "core.editor"
+    assert conflict[0].level == ATTENTION
+
+
+def test_git_config_conflict_ignores_a_multivalued_key() -> None:
+    # A real-machine regression: url.<base>.insteadof legitimately appears twice
+    # with different values and must never read as a conflict.
+    name = "url.git@github.com:.insteadof"
+    git_config = _git_config(
+        entries=[
+            _entry(name, "https://github.com/"),
+            _entry(name, "git://github.com/"),
+        ]
+    )
+    assert [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"] == []
+
+
+def test_git_config_conflict_ignores_a_duplicate_with_the_same_value() -> None:
+    git_config = _git_config(
+        entries=[
+            _entry("user.name", "Ada Lovelace"),
+            _entry("user.name", "Ada Lovelace"),
+        ]
+    )
+    assert [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"] == []
+
+
+def test_git_config_conflict_catches_a_masked_key_set_two_ways() -> None:
+    # Two raw values that both redact to bullets still conflict: the Collector
+    # marks the earlier entry shadowed from the raw values, so the Flag fires even
+    # though the two display values are identical.
+    name = "http.https://host/.extraheader"
+    git_config = _git_config(
+        entries=[
+            _entry(name, "•••", masked=True, shadowed=True),
+            _entry(name, "•••", masked=True),
+        ]
+    )
+    conflict = [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"]
+    assert len(conflict) == 1
+    assert conflict[0].target == name
+
+
+def test_git_include_broken_is_a_problem_flag() -> None:
+    git_config = _git_config(
+        includes=[
+            GitInclude(condition=None, path="~/.gitconfig-work", exists=True),
+            GitInclude(condition="gitdir:~/work/", path="~/.gitconfig-missing", exists=False),
+        ]
+    )
+    flags = _derive(git_config=git_config)
+    broken = [f for f in flags if f.code == "git-include-broken"]
+    assert len(broken) == 1
+    assert broken[0].section == "git-config"
+    assert broken[0].target == "~/.gitconfig-missing"
+    assert broken[0].level == PROBLEM
+
+
+def test_git_config_credentials_is_a_problem_flag() -> None:
+    git_config = _git_config(
+        entries=[_entry("myservice.endpoint", "•••", credentials=True, masked=True)]
+    )
+    flags = _derive(git_config=git_config)
+    creds = [f for f in flags if f.code == "git-config-credentials"]
+    assert len(creds) == 1
+    assert creds[0].target == "myservice.endpoint"
+    assert creds[0].level == PROBLEM
+
+
+def test_git_no_identity_is_a_single_attention_flag() -> None:
+    flags = _derive(git_config=_git_config(identity_present=False))
+    no_identity = [f for f in flags if f.code == "git-no-identity"]
+    assert len(no_identity) == 1
+    assert no_identity[0].section == "git-config"
+    assert no_identity[0].target == "identity"
+    assert no_identity[0].level == ATTENTION
+
+
+def test_a_present_identity_raises_no_git_identity_flag() -> None:
+    assert [f for f in _derive() if f.code == "git-no-identity"] == []
 
 
 # ------------------------- no Status vocabulary -------------------------

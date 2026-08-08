@@ -21,6 +21,7 @@ from pathlib import Path
 
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.docker import collect_docker
+from wkx_ecosystem_localhost.collectors.git_config import collect_git_config
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
@@ -32,6 +33,7 @@ from wkx_ecosystem_localhost.models import (
     DockerSection,
     Flag,
     FlagsSection,
+    GitConfigSection,
     HomebrewSection,
     SystemToolsSection,
     ToolchainsSection,
@@ -52,6 +54,7 @@ def derive_flags(
     claude: ClaudeSection,
     homebrew: HomebrewSection,
     docker: DockerSection,
+    git_config: GitConfigSection,
 ) -> list[Flag]:
     """Derive every at-rest Flag from the Sections, with no external ruleset.
 
@@ -67,6 +70,7 @@ def derive_flags(
         claude: The claude Section (skills, plugins, MCP servers).
         homebrew: The homebrew Section (outdated formulae and casks).
         docker: The docker Section (daemon reachability).
+        git_config: The git-config Section (global gitconfig chain).
 
     Returns:
         The open Flags, per-item first then cross-item, in a stable order.
@@ -77,6 +81,7 @@ def derive_flags(
     flags += _docker_flags(docker)
     flags += _system_flags(system)
     flags += _claude_flags(claude)
+    flags += _git_config_flags(git_config)
     flags += _drift_flags(toolchains, claude)
     return flags
 
@@ -206,6 +211,76 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
     return flags
 
 
+def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
+    """Per-item git-config Flags: conflicts, broken includes, credentials, no identity.
+
+    A single-valued key set to more than one value is a conflict (a multi-valued
+    key holding a list is not); an include pointing at a missing file is broken; a
+    value carrying an embedded credential is a leak risk; and a chain with no
+    ``user.email`` has no committing identity. Each badges the ``git-config``
+    section on the exact key, include path, or identity it concerns.
+    """
+    flags: list[Flag] = []
+
+    # A conflict is a single-valued key a later entry overrides with a different
+    # value. The Collector already marks the earlier entry ``shadowed`` from the
+    # raw values, so two values that both redact to bullets are still caught and
+    # multi-valued keys (which are never shadowed) are already excluded there.
+    conflict_keys: list[str] = []
+    seen_conflicts: set[str] = set()
+    for entry in git_config.entries:
+        if entry.shadowed and entry.key not in seen_conflicts:
+            seen_conflicts.add(entry.key)
+            conflict_keys.append(entry.key)
+    for key in conflict_keys:
+        flags.append(
+            Flag(
+                section="git-config",
+                target=key,
+                level=ATTENTION,
+                code="git-config-conflict",
+                message="set to differing values",
+            )
+        )
+
+    for include in git_config.includes:
+        if not include.exists:
+            flags.append(
+                Flag(
+                    section="git-config",
+                    target=include.path,
+                    level=PROBLEM,
+                    code="git-include-broken",
+                    message="include file not found",
+                )
+            )
+
+    for entry in git_config.entries:
+        if entry.credentials:
+            flags.append(
+                Flag(
+                    section="git-config",
+                    target=entry.key,
+                    level=PROBLEM,
+                    code="git-config-credentials",
+                    message="credentials embedded in value",
+                )
+            )
+
+    if not git_config.identity_present:
+        flags.append(
+            Flag(
+                section="git-config",
+                target="identity",
+                level=ATTENTION,
+                code="git-no-identity",
+                message="no identity in global git config",
+            )
+        )
+
+    return flags
+
+
 def _drift_flags(toolchains: ToolchainsSection, claude: ClaudeSection) -> list[Flag]:
     """Cross-item Flags: drift and shadowing evident only across several rows.
 
@@ -326,6 +401,7 @@ def collect_flags(
     claude = collect_claude(machine, home=home)
     homebrew = collect_homebrew(machine)
     docker = collect_docker(machine)
+    git_config = collect_git_config(machine, home=home)
 
     flags = derive_flags(
         workspace=workspace,
@@ -334,5 +410,6 @@ def collect_flags(
         claude=claude,
         homebrew=homebrew,
         docker=docker,
+        git_config=git_config,
     )
     return FlagsSection(flags=flags)

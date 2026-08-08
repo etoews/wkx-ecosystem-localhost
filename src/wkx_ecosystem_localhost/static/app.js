@@ -317,6 +317,10 @@ window.wkxFlags = (function () {
     "skill-shadow": "Skill name shadowing",
     "mcp-needs-auth": "MCP needs auth",
     "mcp-two-scopes": "MCP in two scopes",
+    "git-config-conflict": "Conflicting git config",
+    "git-include-broken": "Broken git include",
+    "git-config-credentials": "Credentials in git config",
+    "git-no-identity": "No git identity",
   };
   // How to resolve each anomaly — the tooltip a badge carries, so hovering tells
   // you what to do about it rather than restating what it already says.
@@ -336,6 +340,10 @@ window.wkxFlags = (function () {
     "skill-disabled": "Enable it in Claude settings (enabledPlugins) if you want it active.",
     "plugin-disabled": "Enable the plugin in Claude settings (enabledPlugins) to bring it and its skills back.",
     "skill-shadow": "Two origins ship this name — rename or disable one so the reference is unambiguous.",
+    "git-config-conflict": "One key is set to two different values in the chain; git takes the last, so reconcile or remove the duplicate.",
+    "git-include-broken": "The include points at a file that does not exist. Create it, or drop the include directive.",
+    "git-config-credentials": "A credential is embedded in a config value. Move it to a credential helper and remove it from gitconfig.",
+    "git-no-identity": "No global user.email is set. Set one with git config --global user.email you@example.com.",
   };
   const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
@@ -1266,12 +1274,14 @@ window.wkxFlags = (function () {
       specs.push(
         { value: data.containers_running + " / " + data.containers_total, label: "Containers running / total" },
         { value: String(data.images), label: "Images" },
+        { value: data.total_disk != null ? data.total_disk : "unknown", label: "Disk" },
         { value: data.reclaimable != null ? data.reclaimable : "unknown", label: "Reclaimable" },
       );
     } else {
       specs.push(
         { value: "—", label: "Containers" },
         { value: "—", label: "Images" },
+        { value: "—", label: "Disk" },
         { value: "—", label: "Reclaimable" },
       );
     }
@@ -1286,5 +1296,213 @@ window.wkxFlags = (function () {
     .then(render)
     .catch(function () {
       note("Could not load Docker. Check that the board is still running.");
+    });
+})();
+
+// ---------- footprint ----------
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const mount = document.getElementById("footprint");
+  if (!mount) return;
+
+  function note(message) {
+    mount.replaceChildren(U.summaryLine([message]));
+  }
+
+  function sizeCell(value) {
+    return value != null ? U.td(U.el("span", "ver", value), "num") : U.td(U.dash(), "num");
+  }
+
+  function render(data) {
+    const repos = data.repos || [];
+    const dockerDisk = !data.docker_reachable
+      ? "down"
+      : data.docker_total != null
+        ? data.docker_total
+        : "unknown";
+    const dockerRecl =
+      data.docker_reachable && data.docker_reclaimable != null ? data.docker_reclaimable : "—";
+
+    const summary = U.tiles([
+      { value: String(repos.length), label: "Repos measured" },
+      { value: data.repos_total || "0 B", label: "Regenerable" },
+      { value: dockerDisk, label: "Docker disk" },
+      { value: dockerRecl, label: "Docker reclaimable" },
+    ]);
+
+    if (repos.length === 0) {
+      mount.replaceChildren(
+        summary,
+        U.summaryLine(["No .venv or node_modules directories under the scanned repos."]),
+      );
+      return;
+    }
+
+    const built = U.table([
+      { label: "Repo" },
+      { label: ".venv", num: true },
+      { label: "node_modules", num: true },
+      { label: "Total", num: true },
+    ]);
+    repos.forEach(function (repo) {
+      const totalCell = U.td(U.el("span", "ver", repo.total), "num");
+      totalCell.setAttribute("data-sort", String(repo.total_bytes));
+      built.tbody.append(
+        U.tr([U.td(U.el("span", "t-name", repo.path)), sizeCell(repo.venv), sizeCell(repo.node_modules), totalCell]),
+      );
+    });
+
+    mount.replaceChildren(summary, built.wrap);
+  }
+
+  fetch("/api/footprint")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not measure the disk footprint. Check that the board is still running.");
+    });
+})();
+
+// ---------- editor ----------
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const mount = document.getElementById("editor");
+  if (!mount) return;
+
+  function note(message) {
+    mount.replaceChildren(U.summaryLine([message]));
+  }
+
+  function render(data) {
+    if (!data.installed) {
+      note("Visual Studio Code's CLI (code) is not on the path.");
+      return;
+    }
+    const extensions = data.extensions || [];
+    const summary = U.tiles([
+      { value: data.version || "unknown", label: "VS Code" },
+      { value: String(extensions.length), label: "Extensions" },
+    ]);
+    if (extensions.length === 0) {
+      mount.replaceChildren(summary, U.summaryLine(["VS Code is installed but reports no extensions."]));
+      return;
+    }
+    const built = U.table([{ label: "Extension" }, { label: "Version", num: true }]);
+    extensions.forEach(function (ext) {
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", ext.id)),
+          U.td(ext.version ? U.el("span", "ver", ext.version) : U.dash(), "num"),
+        ]),
+      );
+    });
+    mount.replaceChildren(summary, built.wrap);
+  }
+
+  fetch("/api/editor")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not read the editor. Check that the board is still running.");
+    });
+})();
+
+// ---------- git config ----------
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const mount = document.getElementById("git-config");
+  if (!mount) return;
+
+  function note(message) {
+    mount.replaceChildren(U.summaryLine([message]));
+  }
+
+  // Value is already display-ready: a secret-bearing key arrives masked, a URL is
+  // credential-stripped, and home paths are relativised (see ADR 0001). A masked
+  // value reads recessive; a shown one keeps the mono value treatment.
+  function valueCell(entry) {
+    const span = U.el("span", entry.masked ? "q" : "ver", entry.value);
+    if (entry.masked) span.title = "Value hidden: this key can carry a secret.";
+    return U.td(span);
+  }
+
+  function keyCell(entry) {
+    const cell = U.td(U.el("span", "t-name", entry.key));
+    if (entry.shadowed) {
+      U.append(cell, U.el("span", "q", " · shadowed"));
+      cell.title = "A later entry sets this key to a different value; git takes the last, so this one has no effect.";
+    }
+    return cell;
+  }
+
+  function render(data) {
+    const entries = data.entries || [];
+    const includes = data.includes || [];
+
+    const summary = U.tiles([
+      { value: String(entries.length), label: "Keys" },
+      { value: String(includes.length), label: "Includes" },
+      { value: data.identity_present ? "set" : "not set", label: "Identity", flagKey: "git-config:identity" },
+    ]);
+
+    if (entries.length === 0 && includes.length === 0) {
+      mount.replaceChildren(summary, U.summaryLine(["No global git config found on this machine."]));
+      return;
+    }
+
+    const nodes = [summary];
+
+    if (entries.length > 0) {
+      nodes.push(U.el("p", "sub-head", "Config (" + entries.length + ")"));
+      const built = U.table([{ label: "Key" }, { label: "Value" }, { label: "Origin" }, { label: "Flags" }]);
+      entries.forEach(function (entry) {
+        built.tbody.append(
+          U.tr([keyCell(entry), valueCell(entry), U.td(U.el("span", "q", entry.origin)), U.flagsTd("", "git-config:" + entry.key)]),
+        );
+      });
+      nodes.push(built.wrap);
+    }
+
+    if (includes.length > 0) {
+      nodes.push(U.el("p", "sub-head", "Includes (" + includes.length + ")"));
+      const built = U.table([{ label: "Condition" }, { label: "Path" }, { label: "State" }]);
+      includes.forEach(function (inc) {
+        const status = inc.exists
+          ? U.flagsTd(U.ok("found"), "git-config:" + inc.path)
+          : U.flagsTd(U.el("span", "q", "missing"), "git-config:" + inc.path);
+        built.tbody.append(
+          U.tr([
+            U.td(inc.condition ? U.el("span", "ver", inc.condition) : U.quiet("always")),
+            U.td(U.el("span", "t-name", inc.path)),
+            status,
+          ]),
+        );
+      });
+      nodes.push(built.wrap);
+    }
+
+    mount.replaceChildren.apply(mount, nodes);
+  }
+
+  fetch("/api/git-config")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not read the git config. Check that the board is still running.");
     });
 })();
