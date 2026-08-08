@@ -37,7 +37,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M5: Homebrew + Docker](#m5-homebrew--docker) | S | ✅ Complete |
 | [M6: Flag layer](#m6-flag-layer) | M | ✅ Complete |
 | [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
-| [M8: Token-highlighting](#m8-token-highlighting) | M | ⬜ Deferred |
+| [M8: Token-highlighting](#m8-token-highlighting) | M | ✅ Complete |
 | [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
 | [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
 
@@ -178,16 +178,16 @@ a tool, or a version reads across the whole board at a glance. A pure UI
 interaction, with no Collector, no new API, and no CONTEXT.md term.
 
 **Deliverables**
-- [ ] Tokens are curated: a repo name, a tool name, or a version string. Incidental strings (branches, origins, paths) are not tokens.
-- [ ] Two cells match when they share a kind and an identical value: `3.14.4` lights other `3.14.4`, `3.14` does not match `3.14.4`, and there is no semver interpretation. Real divergence is already the drift Flags' job.
-- [ ] Hover or keyboard-focus lights the matches; click, Enter, or Space pins the highlight so it survives the pointer leaving; Esc or a click on empty space releases it.
-- [ ] Highlighting reaches the whole board, so a value recurring across Sections (a repo in workspace and footprint, a version in toolchains and system) lights up everywhere it appears.
-- [ ] The matches take the reserved `--match` colour as a highlighter background, the pinned or hovered one a touch stronger. All other colour stays with the Flag layer, and reduced motion is respected.
-- [ ] Tokens are tagged client-side over the rendered cells; no Collector or model changes.
+- [x] Tokens are curated: a repo name, a tool name, or a version string. Incidental strings (branches, origins, paths) are not tokens.
+- [x] Two cells match when they share a kind and an identical value: `3.14.4` lights other `3.14.4`, `3.14` does not match `3.14.4`, and there is no semver interpretation. Real divergence is already the drift Flags' job.
+- [x] Hover or keyboard-focus lights the matches; click, Enter, or Space pins the highlight so it survives the pointer leaving; Esc or a click on empty space releases it.
+- [x] Highlighting reaches the whole board, so a value recurring across Sections (a repo in workspace and footprint, a version in toolchains and system) lights up everywhere it appears.
+- [x] The matches take the reserved `--match` colour as a highlighter background, the pinned or hovered one a touch stronger. All other colour stays with the Flag layer, and reduced motion is respected.
+- [x] Tokens are tagged client-side over the rendered cells; no Collector or model changes.
 
 **Hands-on artefact**
-- [ ] Hover a version several repos share; every matching cell lights up across panels. Click to pin it, move away, and it stays lit; Esc clears it.
-- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+- [x] Hover a version several repos share; every matching cell lights up across panels. Click to pin it, move away, and it stays lit; Esc clears it.
+- [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 
