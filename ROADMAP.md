@@ -152,12 +152,21 @@ The tracer bullet: one Collector wired end-to-end (Collector → pydantic model 
 
 ## M7: Deferred additions
 
-The single bundled roadmap item for the remaining resources.
+The single bundled roadmap item for the remaining resources: disk footprint,
+editor, and the git config inventory. Three new panels under the system
+Section; no new Section.
 
 **Deliverables**
-- [ ] Dev disk footprint (`.venv`s, `node_modules`, Docker disk).
-- [ ] Editor: VS Code + installed extensions.
-- [ ] Git config inventory. Display git config in a human readable way and look for conflicting config or misconfig.
+- [ ] Dev disk footprint: `.venv` and `node_modules` sizes for each discovered repo, per-repo rows plus a total, and Docker disk as total and reclaimable. Sizing via `du` through the Machine seam, synchronous with a cache. The Docker figures reuse the M5 probe, extended to retain the totals it currently discards. No footprint Flags; sizes are facts, thresholds would be a ruleset.
+- [ ] Editor: VS Code presence and version, plus the installed extensions as a full list with versions, count in the panel heading.
+- [ ] Git config inventory: the global gitconfig and any config files it points to via include/includeIf, displayed human readably with each key's origin file. Values shown allow-by-default with a targeted redaction pass; secret-bearing families masked, credentials stripped from URL-shaped values, `user.email` masked as in M1. The divergence from M1's whitelist posture is recorded in an ADR.
+- [ ] Git config Flags: conflicting config (same key defined more than once across the chain with different values, amber), broken include (red), embedded credentials in a value (red), no identity in the global config (amber).
+- [ ] Collectors stay pure functions over synthetic fixtures in tests (no captured machine data).
+
+**Hands-on artefact**
+- [ ] Footprint, Editor, and Git config panels populate for the real machine.
+- [ ] Add a conflicting key to an included gitconfig file → the amber flag appears and the Needs attention tally increments.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 
