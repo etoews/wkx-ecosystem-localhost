@@ -374,6 +374,30 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 .flag--problem::before,
 .lvl--problem::before { border-radius: 1px; }
 
+/* ---------- token highlight (M8) ----------
+ * The board's one interactive accent, and the sole use of --match. Hover or
+ * keyboard-focus a repo name, a tool name, or a version and every cell holding
+ * that exact same-kind value lights across the whole board. It reads as a
+ * highlighter swipe laid behind the text, a translucent wash so the mono value
+ * stays legible, bled a couple of pixels past the glyphs by a matching
+ * box-shadow so it sits like marker ink rather than a selected table cell. The
+ * hovered or focused origin takes a stronger wash than its echoes. The amber/red
+ * Flag layer is untouched, and no other colour is introduced. A token cell is
+ * inert until lit, so the board stays quiet; the small transition is stilled by
+ * the reduced-motion rule below. */
+[data-token-kind] {
+  border-radius: 3px;
+  transition: background-color .12s ease, box-shadow .12s ease;
+}
+.tok-match {
+  background-color: color-mix(in srgb, var(--match) 26%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--match) 26%, transparent);
+}
+.tok-origin {
+  background-color: color-mix(in srgb, var(--match) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--match) 45%, transparent);
+}
+
 footer {
   padding-top: 1.5rem;
   font-family: var(--mono);

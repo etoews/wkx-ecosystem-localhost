@@ -195,6 +195,18 @@ window.wkxUI = (function () {
     return cell;
   }
 
+  // A token cell's inner span: a repo name, a tool name, or a version, tagged
+  // with its (kind, value) identity so the M8 token layer can light every cell
+  // that shares it across the whole board. className keeps the span's existing
+  // treatment (t-name, ver); only curated cells become tokens, so branches,
+  // origins, paths, and config values are built with plain el() and stay inert.
+  function token(kind, value, className) {
+    const node = el("span", className, value);
+    node.dataset.tokenKind = kind;
+    node.dataset.tokenValue = value == null ? "" : String(value);
+    return node;
+  }
+
   // The in-cell flex line: chips or badges laid out with a shared gap INSIDE a
   // cell. The flex lives on this inner span, never on the td itself — a td
   // displayed as anything but table-cell falls out of the table model: its row
@@ -269,6 +281,7 @@ window.wkxUI = (function () {
     append: append,
     table: table,
     td: td,
+    token: token,
     cellFlex: cellFlex,
     flagsTd: flagsTd,
     tr: tr,
@@ -519,6 +532,86 @@ window.wkxFlags = (function () {
   return api;
 })();
 
+// ---------- token highlight (M8) ----------
+// The board's one interactive accent. Hovering or keyboard-focusing a repo name,
+// a tool name, or a version lights every cell holding that exact same-kind value,
+// across the whole board, in the reserved --match colour. Matching is exact and
+// same-kind, so "3.14.4" lights other "3.14.4" while "3.14" does not, with no
+// semver reading. Real divergence is already the drift Flags' job. Cells stamp
+// their (kind, value) identity at construction (wkxUI.token); this layer prepares
+// each one to take keyboard focus and, like the Flag layer, re-decorates as panels
+// render and SSE fields land, so a late value is still highlightable. The
+// highlight is transient, clearing when the pointer or focus moves away. Pinning
+// it in place is the next milestone.
+window.wkxTokens = (function () {
+  "use strict";
+
+  const board = document.querySelector(".board");
+  if (!board) return { decorate: function () {} };
+
+  const TOKEN = "[data-token-kind]";
+  let lit = [];
+
+  // Identity is stamped at construction; this only wires each token cell to take
+  // keyboard focus so a focus lights its matches. It runs again as new cells
+  // render (MutationObserver) and touches only cells not yet prepared, so it is
+  // cheap and idempotent. It sets attributes, never appends children, so it can
+  // never retrigger the childList observer.
+  function decorate() {
+    board.querySelectorAll(TOKEN + ":not([data-token-ready])").forEach(function (node) {
+      node.dataset.tokenReady = "1";
+      node.tabIndex = 0;
+    });
+  }
+
+  function clear() {
+    lit.forEach(function (node) {
+      node.classList.remove("tok-match", "tok-origin");
+    });
+    lit = [];
+  }
+
+  function light(origin) {
+    const kind = origin.dataset.tokenKind;
+    const value = origin.dataset.tokenValue;
+    if (kind == null || value == null) return;
+    clear();
+    board.querySelectorAll(TOKEN).forEach(function (node) {
+      if (node.dataset.tokenKind === kind && node.dataset.tokenValue === value) {
+        node.classList.add("tok-match");
+        lit.push(node);
+      }
+    });
+    origin.classList.add("tok-origin");
+  }
+
+  function tokenAt(target) {
+    return target && target.closest ? target.closest(TOKEN) : null;
+  }
+
+  // Delegate on the board so late-rendered cells are covered without rebinding.
+  // Leaving a token clears; moving straight onto another re-lights on its enter.
+  board.addEventListener("mouseover", function (event) {
+    const origin = tokenAt(event.target);
+    if (origin) light(origin);
+  });
+  board.addEventListener("mouseout", function (event) {
+    if (tokenAt(event.target)) clear();
+  });
+  board.addEventListener("focusin", function (event) {
+    const origin = tokenAt(event.target);
+    if (origin) light(origin);
+  });
+  board.addEventListener("focusout", function (event) {
+    if (tokenAt(event.target)) clear();
+  });
+
+  new MutationObserver(decorate).observe(board, { childList: true, subtree: true });
+  decorate();
+
+  return { decorate: decorate };
+})();
+
 // ---------- workspace (with submodules nested under their repo) ----------
 (function () {
   "use strict";
@@ -568,7 +661,7 @@ window.wkxFlags = (function () {
     behind.setAttribute("data-sort", "");
     abCells.set(repo.path, { ahead: ahead, behind: behind });
     return U.tr([
-      U.td(U.el("span", "t-name", repo.name)),
+      U.td(U.token("repo", repo.name, "t-name")),
       branchCell(repo),
       U.td(repo.upstream ? U.el("span", "q", repo.upstream) : U.dash()),
       ahead,
@@ -593,7 +686,7 @@ window.wkxFlags = (function () {
     // columns it has no values for. The in-cell line is the flag host, so a
     // "releases behind" badge lands inline at the end of the line.
     const lead = U.el("span", "sub-lead", sub.name);
-    const pinned = subPart("pinned", sub.pinned ? U.el("span", "ver", sub.pinned) : U.quiet("untagged"));
+    const pinned = subPart("pinned", sub.pinned ? U.token("version", sub.pinned, "ver") : U.quiet("untagged"));
     const latest = subPart("latest", U.quiet("listing…"));
     const behind = U.el("span", "sub-part sub-status");
     behind.append(U.dash());
@@ -675,7 +768,7 @@ window.wkxFlags = (function () {
   }
 
   function setLatest(cell, value, muted) {
-    cell.replaceChildren(U.el("span", "q", "latest "), muted ? U.quiet(value) : U.el("span", "ver", value));
+    cell.replaceChildren(U.el("span", "q", "latest "), muted ? U.quiet(value) : U.token("version", value, "ver"));
   }
 
   function fillSubmodule(event) {
@@ -833,11 +926,11 @@ window.wkxFlags = (function () {
   function subHead(text) {
     return U.el("p", "sub-head", text);
   }
-  function nameCell(text) {
-    return U.td(U.el("span", "t-name", text));
+  function nameCell(text, kind) {
+    return U.td(U.token(kind, text, "t-name"));
   }
   function verCell(text) {
-    return U.td(text ? U.el("span", "ver", text) : U.dash());
+    return U.td(text ? U.token("version", text, "ver") : U.dash());
   }
 
   function interpreterTable(python) {
@@ -845,7 +938,7 @@ window.wkxFlags = (function () {
     python.interpreters.forEach(function (interp) {
       built.tbody.append(
         U.tr([
-          nameCell(interp.implementation),
+          nameCell(interp.implementation, "tool"),
           verCell(interp.version),
           U.td(U.quiet("uv-managed")),
           U.td(interp.installed ? U.ok("installed") : U.quiet("not installed")),
@@ -861,7 +954,7 @@ window.wkxFlags = (function () {
       const matches = pin.version === python.global_pin;
       const state = U.flagsTd(U.quiet(matches ? "matches global" : "differs from global"), "toolchains:pin:" + pin.repo);
       built.tbody.append(
-        U.tr([nameCell(base(pin.repo)), verCell(pin.version), U.td(U.quiet("global " + (python.global_pin || "unset"))), state]),
+        U.tr([nameCell(base(pin.repo), "repo"), verCell(pin.version), U.td(U.quiet("global " + (python.global_pin || "unset"))), state]),
       );
     });
     return built.wrap;
@@ -885,7 +978,7 @@ window.wkxFlags = (function () {
       if (!tool.present && pair[0] === "tsc") {
         stateCell.title = "Install TypeScript globally (npm i -g typescript), or rely on each repo's local tsc.";
       }
-      built.tbody.append(U.tr([nameCell(pair[0]), verCell(tool.version), U.td(U.quiet(roles[pair[0]] || "package manager")), stateCell]));
+      built.tbody.append(U.tr([nameCell(pair[0], "tool"), verCell(tool.version), U.td(U.quiet(roles[pair[0]] || "package manager")), stateCell]));
     });
     return built.wrap;
   }
@@ -898,7 +991,7 @@ window.wkxFlags = (function () {
       if (!installed) state.title = "Install the declared TypeScript: run npm install in the repo.";
       built.tbody.append(
         U.tr([
-          nameCell(base(repo.repo)),
+          nameCell(base(repo.repo), "repo"),
           verCell(installed),
           U.td(U.quiet("declared " + (repo.declared || "none"))),
           state,
@@ -1015,7 +1108,7 @@ window.wkxFlags = (function () {
         nameCell,
         U.td(plugin.marketplace, "q"),
         U.td(plugin.repo ? plugin.repo : U.dash(), "q"),
-        U.td(plugin.version === "unknown" ? U.quiet("unknown") : U.el("span", "ver", plugin.version)),
+        U.td(plugin.version === "unknown" ? U.quiet("unknown") : U.token("version", plugin.version, "ver")),
         state,
         countCell,
       ]);
@@ -1157,9 +1250,9 @@ window.wkxFlags = (function () {
     const built = U.table([{ label: "Tool" }, { label: "Version" }, { label: "Flags" }]);
     tools.forEach(function (tool) {
       const flags = U.flagsTd("", "system:" + tool.name);
-      const versionCell = U.td(tool.present && tool.version ? U.el("span", "ver", tool.version) : U.dash());
+      const versionCell = U.td(tool.present && tool.version ? U.token("version", tool.version, "ver") : U.dash());
       if (!tool.present) versionCell.title = "Install it: brew install " + tool.name + " (or uv tool install " + tool.name + ").";
-      built.tbody.append(U.tr([U.td(U.el("span", "t-name", tool.name)), versionCell, flags]));
+      built.tbody.append(U.tr([U.td(U.token("tool", tool.name, "t-name")), versionCell, flags]));
     });
 
     mount.replaceChildren(summary, built.wrap);
@@ -1204,7 +1297,7 @@ window.wkxFlags = (function () {
       const flags = U.flagsTd("", "homebrew:" + kind + ":" + pkg.name);
       built.tbody.append(
         U.tr([
-          U.td(U.el("span", "t-name", pkg.name)),
+          U.td(U.token("tool", pkg.name, "t-name")),
           U.td(U.el("span", "from", pkg.installed || "—")),
           U.td(U.el("span", "to", pkg.current || "—")),
           flags,
@@ -1399,7 +1492,7 @@ window.wkxFlags = (function () {
       built.tbody.append(
         U.tr([
           U.td(U.el("span", "t-name", ext.id)),
-          U.td(ext.version ? U.el("span", "ver", ext.version) : U.dash(), "num"),
+          U.td(ext.version ? U.token("version", ext.version, "ver") : U.dash(), "num"),
         ]),
       );
     });
