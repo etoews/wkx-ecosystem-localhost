@@ -45,6 +45,19 @@ def test_submodules_endpoint_returns_pins_without_the_remote_truth(
     assert widgets["behind"] is None
 
 
+def test_submodules_link_a_github_remote_and_leave_a_non_github_one_unlinked(
+    submodule_client: TestClient,
+) -> None:
+    body = submodule_client.get("/api/submodules").json()
+    by_path = {sub["path"]: sub for sub in body["submodules"]}
+
+    # widgets' remote is on GitHub, so it earns a link exposing only owner and
+    # repo; kit and the unreachable submodule are non-GitHub, so they earn none.
+    assert by_path["~/dev/acme/app/libs/widgets"]["github"] == "https://github.com/acme/widgets"
+    assert by_path["~/dev/acme/app/tools/kit"]["github"] is None
+    assert by_path["~/dev/acme/api/vendor/remote-gone"]["github"] is None
+
+
 def test_probe_stream_is_served_as_an_event_stream(submodule_client: TestClient) -> None:
     response = submodule_client.get("/api/submodules/probe")
 

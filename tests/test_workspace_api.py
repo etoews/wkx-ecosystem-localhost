@@ -71,6 +71,24 @@ def test_workspace_strips_remote_credentials(workspace_client: TestClient) -> No
     assert remote["raw"] is None
 
 
+def test_workspace_links_a_github_repo_and_leaves_a_non_github_repo_unlinked(
+    workspace_client: TestClient,
+) -> None:
+    repos = _repos_by_name(workspace_client)
+
+    # web's origin is a (tokened) GitHub remote, so it earns a link exposing only
+    # owner and repo; api's origin is a non-GitHub host, so it earns none.
+    assert repos["web"]["github"] == "https://github.com/ada/analytical-engine"
+    assert repos["api"]["github"] is None
+
+
+def test_workspace_github_link_carries_no_credential(workspace_client: TestClient) -> None:
+    web = _repos_by_name(workspace_client)["web"]
+
+    assert web["github"] is not None
+    assert fixtures.SECRET_TOKEN not in web["github"]
+
+
 def test_workspace_response_leaks_no_token_or_key_material(workspace_client: TestClient) -> None:
     raw_body = workspace_client.get("/api/workspace").text
 

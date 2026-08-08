@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from wkx_ecosystem_localhost.github import github_link
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import ConfigEntry, Repo, WorkspaceSection
 from wkx_ecosystem_localhost.redaction import (
@@ -67,6 +68,7 @@ _SAFE_CONFIG_KEYS = frozenset(
 )
 
 _REMOTE_URL_KEY = re.compile(r"^remote\..+\.url$")
+_ORIGIN_URL_KEY = "remote.origin.url"
 
 _HEAD_PREFIX = "# branch.head "
 _OID_PREFIX = "# branch.oid "
@@ -217,6 +219,30 @@ def parse_config(text: str) -> list[ConfigEntry]:
     return entries
 
 
+def primary_remote_url(config: list[ConfigEntry]) -> str | None:
+    """Pick the repo's primary remote URL from its whitelisted config entries.
+
+    ``remote.origin.url`` is the primary remote when present; otherwise the first
+    ``remote.*.url`` in config order stands in, so a repo whose sole remote is not
+    named ``origin`` still resolves. The value returned is already
+    credential-stripped, since that is how a remote URL reaches a ``ConfigEntry``.
+
+    Args:
+        config: The whitelisted, redacted config entries from ``parse_config``.
+
+    Returns:
+        The primary remote URL, or None when the repo declares no remote.
+    """
+    first: str | None = None
+    for entry in config:
+        if _REMOTE_URL_KEY.match(entry.key):
+            if entry.key == _ORIGIN_URL_KEY:
+                return entry.value
+            if first is None:
+                first = entry.value
+    return first
+
+
 def _redact_config_paths(entries: list[ConfigEntry], home: Path) -> list[ConfigEntry]:
     """Rewrite any home path embedded in a whitelisted config value to ``~``.
 
@@ -273,6 +299,7 @@ def collect_repo(
         _redact_config_paths(parse_config(config_result.stdout), home) if config_result.ok else []
     )
 
+    primary_remote = primary_remote_url(config)
     dirty = bool(status.staged or status.unstaged or status.untracked or status.unmerged)
     return Repo(
         name=repo_path.name,
@@ -288,6 +315,7 @@ def collect_repo(
         dirty=dirty,
         ahead=None,
         behind=None,
+        github=github_link(primary_remote) if primary_remote else None,
         config=config,
     )
 

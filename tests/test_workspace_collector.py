@@ -42,3 +42,42 @@ def test_collect_repo_relativises_a_home_path_in_a_config_value() -> None:
     editor = next(entry for entry in repo.config if entry.key == "core.editor")
 
     assert editor.value == "~/dev/tools/edit --wait"
+
+
+def test_collect_repo_derives_the_github_link_from_the_origin_remote() -> None:
+    config = "local\tremote.origin.url=git@github.com:ada/analytical-engine.git\n"
+    machine = FakeMachine(commands={(REPO, CONFIG_ARGV): CommandResult(0, config, "")})
+
+    repo = collect_repo(machine, REPO, home=HOME)
+
+    assert repo.github == "https://github.com/ada/analytical-engine"
+
+
+def test_collect_repo_leaves_a_non_github_remote_unlinked() -> None:
+    config = "local\tremote.origin.url=https://gitlab.com/ada/engine.git\n"
+    machine = FakeMachine(commands={(REPO, CONFIG_ARGV): CommandResult(0, config, "")})
+
+    repo = collect_repo(machine, REPO, home=HOME)
+
+    assert repo.github is None
+
+
+def test_collect_repo_has_no_github_link_without_a_remote() -> None:
+    # No config command registered: the fake returns non-zero, so config is empty
+    # and there is no remote to derive a link from.
+    repo = collect_repo(FakeMachine(), REPO, home=HOME)
+
+    assert repo.github is None
+
+
+def test_collect_repo_prefers_origin_over_another_remote_for_the_link() -> None:
+    config = (
+        "local\tremote.upstream.url=https://gitlab.com/ada/fork.git\n"
+        "local\tremote.origin.url=https://github.com/ada/engine.git\n"
+    )
+    machine = FakeMachine(commands={(REPO, CONFIG_ARGV): CommandResult(0, config, "")})
+
+    repo = collect_repo(machine, REPO, home=HOME)
+
+    # origin wins even though it is listed after upstream.
+    assert repo.github == "https://github.com/ada/engine"

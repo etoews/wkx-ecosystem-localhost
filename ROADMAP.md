@@ -201,7 +201,7 @@ board's first outbound non-git network call (see [ADR 0002](docs/adr/0002-github
 request is a bounded read.
 
 **Deliverables**
-- [ ] A clickable link to the GitHub repository on every GitHub-hosted item: each discovered repo and each submodule. The link is derived from the primary remote, and a non-GitHub remote gets none. It exposes only the owner and repo, which M1 already shows credential-stripped, so "redact remotes by default" still holds.
+- [x] A clickable link to the GitHub repository on every GitHub-hosted item: each discovered repo and each submodule. The link is derived from the primary remote, and a non-GitHub remote gets none. It exposes only the owner and repo, which M1 already shows credential-stripped, so "redact remotes by default" still holds.
 - [ ] Submodule "latest release", token-free: a bounded `curl` through the Machine seam reads the redirect of `https://github.com/<owner>/<repo>/releases/latest` to learn the release tag GitHub blesses. No token, no `SecretStr`, no authenticated API.
 - [ ] The tag-based "latest" and the "N behind" count stay as they are, from `git ls-remote`. The GitHub release augments them only when it differs from the highest semver tag, shown labelled so both the tag and the release are legible. Usually they agree; the mismatch is the uncommon case worth surfacing.
 - [ ] The release fetch rides the existing submodule SSE probe and degrades gracefully: an unreachable, rate-limited, or release-less repo falls back to the tag-based latest, never an error. Non-GitHub submodules stay tag-based.
@@ -210,7 +210,7 @@ request is a bounded read.
 
 **Hands-on artefact**
 - [ ] A submodule whose GitHub release differs from its highest tag shows both, labelled; one whose release matches shows just the tag.
-- [ ] Every GitHub repo and submodule carries a working link to its repository; a non-GitHub one carries none.
+- [x] Every GitHub repo and submodule carries a working link to its repository; a non-GitHub one carries none.
 - [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---

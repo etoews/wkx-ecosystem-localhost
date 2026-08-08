@@ -119,6 +119,10 @@ CONFIG_MIXED = (
 # The token that must never survive redaction, for a "no leak" assertion.
 SECRET_TOKEN = "ghp_secrettoken"
 
+# A repo whose sole remote is not on GitHub: it earns no repository link, so the
+# workspace contract can assert a link present for a GitHub repo and absent here.
+CONFIG_NON_GITHUB = "local\tremote.origin.url=https://gitlab.com/acme/api.git\n"
+
 # git rev-list --left-right --count @{upstream}...HEAD output: "<behind>\t<ahead>".
 # web sits 1 behind and 3 ahead of its upstream after the fetch.
 AHEAD_BEHIND_WEB = "1\t3\n"
@@ -138,9 +142,9 @@ def build_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine, its home, and its scan roots for the API tests.
 
     Two repos under ``~/dev/acme``: ``web`` is dirty on a tracked branch with a
-    stash and a tokened remote (exercising redaction); ``api`` is detached and
-    otherwise quiet. Returns the machine plus the home and roots to construct the
-    app with.
+    stash and a tokened GitHub remote (exercising redaction and earning a
+    repository link); ``api`` is detached with a non-GitHub remote, so it earns no
+    link. Returns the machine plus the home and roots to construct the app with.
     """
     machine = FakeMachine(
         dirs={DEV, DEV / "acme", WEB, API},
@@ -151,7 +155,7 @@ def build_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (WEB, CONFIG_ARGV): _ok(CONFIG_MIXED),
             (API, STATUS_ARGV): _ok(STATUS_DETACHED),
             (API, STASH_ARGV): _ok(STASH_EMPTY),
-            (API, CONFIG_ARGV): _ok(""),
+            (API, CONFIG_ARGV): _ok(CONFIG_NON_GITHUB),
         },
     )
     return machine, HOME, [DEV]
@@ -162,10 +166,11 @@ def build_workspace() -> tuple[FakeMachine, Path, list[Path]]:
 
 APP = DEV / "acme" / "app"
 
-# APP's two submodules and their remote urls.
+# APP's two submodules and their remote urls. widgets sits on a GitHub remote so
+# it earns a repository link; kit sits on a non-GitHub host so it earns none.
 WIDGETS = APP / "libs" / "widgets"
 KIT = APP / "tools" / "kit"
-WIDGETS_URL = "https://example.com/acme/widgets.git"
+WIDGETS_URL = "https://github.com/acme/widgets.git"
 KIT_URL = "https://example.com/acme/kit.git"
 
 # API's one submodule, whose remote cannot be reached (no ls-remote registered).
@@ -210,8 +215,10 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     stable releases beyond it (latest 2.0.0, two behind, the trailing pre-release
     excluded), and ``tools/kit`` is pinned on the highest v-prefixed tag (latest
     v3.1.0, nothing behind). ``api`` has one submodule whose remote cannot be
-    reached, so it lands unknown. Returns the machine plus the home and roots to
-    construct the app with.
+    reached, so it lands unknown. ``widgets`` is a GitHub remote so it earns a
+    repository link; ``kit`` and the unreachable submodule are non-GitHub so they
+    earn none. Returns the machine plus the home and roots to construct the app
+    with.
     """
     machine = FakeMachine(
         dirs={DEV, DEV / "acme", APP, API, WIDGETS, KIT, GONE},

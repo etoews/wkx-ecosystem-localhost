@@ -78,6 +78,19 @@ def test_collect_submodules_pins_but_leaves_the_remote_truth_pending() -> None:
     assert widgets.behind is None
 
 
+def test_collect_submodules_links_github_remotes_only() -> None:
+    machine, home, _roots = fixtures.build_submodule_workspace()
+
+    section = collect_submodules(machine, [fixtures.APP, fixtures.API], home=home)
+
+    by_name = {sub.name: sub for sub in section.submodules}
+    # widgets is a GitHub remote, so it earns a link exposing only owner and repo;
+    # kit and the unreachable submodule are non-GitHub, so they earn none.
+    assert by_name["libs/widgets"].github == "https://github.com/acme/widgets"
+    assert by_name["tools/kit"].github is None
+    assert by_name["vendor/remote-gone"].github is None
+
+
 def test_stream_yields_one_event_per_submodule_keyed_by_path() -> None:
     machine, home, _ = fixtures.build_submodule_workspace()
 

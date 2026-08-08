@@ -32,6 +32,10 @@ class Repo(BaseModel):
     ``branch`` and ``detached_sha`` are mutually exclusive: a repo is either on a
     branch or detached at a short SHA. ``ahead`` and ``behind`` stay None until
     the background fetch lands in M2; the board renders that as "pending".
+    ``github`` is the ``https://github.com/owner/repo`` link derived from the
+    primary remote (preferring ``remote.origin.url``), or None when that remote is
+    not a GitHub remote. Like every remote fact it exposes only owner and repo,
+    never a credential.
     """
 
     name: str
@@ -47,6 +51,7 @@ class Repo(BaseModel):
     dirty: bool
     ahead: int | None = None
     behind: int | None = None
+    github: str | None = None
     config: list[ConfigEntry]
 
 
@@ -67,7 +72,9 @@ class Submodule(BaseModel):
     "pending". ``latest`` is the highest stable remote release and ``behind`` is
     how many releases the pinned commit sits below it. ``unknown`` is True when
     the remote could not be listed at all, so the row shows a labelled unknown
-    state rather than an invented count.
+    state rather than an invented count. ``github`` is the
+    ``https://github.com/owner/repo`` link derived from the submodule's remote, or
+    None when that remote is not a GitHub remote; it exposes only owner and repo.
     """
 
     name: str
@@ -77,6 +84,7 @@ class Submodule(BaseModel):
     latest: str | None = None
     behind: int | None = None
     unknown: bool = False
+    github: str | None = None
 
 
 class SubmoduleSection(BaseModel):

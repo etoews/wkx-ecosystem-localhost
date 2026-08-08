@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from wkx_ecosystem_localhost.github import github_link
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import Submodule, SubmoduleEvent, SubmoduleSection
 from wkx_ecosystem_localhost.redaction import relativise
@@ -257,6 +258,7 @@ def collect_submodules(
             repo=relativise(spec.repo_path, home),
             path=relativise(spec.abs_path, home),
             pinned=spec.pinned,
+            github=github_link(spec.url),
         )
         for spec in specs
     ]

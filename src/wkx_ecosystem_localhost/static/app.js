@@ -732,6 +732,20 @@ window.wkxTokens = (function () {
     return U.cellFlex(chips);
   }
 
+  // A small, unobtrusive link to a GitHub-hosted item's repository. Only owner
+  // and repo ever reach the href, derived credential-stripped on the backend, so
+  // the link is safe to show and to share in a screenshot. A non-GitHub item is
+  // never passed one, so it shows no link at all.
+  function githubLink(href) {
+    const link = el("a", "gh-link", "↗");
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.title = "Open on GitHub: " + href;
+    link.setAttribute("aria-label", "Open on GitHub: " + href);
+    return link;
+  }
+
   function repoRow(repo) {
     const flags = U.flagsTd("", "workspace:" + repo.path);
     const ahead = U.td(U.quiet("···"), "num");
@@ -739,8 +753,10 @@ window.wkxTokens = (function () {
     ahead.setAttribute("data-sort", "");
     behind.setAttribute("data-sort", "");
     abCells.set(repo.path, { ahead: ahead, behind: behind });
+    const name = U.token("repo", repo.name, "t-name");
+    const nameCell = repo.github ? U.td([name, " ", githubLink(repo.github)]) : U.td(name);
     return U.tr([
-      U.td(U.token("repo", repo.name, "t-name")),
+      nameCell,
       branchCell(repo),
       U.td(repo.upstream ? U.el("span", "q", repo.upstream) : U.dash()),
       ahead,
@@ -772,7 +788,10 @@ window.wkxTokens = (function () {
 
     smRows.set(sub.path, { latest: latest, behind: behind });
 
-    const cell = U.flagsTd([lead, sep(), pinned, sep(), latest, sep(), behind], "submodules:" + sub.path, "sub-cell");
+    const parts = [lead];
+    if (sub.github) parts.push(sep(), githubLink(sub.github));
+    parts.push(sep(), pinned, sep(), latest, sep(), behind);
+    const cell = U.flagsTd(parts, "submodules:" + sub.path, "sub-cell");
     cell.colSpan = 8;
     const row = U.el("tr", "subrow");
     row.append(cell);
