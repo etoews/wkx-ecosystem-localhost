@@ -159,7 +159,7 @@ Section; no new Section.
 **Deliverables**
 - [ ] Dev disk footprint: `.venv` and `node_modules` sizes for each discovered repo, per-repo rows plus a total, and Docker disk as total and reclaimable. Sizing via `du` through the Machine seam, synchronous with a cache. The Docker figures reuse the M5 probe, extended to retain the totals it currently discards. No footprint Flags; sizes are facts, thresholds would be a ruleset.
 - [ ] Editor: VS Code presence and version, plus the installed extensions as a full list with versions, count in the panel heading.
-- [ ] Git config inventory: the global gitconfig and any config files it points to via include/includeIf, displayed human readably with each key's origin file. Values shown allow-by-default with a targeted redaction pass; secret-bearing families masked, credentials stripped from URL-shaped values, `user.email` masked as in M1. The divergence from M1's whitelist posture is recorded in an ADR.
+- [ ] Git config inventory: the global gitconfig and any config files it points to via include/includeIf, displayed human readably with each key's origin file. Values shown allow-by-default with a targeted redaction pass; secret-bearing families masked, credentials stripped from URL-shaped values, `user.email` unmasked. The divergence from M1's whitelist posture is recorded in an ADR.
 - [ ] Git config Flags: conflicting config (same key defined more than once across the chain with different values, amber), broken include (red), embedded credentials in a value (red), no identity in the global config (amber).
 - [ ] Collectors stay pure functions over synthetic fixtures in tests (no captured machine data).
 
