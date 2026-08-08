@@ -540,9 +540,18 @@ window.wkxFlags = (function () {
 // semver reading. Real divergence is already the drift Flags' job. Cells stamp
 // their (kind, value) identity at construction (wkxUI.token); this layer prepares
 // each one to take keyboard focus and, like the Flag layer, re-decorates as panels
-// render and SSE fields land, so a late value is still highlightable. The
-// highlight is transient, clearing when the pointer or focus moves away. Pinning
-// it in place is the next milestone.
+// render and SSE fields land, so a late value is still highlightable.
+//
+// The highlight has two states. Hover or focus lights it transiently, clearing as
+// the pointer or focus moves away. A click, or Enter/Space on a focused token,
+// PINS it: the origin takes a committed treatment (a crisp --match ring on top of
+// the wash) and the highlight persists after the pointer leaves, so a value can be
+// compared across panels hands-free. Esc, or a click on empty space, releases the
+// pin. A pinned token reports its state to assistive tech as a pressed toggle
+// button. The pin gesture cooperates with cells already wired to a click
+// (expandable plugin rows, sortable headers): a token click stops there and pins
+// rather than also toggling the cell underneath it, and a click that lands on
+// another interactive cell keeps the pin rather than dropping it as empty space.
 window.wkxTokens = (function () {
   "use strict";
 
@@ -551,27 +560,40 @@ window.wkxTokens = (function () {
 
   const TOKEN = "[data-token-kind]";
   let lit = [];
+  let pinned = null; // the pinned origin cell, or null when nothing is pinned
 
-  // Identity is stamped at construction; this only wires each token cell to take
-  // keyboard focus so a focus lights its matches. It runs again as new cells
-  // render (MutationObserver) and touches only cells not yet prepared, so it is
-  // cheap and idempotent. It sets attributes, never appends children, so it can
-  // never retrigger the childList observer.
+  function tokenAt(target) {
+    return target && target.closest ? target.closest(TOKEN) : null;
+  }
+
+  // Identity is stamped at construction; this wires each token cell to be a
+  // keyboard-operable toggle: focusable, announced as a button, and reporting its
+  // pin state through aria-pressed. It runs again as new cells render
+  // (MutationObserver) and touches only cells not yet prepared, so it is cheap and
+  // idempotent. It sets attributes and binds the cell's own click/keydown, never
+  // appends children, so it can never retrigger the childList observer.
   function decorate() {
     board.querySelectorAll(TOKEN + ":not([data-token-ready])").forEach(function (node) {
       node.dataset.tokenReady = "1";
       node.tabIndex = 0;
+      node.setAttribute("role", "button");
+      node.setAttribute("aria-pressed", "false");
+      node.setAttribute("aria-label", "Highlight matches of " + node.dataset.tokenValue + " across the board");
+      node.addEventListener("click", onActivate);
+      node.addEventListener("keydown", onKeydown);
     });
   }
 
   function clear() {
     lit.forEach(function (node) {
-      node.classList.remove("tok-match", "tok-origin");
+      node.classList.remove("tok-match", "tok-origin", "tok-pinned");
     });
     lit = [];
   }
 
-  function light(origin) {
+  // Light every cell sharing the origin's (kind, value); the origin takes the
+  // stronger origin wash, and the committed ring too when it is the pinned one.
+  function paint(origin) {
     const kind = origin.dataset.tokenKind;
     const value = origin.dataset.tokenValue;
     if (kind == null || value == null) return;
@@ -583,27 +605,84 @@ window.wkxTokens = (function () {
       }
     });
     origin.classList.add("tok-origin");
+    if (origin === pinned) origin.classList.add("tok-pinned");
   }
 
-  function tokenAt(target) {
-    return target && target.closest ? target.closest(TOKEN) : null;
+  // After a transient hover or focus ends, fall back to the pinned highlight
+  // rather than going dark, so a pin survives the pointer moving away or previewing
+  // another value.
+  function restore() {
+    if (pinned) paint(pinned);
+    else clear();
   }
 
-  // Delegate on the board so late-rendered cells are covered without rebinding.
-  // Leaving a token clears; moving straight onto another re-lights on its enter.
+  function setPressed(node, on) {
+    if (node) node.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function pin(origin) {
+    if (pinned === origin) {
+      release(); // a second activation on the same token unpins it
+      return;
+    }
+    setPressed(pinned, false);
+    pinned = origin;
+    setPressed(pinned, true);
+    paint(origin);
+  }
+
+  function release() {
+    setPressed(pinned, false);
+    pinned = null;
+    clear();
+  }
+
+  // A token's own click pins it and stops there, so the expandable row or sortable
+  // header hosting it does not also fire; re-clicking the pinned token unpins it.
+  function onActivate(event) {
+    event.stopPropagation();
+    pin(event.currentTarget);
+  }
+
+  function onKeydown(event) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); // no page scroll on Space; role=button gets no synthetic click
+      event.stopPropagation(); // don't let the row/header keydown handler toggle too
+      pin(event.currentTarget);
+    }
+  }
+
+  // Delegate hover and focus on the board so late-rendered cells are covered
+  // without rebinding. Leaving a token restores the pin (or clears); moving
+  // straight onto another re-lights on its enter.
   board.addEventListener("mouseover", function (event) {
     const origin = tokenAt(event.target);
-    if (origin) light(origin);
+    if (origin) paint(origin);
   });
   board.addEventListener("mouseout", function (event) {
-    if (tokenAt(event.target)) clear();
+    if (tokenAt(event.target)) restore();
   });
   board.addEventListener("focusin", function (event) {
     const origin = tokenAt(event.target);
-    if (origin) light(origin);
+    if (origin) paint(origin);
   });
   board.addEventListener("focusout", function (event) {
-    if (tokenAt(event.target)) clear();
+    if (tokenAt(event.target)) restore();
+  });
+
+  // A click that misses every token releases the pin, but only when it lands on
+  // genuine empty space: a click on another interactive cell (a sortable header,
+  // an expandable row, both role=button) keeps the pin so the two gestures
+  // coexist. A token's own click never reaches here (it stops propagation).
+  board.addEventListener("click", function (event) {
+    if (tokenAt(event.target)) return;
+    if (event.target.closest && event.target.closest('[role="button"]')) return;
+    release();
+  });
+
+  // Esc releases from anywhere, whether or not focus is inside the board.
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") release();
   });
 
   new MutationObserver(decorate).observe(board, { childList: true, subtree: true });

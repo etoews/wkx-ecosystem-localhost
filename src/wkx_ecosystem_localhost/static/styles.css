@@ -384,10 +384,17 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
  * hovered or focused origin takes a stronger wash than its echoes. The amber/red
  * Flag layer is untouched, and no other colour is introduced. A token cell is
  * inert until lit, so the board stays quiet; the small transition is stilled by
- * the reduced-motion rule below. */
+ * the reduced-motion rule below.
+ *
+ * A click pins the highlight so it persists hands-free. The pinned origin keeps
+ * the strong wash and gains a crisp, opaque --match ring on top of the soft
+ * bleed: the transient hover reads as marker ink you can smudge away, the pin as
+ * a value clicked into place. The distinction is deliberate, a hover previews and
+ * a pin commits, so the two never look alike. */
 [data-token-kind] {
   border-radius: 3px;
-  transition: background-color .12s ease, box-shadow .12s ease;
+  transition: background-color .12s ease, box-shadow .12s ease, outline-color .12s ease;
+  cursor: pointer;
 }
 .tok-match {
   background-color: color-mix(in srgb, var(--match) 26%, transparent);
@@ -396,6 +403,10 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 .tok-origin {
   background-color: color-mix(in srgb, var(--match) 45%, transparent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--match) 45%, transparent);
+}
+.tok-pinned {
+  outline: 2px solid color-mix(in srgb, var(--match) 85%, transparent);
+  outline-offset: 1px;
 }
 
 footer {

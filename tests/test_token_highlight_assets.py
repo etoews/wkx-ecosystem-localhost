@@ -7,6 +7,11 @@ without a browser: a token cell must carry the (kind, value) identity app.js
 matches on, and the highlight the layer switches on must be drawn with --match,
 the one colour reserved for it. These tests cross-check the two static assets so
 a rename on either side fails loudly rather than silently dropping the highlight.
+
+M8-B pins that highlight: a click (or Enter/Space on a focused token) makes it
+persist after the pointer leaves, Esc or a click on empty space releases it, and
+a token exposes its interactive pressed state to assistive tech. A further check
+holds that pin/release wiring in place without a browser.
 """
 
 from __future__ import annotations
@@ -69,6 +74,37 @@ def test_every_applied_highlight_class_is_drawn_with_the_match_colour() -> None:
         f"Classes {sorted(undrawn)} are switched on in app.js to mark a token "
         "match but styles.css never draws them with var(--match). The match "
         "highlight must use --match, the colour reserved for it."
+    )
+
+
+def test_pin_and_release_and_aria_are_wired() -> None:
+    # M8-B extends the transient highlight into a pinnable one: a click, or
+    # Enter/Space on a focused token, pins it so it survives the pointer leaving;
+    # Esc or a click on empty space releases it; and the token exposes its
+    # interactive, pressed state to assistive tech. These string checks hold that
+    # wiring in app.js without a browser, so dropping any half fails loudly.
+    app_js = (STATIC / "app.js").read_text()
+
+    # Pinning paints a committed treatment on top of the transient hover origin;
+    # tok-pinned is that extra class, so it is also covered by the --match check.
+    assert "tok-pinned" in app_js, (
+        "app.js never applies tok-pinned; a click must pin the highlight with a "
+        "treatment distinct from the transient hover."
+    )
+    # Release: Esc clears a pinned highlight.
+    assert "Escape" in app_js, (
+        "app.js never handles the Escape key; Esc must release a pinned highlight."
+    )
+    # The interaction is exposed to assistive tech as a toggle button's state.
+    assert "aria-pressed" in app_js, (
+        "app.js never sets aria-pressed; a token cell must expose its pin state "
+        "to assistive tech."
+    )
+    # Pinning cooperates with the cells already wired to a click (expandable
+    # plugin rows, sortable headers) rather than triggering both.
+    assert "stopPropagation" in app_js, (
+        "app.js never calls stopPropagation on the token gesture; pinning must "
+        "not also trigger an expandable row or a sortable header underneath it."
     )
 
 
