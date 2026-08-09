@@ -81,39 +81,6 @@ running with its output visible, and its `smoke.sh` driver verifies every
 endpoint and screenshots the board. See
 [its SKILL.md](.claude/skills/run-wkx-ecosystem-localhost/SKILL.md).
 
-## Workflow
-
-Workflow for building this app with Claude Code.
-
-```text
-# Requirements: pick milestone from ROADMAP.md
-
-# Design phase
-/model fable
-/grill-with-docs <product brief>      # ideate and stress-test the idea against the docs
-/mattpocock-skills:to-spec            # turn the grilled idea into a spec
-/artifact-design                      # e.g. "show me the architecture in an html file with diagrams"
-/mattpocock-skills:to-tickets         # spec into GitHub tickets; UI tickets call for the frontend-design and dataviz skills
-/clear
-
-# Implement phase
-/model claude-opus-4-8
-/mattpocock-skills:implement <first issue>   # prove the loop by hand; tick acceptance criteria as you go
-/clear
-/goal use workflows to run the implement skill on the gh issues.
-      use claude code best practices for working in the same repo in parallel.
-      for ui work, use the frontend-design skill.
-      do not stop until all gh issues are complete.
-
-# Review phase
-/security-review
-what did we learn? how to incorporate it back into the work flow?
-
-# Run phase
-/run-skill-generator
-/run
-```
-
 ## License
 
 Released under the [MIT License](LICENSE).
