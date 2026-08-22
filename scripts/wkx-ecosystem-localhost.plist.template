@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent template for running the board at login with live reload.
+
+  This file is machine-neutral: the @@TOKENS@@ are filled in on the machine that
+  runs scripts/install-launch-on-startup.sh. The rendered plist holds real,
+  machine-specific paths, so the script writes it to ~/Library/LaunchAgents and
+  it is never committed to this repository.
+
+  Design notes:
+  - The agent runs through a login shell (-lc) so the collectors see the real
+    PATH. They shell out to git, gh, brew, docker, uv, and node; the launchd
+    default agent PATH is minimal and would make the collectors report tools as
+    absent. On macOS the login shell reads ~/.zprofile, so keep PATH set-up
+    there (not only in ~/.zshrc, which a non-interactive shell does not read).
+  - The command runs `serve --reload`, so the one always-on instance is also the
+    development instance: a change to the package source restarts it and the new
+    code is served.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>@@LABEL@@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@@SHELL@@</string>
+        <string>-lc</string>
+        <string>exec @@UV_BIN@@ run wkx-ecosystem-localhost serve --reload --port @@PORT@@</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@@WORKING_DIR@@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>@@LOG_PATH@@</string>
+    <key>StandardErrorPath</key>
+    <string>@@LOG_PATH@@</string>
+</dict>
+</plist>

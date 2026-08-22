@@ -70,10 +70,51 @@ While developing, add `--reload` to restart the server on code changes:
 uv run wkx-ecosystem-localhost serve --reload
 ```
 
-This is for development only, not the always-on service. It re-reads
-configuration on each restart, so config changes are picked up too. Frontend
-files under `static/` are served from disk and are already live on a browser
-refresh without it.
+A change to the package source restarts the server, and the new code is served.
+The server re-reads configuration on each restart, so configuration changes are
+picked up too. Frontend files under `static/` are served from disk. They are
+live on a browser refresh without `--reload`.
+
+### Run at startup (macOS)
+
+You can run the board at login and keep it developable at the same time. A
+launchd LaunchAgent runs `serve --reload`, so the one always-on instance is also
+the development instance. When you edit the package source, that instance
+restarts and serves the new code.
+
+Install it with the helper script:
+
+```sh
+scripts/install-launch-on-startup.sh
+```
+
+The script fills the committed plist template
+(`scripts/wkx-ecosystem-localhost.plist.template`) with paths found on your
+machine, writes the result to `~/Library/LaunchAgents`, validates it, and loads
+the agent. The rendered plist holds machine paths, so it stays out of this
+repository. Set `PORT`, `LABEL`, or `UV_BIN` as environment variables to
+override the defaults.
+
+Manage the agent (change the label if you set your own):
+
+```sh
+# status
+launchctl print gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+# restart, for example after a dependency change
+launchctl kickstart -k gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+# stop and remove
+launchctl bootout gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+```
+
+The reloader watches the package source only. It picks up Python code changes
+and re-reads configuration on the restart. It does not pick up dependency
+changes (`pyproject.toml` or `uv.lock`), and it does not pick up a `.env` change
+on its own. For those, restart the agent with `launchctl kickstart -k`.
+
+This pattern has one trade-off. If you save a file with a syntax error or a bad
+import, the reloader does not serve the broken code, so the board is down until
+you fix it. On a single-user development machine this is the intended behaviour,
+because the always-on instance is deliberately the development instance.
 
 To launch and drive the board programmatically, use the
 `run-wkx-ecosystem-localhost` skill (`/run`): it starts the app and leaves it
