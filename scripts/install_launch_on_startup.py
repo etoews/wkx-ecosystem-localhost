@@ -23,7 +23,6 @@ import argparse
 import contextlib
 import getpass
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -31,26 +30,23 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from string import Template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = REPO_ROOT / "scripts" / "wkx-ecosystem-localhost.plist.template"
 
-_PLACEHOLDER = re.compile(r"@@[A-Z_]+@@")
-
 
 def render_plist(template: str, values: dict[str, str]) -> str:
-    """Return the template with every ``@@TOKEN@@`` replaced from ``values``.
+    """Return the template with every ``${TOKEN}`` replaced from ``values``.
 
-    Raise ``ValueError`` if a placeholder is left unfilled, so a missing or
-    misspelled key fails loudly instead of writing a broken plist.
+    Raise ``ValueError`` if the template names a placeholder that ``values`` does
+    not supply, so a missing or misspelled key fails loudly instead of writing a
+    broken plist.
     """
-    rendered = template
-    for token, value in values.items():
-        rendered = rendered.replace(f"@@{token}@@", value)
-    leftover = sorted(set(_PLACEHOLDER.findall(rendered)))
-    if leftover:
-        raise ValueError(f"unfilled placeholders: {', '.join(leftover)}")
-    return rendered
+    try:
+        return Template(template).substitute(values)
+    except KeyError as missing:
+        raise ValueError(f"template placeholder {missing} has no value") from missing
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

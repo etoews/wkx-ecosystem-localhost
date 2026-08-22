@@ -35,23 +35,23 @@ _VALUES = {
 
 def test_render_substitutes_every_placeholder() -> None:
     template = (
-        "<string>@@LABEL@@</string>"
-        "<string>@@SHELL@@</string>"
-        "<string>exec @@UV_BIN@@ run wkx serve --port @@PORT@@</string>"
-        "<string>@@WORKING_DIR@@</string>"
-        "<string>@@LOG_PATH@@</string>"
+        "<string>${LABEL}</string>"
+        "<string>${SHELL}</string>"
+        "<string>exec ${UV_BIN} run wkx serve --port ${PORT}</string>"
+        "<string>${WORKING_DIR}</string>"
+        "<string>${LOG_PATH}</string>"
     )
     rendered = installer.render_plist(template, _VALUES)
 
-    assert "@@" not in rendered
+    assert "$" not in rendered
     for value in _VALUES.values():
         assert value in rendered
 
 
 def test_render_raises_on_unfilled_placeholder() -> None:
-    template = "<string>@@LABEL@@</string><string>@@MISSING@@</string>"
+    template = "<string>${LABEL}</string><string>${MISSING}</string>"
 
-    with pytest.raises(ValueError, match=r"@@MISSING@@"):
+    with pytest.raises(ValueError, match=r"MISSING"):
         installer.render_plist(template, {"LABEL": "x"})
 
 
@@ -60,5 +60,5 @@ def test_render_matches_the_committed_template() -> None:
 
     rendered = installer.render_plist(template, _VALUES)
 
-    assert "@@" not in rendered
+    assert "$" not in rendered
     assert "<string>dev.tester.wkx-ecosystem-localhost</string>" in rendered

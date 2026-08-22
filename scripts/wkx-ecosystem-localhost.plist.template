@@ -21,22 +21,22 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>@@LABEL@@</string>
+    <string>${LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>@@SHELL@@</string>
+        <string>${SHELL}</string>
         <string>-lc</string>
-        <string>exec @@UV_BIN@@ run wkx-ecosystem-localhost serve --reload --port @@PORT@@</string>
+        <string>exec ${UV_BIN} run wkx-ecosystem-localhost serve --reload --port ${PORT}</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>@@WORKING_DIR@@</string>
+    <string>${WORKING_DIR}</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>@@LOG_PATH@@</string>
+    <string>${LOG_PATH}</string>
     <key>StandardErrorPath</key>
-    <string>@@LOG_PATH@@</string>
+    <string>${LOG_PATH}</string>
 </dict>
 </plist>
