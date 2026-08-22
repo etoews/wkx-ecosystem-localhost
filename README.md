@@ -54,6 +54,8 @@ status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
 
 ## Running
 
+Clone, sync, and serve:
+
 ```sh
 git clone --recurse-submodules https://github.com/etoews/wkx-ecosystem-localhost.git
 cd wkx-ecosystem-localhost
@@ -61,10 +63,21 @@ uv sync
 uv run wkx-ecosystem-localhost serve
 ```
 
-Then open `http://127.0.0.1:8787`. Pass `--port <n>` to bind elsewhere or
-`--open-browser` to open it automatically.
+Then open `http://127.0.0.1:8787`.
 
-While developing, add `--reload` to restart the server on code changes:
+### Options
+
+`serve` takes these options:
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `--port <n>` | `8787` | Bind on `127.0.0.1:<n>`. |
+| `--open-browser` | off | Open the board in the default browser at startup. |
+| `--reload` | off | Restart on package-source changes. For development. |
+
+### Development
+
+Add `--reload` to restart the server on code changes:
 
 ```sh
 uv run wkx-ecosystem-localhost serve --reload
@@ -72,8 +85,14 @@ uv run wkx-ecosystem-localhost serve --reload
 
 A change to the package source restarts the server, and the new code is served.
 The server re-reads configuration on each restart, so configuration changes are
-picked up too. Frontend files under `static/` are served from disk. They are
+picked up too. Frontend files under `static/` are served from disk, so they are
 live on a browser refresh without `--reload`.
+
+To launch and drive the board programmatically, use the
+`run-wkx-ecosystem-localhost` skill (`/run`): it starts the app and leaves it
+running with its output visible, and its `smoke.sh` driver verifies every
+endpoint and screenshots the board. See
+[its SKILL.md](.claude/skills/run-wkx-ecosystem-localhost/SKILL.md).
 
 ### Run at startup (macOS)
 
@@ -115,12 +134,6 @@ This pattern has one trade-off. If you save a file with a syntax error or a bad
 import, the reloader does not serve the broken code, so the board is down until
 you fix it. On a single-user development machine this is the intended behaviour,
 because the always-on instance is deliberately the development instance.
-
-To launch and drive the board programmatically, use the
-`run-wkx-ecosystem-localhost` skill (`/run`): it starts the app and leaves it
-running with its output visible, and its `smoke.sh` driver verifies every
-endpoint and screenshots the board. See
-[its SKILL.md](.claude/skills/run-wkx-ecosystem-localhost/SKILL.md).
 
 ## License
 
