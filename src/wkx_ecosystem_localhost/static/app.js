@@ -1534,9 +1534,8 @@ window.wkxTokens = (function () {
 
   function render(data) {
     const reachable = data.daemon_reachable;
-    // Tiles only, so the Section never scrolls sideways in its narrow panel. The
-    // daemon tile is the M6 flag host; a down daemon shows its facts as "—" rather
-    // than as meaningless zeros.
+    // Tiles only, no table: the daemon tile is the M6 flag host, and a down
+    // daemon shows its facts as "—" rather than as meaningless zeros.
     const specs = [{ value: reachable ? "up" : "down", label: "Daemon", flagKey: "docker:daemon" }];
     if (reachable) {
       specs.push(

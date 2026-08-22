@@ -323,8 +323,8 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 
 /* ---------- stat tiles (each Section's summary, and the needs-attention head) ----------
  * Every Section leads with a wrapping row of these instead of a prose sentence,
- * so the summary is scanned, not read. Auto-fit so a wide Section spreads its
- * tiles and a narrow panel (system, docker) wraps them without scrolling. */
+ * so the summary is scanned, not read. Auto-fit so a wide band spreads its tiles
+ * across the width and a narrow viewport wraps them without scrolling. */
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
