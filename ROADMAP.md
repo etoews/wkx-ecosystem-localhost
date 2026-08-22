@@ -40,12 +40,14 @@ are the cross-cutting decisions every milestone inherits.
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ✅ Complete |
 | [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
 | [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
+| [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | L | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
 **Critical path:** M0 → M1 → M2 is sequential. M3, M4, M5 parallelise after M1.
 M6 needs the collectors it flags. M7–M9 are opt-in. M10 builds on the Sections
-and Flags from M1–M6 and is otherwise independent.
+and Flags from M1–M6 and is otherwise independent. M11 refines the Sections and
+tables from M1–M9; it is independent of M10 and can follow it or run beside it.
 
 ---
 
@@ -237,4 +239,32 @@ board remains an observer with no auth and no write path.
 - [ ] Point config at a different repo root, or add an ignore glob; the Workspace Section reflects it on reload.
 - [ ] Turn a Section off in config and via the client toggle; its panel disappears and comes back.
 - [ ] Add a Flag category to the ignore list; its badges vanish, the tally drops by that count, and the header notes "N muted".
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+
+---
+
+## M11: Board interaction and refinements
+
+A cluster of independent refinements after M10. Most are client-side view
+preferences that shape how each Section and table reads: collapse a Section,
+search and filter a table, hide a column. Two are not view preferences — a
+Roadmap progress column in the Workspace Section, backed by one read-only
+Collector, and a correction to the disabled-skill count. There is no new
+Section. No refinement writes server config; the client-side choices persist in
+`localStorage`, the way the theme toggle does.
+
+**Deliverables**
+- [ ] Collapsible Sections: each Section collapses to its `signage` heading and expands again. A client-side toggle holds the state in `localStorage`, the way the theme toggle does. Collapse hides the body but keeps the Section on the board; this differs from M10, where the operator turns a Section off and it disappears. A collapsed Section still counts in the Needs attention tally, because collapse is a reading convenience, not a mute.
+- [ ] Roadmap progress column: the Workspace Section gets a Roadmap column, to the left of the Flags rail. For a repo with a `ROADMAP.md`, the column shows its progress, such as ticked against total checkboxes. A repo with no `ROADMAP.md` shows an empty cell. The absence is a fact, never a Flag: it is not attention and not a problem, per _Inventory, not conformance_. A read-only Collector parses the file through the Machine seam and stays a pure function over synthetic fixtures in tests.
+- [ ] Correct the disabled-skill count: the claude environment does not count a skill as disabled when its plugin is disabled. A disabled plugin already reports as one disabled-plugin Flag; its skills must not each add a disabled-skill Flag or lift the disabled-skill count. Only a skill disabled on its own, with its plugin enabled, counts.
+- [ ] Table search and filter: the board's tables get a consistent search-and-filter control, next to the click-to-sort they already carry. A search box keeps only the rows that match its text, and sort still works on the narrowed rows. This helps the long tables — Workspace, Toolchains, Footprint. The control is client-side, with no Collector and no API change.
+- [ ] Hideable columns: each table's columns can be hidden and shown again, with each choice held client-side in `localStorage`. The operator drops the columns they do not need, such as Stash or Upstream. The name column and the Flags rail always stay, so every row is identifiable and its Flags stay visible.
+- [ ] The Roadmap Collector and the corrected skill count are covered by unit tests over synthetic fixtures (no captured machine data). The client-side toggles keep the `app.js` render smoke-clean, because the test suite does not run it.
+
+**Hands-on artefact**
+- [ ] Collapse the Workspace Section to its heading and reload; it stays collapsed. Expand it; the repos return.
+- [ ] A repo with a `ROADMAP.md` shows its progress in the Roadmap column; a repo with none shows an empty cell and no Flag.
+- [ ] Disable a plugin that ships skills; the disabled-skill count does not rise, and only the one disabled-plugin Flag appears.
+- [ ] Type in a table's search box; only the matching rows stay, and a click on a header still sorts them.
+- [ ] Hide a column; it goes and the choice survives a reload. Show it again; it returns.
 - [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
