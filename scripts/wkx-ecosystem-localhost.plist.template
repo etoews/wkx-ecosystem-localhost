@@ -2,10 +2,10 @@
 <!--
   LaunchAgent template for running the board at login with live reload.
 
-  This file is machine-neutral: the @@TOKENS@@ are filled in on the machine that
-  runs scripts/install-launch-on-startup.sh. The rendered plist holds real,
-  machine-specific paths, so the script writes it to ~/Library/LaunchAgents and
-  it is never committed to this repository.
+  This file is machine-neutral: the placeholder tokens are filled in on the
+  machine that runs scripts/install_launch_on_startup.py. The rendered plist
+  holds real, machine-specific paths, so the script writes it to
+  ~/Library/LaunchAgents and it is never committed to this repository.
 
   Design notes:
   - The agent runs through a login shell (-lc) so the collectors see the real

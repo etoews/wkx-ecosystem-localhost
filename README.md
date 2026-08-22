@@ -63,7 +63,7 @@ uv sync
 uv run wkx-ecosystem-localhost serve
 ```
 
-Then open `http://127.0.0.1:8787`.
+Then open `http://localhost:8787`.
 
 ### Options
 
@@ -104,7 +104,7 @@ restarts and serves the new code.
 Install it with the helper script:
 
 ```sh
-scripts/install-launch-on-startup.sh
+uv run scripts/install_launch_on_startup.py
 ```
 
 The script fills the committed plist template
