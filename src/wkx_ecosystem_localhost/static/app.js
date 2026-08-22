@@ -164,16 +164,15 @@ window.wkxUI = (function () {
   // When any column carries a width, the table lays out fixed with a colgroup so
   // sibling tables that share the same spec align column-for-column.
   //
-  // Every facts table ends in a right-justified Flags column: the flag rail. It
-  // is appended here unless the caller opts out ({flags: false}, for the
-  // needs-attention summary, which IS the flag catalogue) or already lists its
-  // own flags column (the fixed-width specs, which set its width to keep the
-  // subtables aligned). A row lands its badge in this column via wkxUI.flagCell,
-  // so anomalies line up down one edge and a clean row leaves it empty.
-  function table(columns, opts) {
-    opts = opts || {};
+  // Every table ends in a right-justified Flags column: the flag rail, unbroken
+  // from the needs-attention summary at the top down through every Section. It is
+  // appended here unless the spec already lists its own flags column (the
+  // fixed-width specs, which set its width to keep the subtables aligned). A row
+  // lands its badge in this column via wkxUI.flagCell, so anomalies line up down
+  // one edge and a clean row leaves it empty.
+  function table(columns) {
     const cols = columns.slice();
-    if (opts.flags !== false && !cols.some(function (c) { return c.flags; })) {
+    if (!cols.some(function (c) { return c.flags; })) {
       cols.push({ label: "Flags", flags: true });
     }
     const wrap = el("div", "tbl-wrap");
@@ -457,15 +456,15 @@ window.wkxFlags = (function () {
       { value: problems, label: "Problems", kind: "problem" },
     ]);
 
-    const built = U.table(
-      [
-        { label: "Category" },
-        { label: "Level" },
-        { label: "Count", num: true },
-        { label: "What wants attention" },
-      ],
-      { flags: false },
-    );
+    // The summary rides the same rail as every Section: its right-most column is
+    // Flags too, holding each category's level badge, so the amber/red marks line
+    // up from the top of the board down. The badge is the level marker (.lvl),
+    // decorative and never touched by the flag layer's cleanup.
+    const built = U.table([
+      { label: "Category" },
+      { label: "Count", num: true },
+      { label: "What wants attention" },
+    ]);
     cats.forEach(function (cat) {
       const pct = Math.max(6, Math.round((cat.count / max) * 100));
       const bar = el("div", "cat-bar cat-bar--" + cat.level);
@@ -482,7 +481,12 @@ window.wkxFlags = (function () {
         (cat.targets.length > 5 ? ", +" + (cat.targets.length - 5) + " more" : "");
 
       built.tbody.append(
-        U.tr([U.td(el("span", "t-name", cat.label)), U.td(U.level(cat.level, cat.level)), countCell, U.td(shown, "q")]),
+        U.tr([
+          U.td(el("span", "t-name", cat.label)),
+          countCell,
+          U.td(shown, "q"),
+          U.td(U.level(cat.level, cat.level), "flags-col"),
+        ]),
       );
     });
     summaryMount.replaceChildren(tiles, built.wrap);
