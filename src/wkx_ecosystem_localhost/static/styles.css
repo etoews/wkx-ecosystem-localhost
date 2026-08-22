@@ -220,6 +220,13 @@ tbody td {
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--hull); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The flag rail: every facts table's right-most column. Right-justified so the
+ * amber/red badges line up on one vertical edge down the whole board and a scroll
+ * reads "what is wrong and where" from alignment alone. The rail is made by
+ * alignment only — no divider or column tint — so colour stays reserved for the
+ * Flag layer and a clean row leaves the cell quiet. The inner .cell-flex is
+ * inline, so text-align settles its badge against the right edge. */
+th.flags, td.flags-col { text-align: right; }
 .t-name { font-weight: 600; overflow-wrap: anywhere; }
 /* A GitHub repository link: quiet by default so it never competes with the row's
  * facts, brightening on hover or keyboard focus. */
