@@ -23,7 +23,7 @@ are the cross-cutting decisions every milestone inherits.
 - **Stack per the standards.** uv, ruff, ty, pytest, stdlib logging,
   pydantic-settings, Typer, `src/` layout. FastAPI + a static HTML/JS frontend;
   htmx unused. The standards ride along as a submodule at `standards/python/`
-  pinned to release `1.0.0`.
+  pinned to release `1.3.0`.
 
 ## Contents
 
