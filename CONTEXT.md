@@ -23,9 +23,32 @@ never mutates the machine.
 _Avoid_: scanner, agent, monitor
 
 **Section**:
-One top-level grouping of the board, addressed by a short label in its panel
-heading: workspace, toolchains, claude, system. Distinct from `env` in the
-`wkx-namespace` design system: this context has no `env` dimension.
+One top-level grouping of the board: a panel with its own `signage` heading,
+named by a canonical hyphenated id. The ten Sections are workspace,
+toolchains, claude, homebrew, system, docker, footprint, editor, git-config,
+and config. Needs attention is not a Section; it is the Flag layer's rollup.
+Distinct from `env` in the `wkx-namespace` design system: this context has no
+`env` dimension.
+_Avoid_: panel (the `wkx-namespace` component a Section renders in), tab, card
+
+**Off**:
+A Section the operator has removed through configuration. An Off Section is
+not collected and not served, so it raises no Flags. Only configuration turns
+a Section Off; the board never does.
+_Avoid_: disabled (reserved for skills and plugins), excluded, removed
+
+**Hidden**:
+A Section a viewer has taken off their own board with the client-side toggle.
+A Hidden Section is still collected and its Flags still count, because hiding
+is a reading preference, not a Mute.
+_Avoid_: collapsed (the fold-to-heading state, which keeps the Section on the
+board), off
+
+**Exclude**:
+A glob in configuration that prunes matching directories from repo discovery,
+matched against the `~`-relative path the board displays. An excluded repo is
+not on the board and raises no Flags; it is absent, not muted.
+_Avoid_: ignore, skip list, blacklist
 
 ### Provenance of Claude assets
 
@@ -47,3 +70,16 @@ tree, behind remote, daemon down); it never measures conformance to a written
 standard.
 _Avoid_: check, violation, conformance, alert, Status (Status, up/stabilising/down
 is the `wkx-platform` operational vocabulary, deliberately not inherited here)
+
+**Category**:
+The kind of a Flag, identified by a stable hyphenated id (`dirty-tree`,
+`docker-unreachable`) and shown with a label. The Needs attention summary
+rolls Flags up by Category, and a Mute names one.
+_Avoid_: type, kind, code, rule
+
+**Mute**:
+An operator's configured instruction to drop a Category, or one item's Flag
+within a Category, from the row badges and the Needs attention tally. A Mute
+suppresses noise; it never states what the machine should look like, so it is
+not a ruleset. The board always reports how many Flags are muted.
+_Avoid_: ignore, suppress, silence, whitelist

@@ -39,7 +39,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ✅ Complete |
 | [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
-| [M10: Configurable board](#m10-configurable-board) | M | ⬜ Planned |
+| [M10: Configurable board](#m10-configurable-board) | L | ⬜ Planned |
 | [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | L | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
@@ -222,23 +222,32 @@ request is a bounded read.
 Consolidate the configuration that has accreted across earlier milestones (repo
 scan roots from M0, the system tools list from M3) into one documented, typed
 surface, and add the switches that let an operator shape what the board shows:
-which Sections appear, which repos and paths discovery skips, and which Flags are
-muted. Configuration stays file-based and read-only from the UI's side, so the
-board remains an observer with no auth and no write path.
+which Sections appear, which paths discovery skips, and which Flags are muted.
+Configuration is a TOML file; `.env` carries secrets only. The board reads
+configuration and shows it, but never writes it, so it remains an observer with
+no auth and no write path. The vocabulary (Off, Hidden, Exclude, Category, Mute)
+is in [CONTEXT.md](CONTEXT.md).
 
 **Deliverables**
-- [ ] Single typed configuration model (extend the existing `pydantic-settings` config), loaded from `.env` and an optional config file, with computed defaults only (never a literal machine path). The real config file is gitignored; a committed example documents the contract with placeholders. Invalid config fails fast with a clear, logged pydantic error.
-- [ ] Repo discovery: multiple scan roots, plus per-root include/exclude globs and an ignore list of repos or paths to skip. Folds in the existing single-root default without changing it.
-- [ ] Section visibility: turn any Section (workspace, toolchains, claude, system) off. A server-side default in config, plus a client-side view toggle persisted in `localStorage` that mirrors the theme toggle, so hiding a Section needs no server write.
-- [ ] Muted Flags: a typed ignore list that drops named Flags (by category, or by item plus category) from the row badges and the Needs attention tally. This is noise suppression, a view preference, never a conformance ruleset. The header still reports "N muted" so nothing is hidden silently.
-- [ ] The system tools list (configurable since M3) folded into the consolidated surface and documented alongside the rest.
-- [ ] The board never writes server config: all persisted configuration is edited in the file(s). The UI may show what is configured but never mutates it.
-- [ ] Config parsing, Section-visibility, and Flag-muting logic covered by unit tests over synthetic fixtures (no captured machine data).
+- [ ] Configuration file: `wkx-ecosystem-localhost.toml` in the working directory, gitignored, read by the existing `pydantic-settings` model through `TomlConfigSettingsSource`. A committed `wkx-ecosystem-localhost.example.toml` documents every key, commented out, with placeholders. Keys are flat and map one to one onto `Settings` fields; paths accept `~`. A missing file is not an error, because every value has a computed default. The env-only `WKX_ECO_LOCAL_CONFIG_FILE` overrides the path.
+- [ ] Secrets and configuration split: `.env` holds `SecretStr` values only and stays wired for the first secret; `.env.example` is removed until then. The env prefix becomes `WKX_ECO_LOCAL_`. Precedence, highest first: explicit arguments, environment, `.env`, TOML, defaults. The README documents the split, which diverges from `standards/python/standards/configuration.md` until that standard changes.
+- [ ] Fail fast: `extra="forbid"` rejects an unknown key in the TOML or `.env`, and a startup scan rejects an unknown `WKX_ECO_LOCAL_*` variable in the environment, which `pydantic-settings` ignores on its own. The error is a clear, logged pydantic error that names the key.
+- [ ] The TOML joins the `--reload` watch, so a configuration edit restarts the always-on instance the way a code edit does.
+- [ ] `GET /api/config`: a read-only view of the effective configuration, paths relativised, each value with its source (`default`, `file`, `env`). A `config` Section, last on the board, renders it with tables for excludes, Off Sections, system tools, and mutes. The board never writes configuration.
+- [ ] Discovery: one global `exclude` list of globs, matched with `PurePath.full_match` against the `~`-relative path of each directory and pruning the walk, so an excluded subtree is never descended. The built-in prunes (hidden directories, `node_modules`, `venv`) stay built-in. No include list and no separate ignore list: an excluded repo is absent, not muted. Discovery caching is a separate issue.
+- [ ] Sections: a `Section` enum of the ten Sections in the model, which also types `Flag.section`. `sections_off` names the Off Sections and is validated against the enum. An Off Section is not collected, its route is not registered, and it raises no Flags. Needs attention is not a Section and cannot be Off.
+- [ ] Client visibility: a `sections` menu in the masthead hides and shows Sections, with the choices in `localStorage` (`wkx-sections`, overrides only) the way the theme toggle keeps its state. A Hidden Section is still collected and its Flags still count. On load the board fetches `/api/config` first, removes Off panels, applies Hidden overrides, then fetches the Sections.
+- [ ] The `submodule-tags-behind` Flag moves to the `workspace` Section, because submodules are rows of the workspace table and `submodules` is not a Section.
+- [ ] Muted Flags: `Flag.code` becomes `Flag.category`, and a `CATEGORIES` registry in `flags.py` lists all nineteen, including the two the client raises from SSE. `mute` is a list of `{ category, target? }` rules; an unknown category fails fast; a target matches exactly. The client drops muted Flags at the `wkxFlags.add` choke point, and `/api/flags` still reports every Flag. A Muted tile in Needs attention shows the count, so nothing is hidden silently. This is noise suppression, a view preference, never a conformance ruleset.
+- [ ] ADR 0003 records that hiding and muting are client-side view preferences and that the API reports every fact. ARCHITECTURE.md's route table, load sequence, and "no external ruleset" line are corrected.
+- [ ] Config parsing, provenance, the environment scan, discovery excludes, Section Off, and Flag muting are covered by unit tests over synthetic fixtures (no captured machine data). Tests keep constructing `Settings` explicitly and never read a real `.env` or TOML.
 
 **Hands-on artefact**
-- [ ] Point config at a different repo root, or add an ignore glob; the Workspace Section reflects it on reload.
-- [ ] Turn a Section off in config and via the client toggle; its panel disappears and comes back.
-- [ ] Add a Flag category to the ignore list; its badges vanish, the tally drops by that count, and the header notes "N muted".
+- [ ] Add an `exclude` glob to the TOML and save; the always-on instance restarts, and the Workspace Section drops the matching repos on reload.
+- [ ] Add `docker` to `sections_off`; the Docker panel and its `docker-unreachable` Flag are gone, and `/api/docker` returns 404. Hide the Editor Section from the `sections` menu and reload; it stays hidden, and its Flags still count.
+- [ ] Add a mute for `brew-outdated`; its badges vanish, the tally drops by that count, and the Muted tile shows it.
+- [ ] Set a misspelt `WKX_ECO_LOCAL_PROT`; the server refuses to start with a clear error that names it.
+- [ ] The config Section shows every effective value with its source.
 - [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
