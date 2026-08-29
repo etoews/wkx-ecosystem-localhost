@@ -59,6 +59,16 @@ def test_app_js_persists_hidden_sections(client: TestClient) -> None:
     assert "wkx-sections" in response.text
 
 
+def test_app_js_persists_collapsed_panels(client: TestClient) -> None:
+    # A Collapsed panel is a client-side view preference kept in localStorage the
+    # way the theme choice and the Hidden overrides are; this pins the key the way
+    # wkx-theme and wkx-sections are pinned.
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "wkx-collapsed" in response.text
+
+
 def test_index_carries_the_sections_menu(client: TestClient) -> None:
     response = client.get("/")
 
