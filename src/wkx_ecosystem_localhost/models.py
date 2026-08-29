@@ -8,7 +8,33 @@ before they reach a model, so nothing downstream has to redact again.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel
+
+
+class Section(StrEnum):
+    """The board's ten top-level Sections, each addressed by its panel label.
+
+    The single source of the Section names. It types ``Flag.section`` so a Flag can
+    only ever name a real Section, backs ``Settings.sections_off`` so an unknown name
+    fails fast, and each member's value equals the ``id`` of the panel that renders
+    it in ``index.html``. As a ``StrEnum`` a member is its own string, so the JSON
+    API serialises it verbatim (``Section.GIT_CONFIG`` is ``"git-config"``) and no
+    caller has to convert. Needs attention is deliberately absent: it is a
+    cross-cutting summary, not a Section, so it can be Hidden but never Off.
+    """
+
+    WORKSPACE = "workspace"
+    TOOLCHAINS = "toolchains"
+    CLAUDE = "claude"
+    HOMEBREW = "homebrew"
+    SYSTEM = "system"
+    DOCKER = "docker"
+    FOOTPRINT = "footprint"
+    EDITOR = "editor"
+    GIT_CONFIG = "git-config"
+    CONFIG = "config"
 
 
 class ConfigEntry(BaseModel):
@@ -388,13 +414,14 @@ class Flag(BaseModel):
     ruleset. ``section`` and ``target`` address the exact row the badge lands on
     (for example ``workspace`` and a repo's home-relative path); the board keys its
     rows by the same pair, so a Flag settles onto the right row without the layer
-    knowing anything about how that row is drawn. ``level`` is ``attention``
-    (amber) or ``problem`` (red), the two levels from CONTEXT.md. ``code`` is the
-    stable machine name of the anomaly (so the board can style or de-duplicate by
-    it) and ``message`` its short, display-ready phrasing.
+    knowing anything about how that row is drawn. ``section`` is a ``Section`` so a
+    Flag can only ever name a real Section; it serialises as its plain label.
+    ``level`` is ``attention`` (amber) or ``problem`` (red), the two levels from
+    CONTEXT.md. ``code`` is the stable machine name of the anomaly (so the board can
+    style or de-duplicate by it) and ``message`` its short, display-ready phrasing.
     """
 
-    section: str
+    section: Section
     target: str
     level: str
     code: str

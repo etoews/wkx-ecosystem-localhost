@@ -16,7 +16,7 @@ this layer covers only what is evident from the Sections at rest.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
@@ -35,7 +35,11 @@ from wkx_ecosystem_localhost.models import (
     FlagsSection,
     GitConfigSection,
     HomebrewSection,
+    NodeToolchain,
+    PythonToolchain,
+    Section,
     SystemToolsSection,
+    Tool,
     ToolchainsSection,
     WorkspaceSection,
 )
@@ -55,6 +59,7 @@ def derive_flags(
     homebrew: HomebrewSection,
     docker: DockerSection,
     git_config: GitConfigSection,
+    off: Collection[Section] = (),
 ) -> list[Flag]:
     """Derive every at-rest Flag from the Sections, with no external ruleset.
 
@@ -62,6 +67,11 @@ def derive_flags(
     Flags, so each anomaly pins against a hand-written synthetic model. Each Flag
     names the ``section`` and ``target`` of the row it badges, so the board settles
     it onto the right row without this layer knowing how that row is drawn.
+
+    An Off Section raises no Flags: its derivation is skipped, so the Sections it
+    would badge stay silent even when their models carry anomalies. The cross-item
+    drift derivation reads two Sections at once, so toolchains and claude are gated
+    independently, and one being Off never silences the other.
 
     Args:
         workspace: The workspace Section (per-repo tree state).
@@ -71,18 +81,26 @@ def derive_flags(
         homebrew: The homebrew Section (outdated formulae and casks).
         docker: The docker Section (daemon reachability).
         git_config: The git-config Section (global gitconfig chain).
+        off: The Sections switched off in configuration, whose derivation is
+            skipped so they raise no Flags.
 
     Returns:
         The open Flags, per-item first then cross-item, in a stable order.
     """
     flags: list[Flag] = []
-    flags += _workspace_flags(workspace)
-    flags += _homebrew_flags(homebrew)
-    flags += _docker_flags(docker)
-    flags += _system_flags(system)
-    flags += _claude_flags(claude)
-    flags += _git_config_flags(git_config)
-    flags += _drift_flags(toolchains, claude)
+    if Section.WORKSPACE not in off:
+        flags += _workspace_flags(workspace)
+    if Section.HOMEBREW not in off:
+        flags += _homebrew_flags(homebrew)
+    if Section.DOCKER not in off:
+        flags += _docker_flags(docker)
+    if Section.SYSTEM not in off:
+        flags += _system_flags(system)
+    if Section.CLAUDE not in off:
+        flags += _claude_flags(claude)
+    if Section.GIT_CONFIG not in off:
+        flags += _git_config_flags(git_config)
+    flags += _drift_flags(toolchains, claude, off)
     return flags
 
 
@@ -93,7 +111,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
         if repo.dirty:
             flags.append(
                 Flag(
-                    section="workspace",
+                    section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
                     code="dirty-tree",
@@ -103,7 +121,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
         if repo.detached_sha is not None:
             flags.append(
                 Flag(
-                    section="workspace",
+                    section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
                     code="detached-head",
@@ -113,7 +131,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
         if repo.branch is not None and repo.upstream is None:
             flags.append(
                 Flag(
-                    section="workspace",
+                    section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
                     code="no-upstream",
@@ -132,7 +150,7 @@ def _homebrew_flags(homebrew: HomebrewSection) -> list[Flag]:
         for package in packages:
             flags.append(
                 Flag(
-                    section="homebrew",
+                    section=Section.HOMEBREW,
                     target=f"{kind}:{package.name}",
                     level=ATTENTION,
                     code="brew-outdated",
@@ -148,7 +166,7 @@ def _docker_flags(docker: DockerSection) -> list[Flag]:
         return []
     return [
         Flag(
-            section="docker",
+            section=Section.DOCKER,
             target="daemon",
             level=PROBLEM,
             code="docker-unreachable",
@@ -161,7 +179,7 @@ def _system_flags(system: SystemToolsSection) -> list[Flag]:
     """One Flag per configured tool that is not installed on this machine."""
     return [
         Flag(
-            section="system",
+            section=Section.SYSTEM,
             target=tool.name,
             level=PROBLEM,
             code="tool-missing",
@@ -179,7 +197,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
         if not skill.enabled:
             flags.append(
                 Flag(
-                    section="claude",
+                    section=Section.CLAUDE,
                     target=f"skill:{skill.name}",
                     level=ATTENTION,
                     code="skill-disabled",
@@ -190,7 +208,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
         if not plugin.enabled:
             flags.append(
                 Flag(
-                    section="claude",
+                    section=Section.CLAUDE,
                     target=f"plugin:{plugin.name}",
                     level=ATTENTION,
                     code="plugin-disabled",
@@ -201,7 +219,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
         if server.needs_auth:
             flags.append(
                 Flag(
-                    section="claude",
+                    section=Section.CLAUDE,
                     target=f"mcp:{server.name}",
                     level=PROBLEM,
                     code="mcp-needs-auth",
@@ -235,7 +253,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
     for key in conflict_keys:
         flags.append(
             Flag(
-                section="git-config",
+                section=Section.GIT_CONFIG,
                 target=key,
                 level=ATTENTION,
                 code="git-config-conflict",
@@ -247,7 +265,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
         if not include.exists:
             flags.append(
                 Flag(
-                    section="git-config",
+                    section=Section.GIT_CONFIG,
                     target=include.path,
                     level=PROBLEM,
                     code="git-include-broken",
@@ -259,7 +277,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
         if entry.credentials:
             flags.append(
                 Flag(
-                    section="git-config",
+                    section=Section.GIT_CONFIG,
                     target=entry.key,
                     level=PROBLEM,
                     code="git-config-credentials",
@@ -270,7 +288,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
     if not git_config.identity_present:
         flags.append(
             Flag(
-                section="git-config",
+                section=Section.GIT_CONFIG,
                 target="identity",
                 level=ATTENTION,
                 code="git-no-identity",
@@ -281,47 +299,53 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
     return flags
 
 
-def _drift_flags(toolchains: ToolchainsSection, claude: ClaudeSection) -> list[Flag]:
+def _drift_flags(
+    toolchains: ToolchainsSection, claude: ClaudeSection, off: Collection[Section]
+) -> list[Flag]:
     """Cross-item Flags: drift and shadowing evident only across several rows.
 
     Python pin drift and TypeScript version drift read across repos; skill-name
     shadowing reads across Origins; an MCP configured in two scopes reads across
     scopes. Each fires only when the divergence is real (more than one distinct
     value, or more than one Origin or scope) and then badges every row that takes
-    part, so the drift is legible on each side of it.
+    part, so the drift is legible on each side of it. The toolchains drift and the
+    claude shadowing are gated on their own Section, so turning one off leaves the
+    other's Flags untouched.
     """
     flags: list[Flag] = []
 
-    pins = toolchains.python.repo_pins
-    if len({pin.version for pin in pins}) > 1:
-        for pin in pins:
-            flags.append(
-                Flag(
-                    section="toolchains",
-                    target=f"pin:{pin.repo}",
-                    level=ATTENTION,
-                    code="python-pin-drift",
-                    message="pin differs across repos",
-                )
-            )
-
-    ts_repos = toolchains.node.repos
-    installed = {repo.installed for repo in ts_repos if repo.installed is not None}
-    if len(installed) > 1:
-        for repo in ts_repos:
-            if repo.installed is not None:
+    if Section.TOOLCHAINS not in off:
+        pins = toolchains.python.repo_pins
+        if len({pin.version for pin in pins}) > 1:
+            for pin in pins:
                 flags.append(
                     Flag(
-                        section="toolchains",
-                        target=f"ts:{repo.repo}",
+                        section=Section.TOOLCHAINS,
+                        target=f"pin:{pin.repo}",
                         level=ATTENTION,
-                        code="tool-version-drift",
-                        message="version differs across repos",
+                        code="python-pin-drift",
+                        message="pin differs across repos",
                     )
                 )
 
-    flags += _shadow_flags(claude)
-    flags += _two_scope_flags(claude)
+        ts_repos = toolchains.node.repos
+        installed = {repo.installed for repo in ts_repos if repo.installed is not None}
+        if len(installed) > 1:
+            for repo in ts_repos:
+                if repo.installed is not None:
+                    flags.append(
+                        Flag(
+                            section=Section.TOOLCHAINS,
+                            target=f"ts:{repo.repo}",
+                            level=ATTENTION,
+                            code="tool-version-drift",
+                            message="version differs across repos",
+                        )
+                    )
+
+    if Section.CLAUDE not in off:
+        flags += _shadow_flags(claude)
+        flags += _two_scope_flags(claude)
     return flags
 
 
@@ -333,7 +357,7 @@ def _shadow_flags(claude: ClaudeSection) -> list[Flag]:
     shadowed = {name for name, origins in origins_by_name.items() if len(origins) > 1}
     return [
         Flag(
-            section="claude",
+            section=Section.CLAUDE,
             target=f"skill:{skill.name}",
             level=ATTENTION,
             code="skill-shadow",
@@ -357,7 +381,7 @@ def _two_scope_flags(claude: ClaudeSection) -> list[Flag]:
             seen.add(server.name)
             flags.append(
                 Flag(
-                    section="claude",
+                    section=Section.CLAUDE,
                     target=f"mcp:{server.name}",
                     level=ATTENTION,
                     code="mcp-two-scopes",
@@ -365,6 +389,20 @@ def _two_scope_flags(claude: ClaudeSection) -> list[Flag]:
                 )
             )
     return flags
+
+
+def _empty_toolchains() -> ToolchainsSection:
+    """A blank toolchains Section, the placeholder for an Off toolchains.
+
+    ``collect_flags`` skips a Collector whose Section is Off, but ``derive_flags``
+    takes every Section by keyword; this supplies the value it never reads (the Off
+    guard skips the derivation), so no toolchains probe runs when the Section is Off.
+    """
+    absent = Tool(name="", present=False)
+    return ToolchainsSection(
+        python=PythonToolchain(interpreters=[], global_pin=None, repo_pins=[], system=absent),
+        node=NodeToolchain(node=absent, npm=absent, tsc=absent, package_managers=[], repos=[]),
+    )
 
 
 def collect_flags(
@@ -381,36 +419,76 @@ def collect_flags(
     produce it. Repo discovery is shared with the toolchains read so the per-repo
     pins and TypeScript line up with the repos the workspace found.
 
+    An Off Section's Collector does not run and its derivation is skipped, so it
+    raises no Flags. Repo discovery is shared with the toolchains read, so it still
+    runs when only workspace is Off; a placeholder Section stands in for each Off
+    Collector, and the Off guard in ``derive_flags`` keeps it from being read.
+
     Args:
         machine: The seam every Collector reads through.
-        settings: Typed configuration (scan roots, depth, Excludes, and the system
-            tools).
+        settings: Typed configuration (scan roots, depth, Excludes, the system
+            tools, and the Off Sections).
         home: Home directory, for relativising displayed paths.
 
     Returns:
         The Flag layer Section: the open Flags derivable from the Sections at rest.
     """
-    repo_paths: Sequence[Path] = discover_repos(
-        machine,
-        settings.scan_roots,
-        home=home,
-        max_depth=settings.scan_depth,
-        excludes=settings.exclude,
+    off = set(settings.sections_off)
+    # Repo discovery feeds the toolchains read, the sole consumer of repo_paths here
+    # (workspace does its own discovery), so it runs whenever toolchains is on —
+    # including when workspace is Off. With toolchains Off too, the whole tree walk
+    # would go unused, so it is skipped. The Exclude globs prune the walk either way.
+    repo_paths: Sequence[Path] = (
+        discover_repos(
+            machine,
+            settings.scan_roots,
+            home=home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
+        )
+        if Section.TOOLCHAINS not in off
+        else ()
     )
-    workspace = collect_workspace(
-        machine,
-        settings.scan_roots,
-        home=home,
-        max_depth=settings.scan_depth,
-        excludes=settings.exclude,
+    workspace = (
+        collect_workspace(
+            machine,
+            settings.scan_roots,
+            home=home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
+        )
+        if Section.WORKSPACE not in off
+        else WorkspaceSection(roots=[], repos=[])
     )
-    toolchains = collect_toolchains(machine, repo_paths, home=home)
+    toolchains = (
+        collect_toolchains(machine, repo_paths, home=home)
+        if Section.TOOLCHAINS not in off
+        else _empty_toolchains()
+    )
     system_tools: Sequence[ToolSpec] = settings.system_tools
-    system = collect_system_tools(machine, system_tools)
-    claude = collect_claude(machine, home=home)
-    homebrew = collect_homebrew(machine)
-    docker = collect_docker(machine)
-    git_config = collect_git_config(machine, home=home)
+    system = (
+        collect_system_tools(machine, system_tools)
+        if Section.SYSTEM not in off
+        else SystemToolsSection(tools=[])
+    )
+    claude = (
+        collect_claude(machine, home=home)
+        if Section.CLAUDE not in off
+        else ClaudeSection(skills=[], plugins=[], mcp_servers=[])
+    )
+    homebrew = (
+        collect_homebrew(machine) if Section.HOMEBREW not in off else HomebrewSection(present=False)
+    )
+    docker = (
+        collect_docker(machine)
+        if Section.DOCKER not in off
+        else DockerSection(daemon_reachable=False)
+    )
+    git_config = (
+        collect_git_config(machine, home=home)
+        if Section.GIT_CONFIG not in off
+        else GitConfigSection(entries=[], includes=[], identity_present=True)
+    )
 
     flags = derive_flags(
         workspace=workspace,
@@ -420,5 +498,6 @@ def collect_flags(
         homebrew=homebrew,
         docker=docker,
         git_config=git_config,
+        off=off,
     )
     return FlagsSection(flags=flags)

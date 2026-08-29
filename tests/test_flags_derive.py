@@ -8,6 +8,8 @@ multi-repo Sections, exactly as CONTEXT.md defines them.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from wkx_ecosystem_localhost.collectors.flags import ATTENTION, PROBLEM, derive_flags
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
@@ -24,6 +26,7 @@ from wkx_ecosystem_localhost.models import (
     Repo,
     RepoPin,
     RepoTypeScript,
+    Section,
     Skill,
     SystemToolsSection,
     Tool,
@@ -135,6 +138,7 @@ def _derive(
     homebrew: HomebrewSection | None = None,
     docker: DockerSection | None = None,
     git_config: GitConfigSection | None = None,
+    off: Collection[Section] = (),
 ) -> list:
     return derive_flags(
         workspace=workspace or _workspace(),
@@ -144,6 +148,7 @@ def _derive(
         homebrew=homebrew or _empty_homebrew(),
         docker=docker or _up_docker(),
         git_config=git_config or _clean_git_config(),
+        off=off,
     )
 
 
@@ -463,6 +468,47 @@ def test_git_no_identity_is_a_single_attention_flag() -> None:
 
 def test_a_present_identity_raises_no_git_identity_flag() -> None:
     assert [f for f in _derive() if f.code == "git-no-identity"] == []
+
+
+# ------------------------- Off Sections skip their derivation -------------------------
+
+
+def test_off_section_raises_no_flags() -> None:
+    dirty = _workspace(_repo("~/dev/acme/web", dirty=True))
+
+    # On, the dirty tree flags; Off, its whole derivation is skipped.
+    assert [f for f in _derive(workspace=dirty) if f.code == "dirty-tree"]
+    assert _derive(workspace=dirty, off={Section.WORKSPACE}) == []
+
+
+def test_off_docker_skips_the_unreachable_flag() -> None:
+    down = DockerSection(daemon_reachable=False)
+
+    assert [f for f in _derive(docker=down) if f.code == "docker-unreachable"]
+    assert _derive(docker=down, off={Section.DOCKER}) == []
+
+
+def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
+    # Drift and shadowing share one cross-item pass, so an Off toolchains must not
+    # silence the claude shadow the same pass derives.
+    toolchains = _toolchains(
+        repo_pins=[
+            RepoPin(repo="~/dev/acme/web", version="3.14.4"),
+            RepoPin(repo="~/dev/acme/api", version="3.13.13"),
+        ]
+    )
+    claude = _claude(
+        skills=[
+            Skill(name="layout", origin="user", enabled=True),
+            Skill(name="layout", origin="tidy@studio-official", enabled=True),
+        ]
+    )
+
+    flags = _derive(toolchains=toolchains, claude=claude, off={Section.TOOLCHAINS})
+    codes = {f.code for f in flags}
+
+    assert "python-pin-drift" not in codes
+    assert "skill-shadow" in codes
 
 
 # ------------------------- no Status vocabulary -------------------------

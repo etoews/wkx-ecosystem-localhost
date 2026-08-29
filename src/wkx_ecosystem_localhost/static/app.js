@@ -315,6 +315,179 @@ window.wkxUI = (function () {
   };
 })();
 
+// ---------- sections: Off (server) + Hidden (viewer) ----------
+// The masthead's second control, beside the theme toggle, and the board's boot
+// gate. On load it fetches /api/config FIRST, removes the panels the operator
+// turned Off in configuration, then applies the viewer's Hidden overrides, and
+// only then resolves `ready`, which every Section fetch waits behind — so the
+// board never fires a request for a panel it is about to remove. Off is the
+// server's word: an Off Section's route is not even registered, so it is dropped
+// outright. Hidden is the viewer's, kept in localStorage the way the theme is, as
+// overrides only (an absent key means the server default); a Hidden Section still
+// carries the `hidden` attribute rather than leaving, so it is still fetched and
+// its Flags still reach the needs-attention tally.
+window.wkxSections = (function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const KEY = "wkx-sections";
+  // Every panel the menu governs, in board order. "summary" is needs attention:
+  // it is not a Section (it can never be Off) but it can be Hidden, so it takes a
+  // checkbox too. The rest are the ten Sections, each id matching the enum value.
+  const PANELS = [
+    { id: "summary", label: "needs attention", section: false },
+    { id: "workspace", label: "workspace", section: true },
+    { id: "toolchains", label: "toolchains", section: true },
+    { id: "claude", label: "claude", section: true },
+    { id: "homebrew", label: "homebrew", section: true },
+    { id: "system", label: "system", section: true },
+    { id: "docker", label: "docker", section: true },
+    { id: "footprint", label: "footprint", section: true },
+    { id: "editor", label: "editor", section: true },
+    { id: "git-config", label: "git config", section: true },
+    { id: "config", label: "config", section: true },
+  ];
+
+  const toggle = document.getElementById("sections-toggle");
+  const menu = document.getElementById("sections-menu");
+
+  let off = []; // the Off Section ids, learned from /api/config
+  let configData = null; // the parsed /api/config body, so the config panel reuses it
+  let overrides = loadOverrides();
+
+  function panelOf(id) {
+    const mount = document.getElementById(id);
+    return mount ? mount.closest("section") : null;
+  }
+
+  // Hidden overrides: panel id → visible boolean, holding only the panels the
+  // viewer has set away from the server default (visible). Mirrors wkx-theme,
+  // which stores nothing at all for auto.
+  function loadOverrides() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+  function saveOverrides() {
+    try {
+      if (Object.keys(overrides).length === 0) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, JSON.stringify(overrides));
+    } catch (_err) {
+      // A private-mode or storage-blocked browser simply forgoes persistence.
+    }
+  }
+
+  function isOff(id) {
+    return off.indexOf(id) >= 0;
+  }
+  function visible(id) {
+    if (isOff(id)) return false;
+    return Object.prototype.hasOwnProperty.call(overrides, id) ? !!overrides[id] : true;
+  }
+
+  // Off panels are removed outright; Hidden ones keep their place but carry the
+  // `hidden` attribute, so they are still fetched and still counted.
+  function applyOne(entry) {
+    const panel = panelOf(entry.id);
+    if (!panel) return;
+    if (entry.section && isOff(entry.id)) {
+      panel.remove();
+      return;
+    }
+    panel.hidden = !visible(entry.id);
+  }
+  function applyAll() {
+    PANELS.forEach(applyOne);
+  }
+
+  function setVisible(entry, show) {
+    // Store an override only when it differs from the default (visible); showing a
+    // panel again drops the override, so the map holds overrides only, exactly as
+    // wkx-theme holds nothing for auto.
+    if (show) delete overrides[entry.id];
+    else overrides[entry.id] = false;
+    saveOverrides();
+    applyOne(entry);
+  }
+
+  function buildMenu() {
+    if (!menu) return;
+    menu.replaceChildren();
+    PANELS.forEach(function (entry) {
+      const row = U.el("label", "disc-item" + (isOff(entry.id) ? " disc-item--off" : ""));
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = visible(entry.id);
+      if (isOff(entry.id)) box.disabled = true;
+      box.addEventListener("change", function () {
+        setVisible(entry, box.checked);
+      });
+      row.append(box, U.el("span", "disc-label", entry.label));
+      if (isOff(entry.id)) row.append(U.el("span", "disc-note", "off in config"));
+      menu.append(row);
+    });
+  }
+
+  function openMenu(open) {
+    if (!menu || !toggle) return;
+    menu.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  if (toggle && menu) {
+    toggle.addEventListener("click", function (event) {
+      event.stopPropagation();
+      openMenu(menu.hidden);
+    });
+    // A click outside the open menu, or Escape, closes it — the theme toggle sets
+    // no such trap, so this is the one place the masthead listens on the document.
+    document.addEventListener("click", function (event) {
+      if (!menu.hidden && !menu.contains(event.target) && event.target !== toggle) openMenu(false);
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") openMenu(false);
+    });
+  }
+
+  // Boot: read the effective configuration, learn the Off Sections, remove their
+  // panels and apply the Hidden overrides, then build the menu. `ready` resolves
+  // only after all of that, so the Section fetches queued behind it never race the
+  // removal. A failed or absent config just leaves every panel at its default.
+  const ready = fetch("/api/config")
+    .then(function (response) {
+      return response.ok ? response.json() : null;
+    })
+    .catch(function () {
+      return null;
+    })
+    .then(function (data) {
+      configData = data;
+      off = (data && data.sections_off && data.sections_off.sections) || [];
+      applyAll();
+      buildMenu();
+    });
+
+  function whenActive(mount, run) {
+    ready.then(function () {
+      // An Off panel was removed, so its mount is detached; skip its fetch. A
+      // Hidden panel is still connected, so it fetches and counts as normal.
+      if (mount && mount.isConnected) run();
+    });
+  }
+
+  // The parsed /api/config body from the boot fetch, so the config panel renders
+  // from it rather than fetching the same endpoint a second time. Null when the
+  // boot fetch failed, which the config panel renders as its own error.
+  function config() {
+    return configData;
+  }
+
+  return { ready: ready, whenActive: whenActive, isOff: isOff, config: config };
+})();
+
 // ---------- Flag layer (M6) + needs-attention summary ----------
 // The cross-cutting anomaly layer. It gathers no facts of its own — the server
 // derives the at-rest Flags over /api/flags — but it owns the two places a Flag
@@ -537,25 +710,30 @@ window.wkxFlags = (function () {
 
   new MutationObserver(decorate).observe(board, { childList: true, subtree: true });
 
-  fetch("/api/flags")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(function (data) {
-      (data.flags || []).forEach(function (flag) {
-        registry.set(keyOf(flag), flag);
+  // Wait for the boot gate: Off panels are removed first, so no Flag ever lands on
+  // a host the board is about to drop. Needs attention itself is never Off, so this
+  // always runs; the server has already left every Off Section's Flags out.
+  window.wkxSections.ready.then(function () {
+    fetch("/api/flags")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        (data.flags || []).forEach(function (flag) {
+          registry.set(keyOf(flag), flag);
+        });
+        decorate();
+        renderSummary();
+      })
+      .catch(function () {
+        if (summaryMount) {
+          summaryMount.replaceChildren(
+            U.summaryLine(["Could not derive the flags. Check that the board is still running."]),
+          );
+        }
       });
-      decorate();
-      renderSummary();
-    })
-    .catch(function () {
-      if (summaryMount) {
-        summaryMount.replaceChildren(
-          U.summaryLine(["Could not derive the flags. Check that the board is still running."]),
-        );
-      }
-    });
+  });
 
   return api;
 })();
@@ -827,7 +1005,9 @@ window.wkxTokens = (function () {
     const cell = U.td(U.cellFlex(parts), "sub-cell");
     cell.colSpan = 7;
     const row = U.el("tr", "subrow");
-    row.append(cell, U.flagCell("submodules:" + sub.path));
+    // A submodule is a row of the workspace table, not a Section of its own, so its
+    // "releases behind" badge is homed on workspace beside its parent repo's flags.
+    row.append(cell, U.flagCell("workspace:" + sub.path));
     return row;
   }
 
@@ -885,16 +1065,18 @@ window.wkxTokens = (function () {
   }
 
   function raiseSubBehind(path, behind) {
+    // Homed on workspace, not a submodules Section: submodules are rows of the
+    // workspace table, so this badge rides the workspace rail beside its repo.
     if (behind > 0) {
       window.wkxFlags.add({
-        section: "submodules",
+        section: "workspace",
         target: path,
         level: "attention",
         code: "submodule-tags-behind",
         message: behind === 1 ? "1 release behind" : behind + " releases behind",
       });
     } else {
-      window.wkxFlags.clear("submodules", path, "submodule-tags-behind");
+      window.wkxFlags.clear("workspace", path, "submodule-tags-behind");
     }
   }
 
@@ -1021,25 +1203,27 @@ window.wkxTokens = (function () {
     startStream("/api/submodules/probe", fillSubmodule);
   }
 
-  Promise.all([
-    fetch("/api/workspace").then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    }),
-    fetch("/api/submodules")
-      .then(function (r) {
-        return r.ok ? r.json() : { submodules: [] };
+  window.wkxSections.whenActive(mount, function () {
+    Promise.all([
+      fetch("/api/workspace").then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }),
+      fetch("/api/submodules")
+        .then(function (r) {
+          return r.ok ? r.json() : { submodules: [] };
+        })
+        .catch(function () {
+          return { submodules: [] };
+        }),
+    ])
+      .then(function (results) {
+        render(results[0], results[1]);
       })
       .catch(function () {
-        return { submodules: [] };
-      }),
-  ])
-    .then(function (results) {
-      render(results[0], results[1]);
-    })
-    .catch(function () {
-      note("Could not load the workspace. Check that the board is still running.");
-    });
+        note("Could not load the workspace. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- toolchains ----------
@@ -1188,15 +1372,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren.apply(mount, nodes);
   }
 
-  fetch("/api/toolchains")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load toolchains. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/toolchains")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not load toolchains. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- claude ----------
@@ -1383,15 +1569,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren.apply(mount, nodes);
   }
 
-  fetch("/api/claude")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load the Claude environment. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/claude")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not load the Claude environment. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- system ----------
@@ -1433,15 +1621,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren(summary, built.wrap);
   }
 
-  fetch("/api/system")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load system tools. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/system")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not load system tools. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- homebrew ----------
@@ -1509,15 +1699,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren.apply(mount, nodes);
   }
 
-  fetch("/api/homebrew")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load Homebrew. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/homebrew")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not load Homebrew. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- docker ----------
@@ -1555,15 +1747,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren(U.tiles(specs));
   }
 
-  fetch("/api/docker")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not load Docker. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/docker")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not load Docker. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- footprint ----------
@@ -1630,15 +1824,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren(summary, built.wrap);
   }
 
-  fetch("/api/footprint")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not measure the disk footprint. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/footprint")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not measure the disk footprint. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- editor ----------
@@ -1680,15 +1876,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren(summary, built.wrap);
   }
 
-  fetch("/api/editor")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not read the editor. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/editor")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not read the editor. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- git config ----------
@@ -1774,15 +1972,17 @@ window.wkxTokens = (function () {
     mount.replaceChildren.apply(mount, nodes);
   }
 
-  fetch("/api/git-config")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
-      note("Could not read the git config. Check that the board is still running.");
-    });
+  window.wkxSections.whenActive(mount, function () {
+    fetch("/api/git-config")
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function () {
+        note("Could not read the git config. Check that the board is still running.");
+      });
+  });
 })();
 
 // ---------- config ----------
@@ -1792,9 +1992,9 @@ window.wkxTokens = (function () {
 // small mono label, never by hue: a computed default reads recessive, a value the
 // operator set through the file or the environment reads at full weight, so a
 // glance down the Source column separates what is customised from what runs on
-// defaults. Colour stays reserved for the Flag layer. The discovery Excludes get
-// their own table beside system tools; Off Sections and mutes arrive with later
-// milestones, each adding its own table here.
+// defaults. Colour stays reserved for the Flag layer. The discovery Excludes and
+// Off Sections each get their own table here beside system tools; mutes arrive with
+// a later milestone, adding one more.
 (function () {
   "use strict";
 
@@ -1859,12 +2059,26 @@ window.wkxTokens = (function () {
     return built.wrap;
   }
 
+  // The Off Sections, the second list-shaped setting to get its own table. Each is
+  // a Section the operator switched off, so its panel and route are gone and it
+  // raises no Flags; naming them here is the one place the board still accounts for
+  // a Section it otherwise drops entirely.
+  function offTable(sections) {
+    const built = U.table([{ label: "Section" }]);
+    sections.forEach(function (name) {
+      built.tbody.append(U.tr([U.td(U.el("span", "t-name", name)), U.flagCell()]));
+    });
+    return built.wrap;
+  }
+
   function render(data) {
     const values = data.values || [];
     const tools = (data.system_tools && data.system_tools.tools) || [];
     const toolsSource = (data.system_tools && data.system_tools.source) || "default";
     const excludes = (data.exclude && data.exclude.globs) || [];
     const excludeSource = (data.exclude && data.exclude.source) || "default";
+    const off = (data.sections_off && data.sections_off.sections) || [];
+    const offSource = (data.sections_off && data.sections_off.source) || "default";
     const customised = values.filter(function (item) {
       return item.source !== "default";
     }).length;
@@ -1877,6 +2091,7 @@ window.wkxTokens = (function () {
       { value: String(customised), label: "Customised" },
       { value: String(envCount), label: "From environment" },
       { value: String(tools.length), label: "System tools" },
+      { value: String(off.length), label: "Off Sections" },
     ]);
 
     // Name the file and whether it was found, so the operator knows exactly which
@@ -1904,17 +2119,24 @@ window.wkxTokens = (function () {
       );
     }
     nodes.push(U.el("p", "sub-head", "System tools (" + tools.length + ") · " + toolsSource), toolsTable(tools));
+    nodes.push(U.el("p", "sub-head", "Off Sections (" + off.length + ") · " + offSource));
+    nodes.push(
+      off.length > 0
+        ? offTable(off)
+        : U.summaryLine(["No Sections are off; every Section is on the board."]),
+    );
 
     mount.replaceChildren.apply(mount, nodes);
   }
 
-  fetch("/api/config")
-    .then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.json();
-    })
-    .then(render)
-    .catch(function () {
+  // The boot gate already fetched /api/config to learn the Off Sections, so this
+  // panel renders from that one body rather than fetching the same endpoint again.
+  window.wkxSections.whenActive(mount, function () {
+    const data = window.wkxSections.config();
+    if (data) {
+      render(data);
+    } else {
       note("Could not read the configuration. Check that the board is still running.");
-    });
+    }
+  });
 })();

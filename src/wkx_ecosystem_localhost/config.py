@@ -32,6 +32,7 @@ from pydantic_settings import (
 )
 
 from wkx_ecosystem_localhost.exceptions import ConfigError
+from wkx_ecosystem_localhost.models import Section
 from wkx_ecosystem_localhost.redaction import relativise
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,13 @@ class Settings(BaseSettings):
     # with no code change.
     system_tools: list[ToolSpec] = Field(default_factory=_default_system_tools)
 
+    # The Sections switched off. An Off Section is not collected, its route is not
+    # registered, and it raises no Flags; the client removes its panel before any
+    # fetch fires. Typed by the Section enum, so an unknown name fails fast the way
+    # extra="forbid" rejects an unknown key. Needs attention is not a Section and so
+    # can never appear here.
+    sections_off: list[Section] = Field(default_factory=list)
+
     # Background-fetch pool: how many repos are fetched at once, and the
     # per-fetch wall-clock ceiling. Bounded so the one write the board performs
     # can never swamp the machine or hang on an unreachable remote.
@@ -181,6 +189,28 @@ class Settings(BaseSettings):
     def _expand_scan_roots(cls, roots: list[Path]) -> list[Path]:
         """Expand a leading ``~`` in each scan root, from the TOML or the environment."""
         return [root.expanduser() for root in roots]
+
+    @field_validator("sections_off", mode="after")
+    @classmethod
+    def _config_is_never_off(cls, sections: list[Section]) -> list[Section]:
+        """Reject ``config`` in ``sections_off``: the config Section cannot be Off.
+
+        ``/api/config`` is the board's own effective-configuration view, which the
+        client boots from to learn what is Off in the first place, so it is served
+        unconditionally. Turning it Off would leave that route up while the panel
+        vanished, a half-off state CONTEXT.md's Off rules out. Like needs attention,
+        the config Section can be Hidden from the ``sections`` menu, but never Off.
+
+        Raises:
+            ValueError: If ``config`` appears in ``sections_off``.
+        """
+        if Section.CONFIG in sections:
+            raise ValueError(
+                "config cannot be switched off: it is the board's own "
+                "effective-configuration view and the client boots from it. "
+                "Hide it from the sections menu instead."
+            )
+        return sections
 
     @classmethod
     def settings_customise_sources(
@@ -264,8 +294,8 @@ class ConfigToolList(BaseModel):
     """The system-tools probe list as effective configuration, rendered as a table.
 
     ``source`` is where the whole list came from (a default list, the TOML, or the
-    environment); ``tools`` is the effective list in order. ``exclude`` already sits
-    beside this block; a sibling milestone adds ``sections_off`` and ``mute`` the
+    environment); ``tools`` is the effective list in order. ``exclude`` and
+    ``sections_off`` sit beside this block; a sibling milestone adds ``mute`` the
     same way, each its own typed block and table, without disturbing this one.
     """
 
@@ -288,6 +318,20 @@ class ConfigExcludes(BaseModel):
     globs: list[str]
 
 
+class ConfigSectionsOff(BaseModel):
+    """The Off Sections as effective configuration, rendered as its own table.
+
+    Another list-shaped setting following ``system_tools`` into its own typed block,
+    per the pattern A set. ``source`` is where the list came from (an empty default,
+    the TOML, or the environment); ``sections`` is the effective list of Sections
+    switched off, so the config Section can name exactly which panels the board
+    dropped.
+    """
+
+    source: Source
+    sections: list[Section]
+
+
 class ConfigView(BaseModel):
     """The read-only effective configuration for the config Section.
 
@@ -295,10 +339,10 @@ class ConfigView(BaseModel):
     each value came from, but never changes it. ``file`` is the ``~``-relative path
     of the TOML the values were read from, or None when the file source is off;
     ``found`` is whether that file exists. ``values`` are the scalar settings;
-    ``system_tools`` is the probe list and ``exclude`` is the discovery Exclude
-    globs. Each list-shaped setting gets its own typed block beside ``system_tools``
-    so the Section grows one table at a time; a sibling adds ``sections_off`` and
-    ``mute`` the same way.
+    ``system_tools`` is the probe list, ``exclude`` is the discovery Exclude globs,
+    and ``sections_off`` is the Off Sections. Each list-shaped setting gets its own
+    typed block beside ``system_tools`` so the Section grows one table at a time; a
+    sibling adds ``mute`` the same way.
     """
 
     file: str | None
@@ -306,6 +350,7 @@ class ConfigView(BaseModel):
     values: list[ConfigItem]
     system_tools: ConfigToolList
     exclude: ConfigExcludes
+    sections_off: ConfigSectionsOff
 
 
 # The scalar settings shown in the config Section's Settings table, in a stable
@@ -390,6 +435,10 @@ def describe(
         source=_source_of("exclude", toml_keys, environ),
         globs=settings.exclude,
     )
+    sections_off = ConfigSectionsOff(
+        source=_source_of("sections_off", toml_keys, environ),
+        sections=settings.sections_off,
+    )
     file_display = relativise(config_file, home) if config_file is not None else None
     return ConfigView(
         file=file_display,
@@ -397,4 +446,5 @@ def describe(
         values=values,
         system_tools=tools,
         exclude=excludes,
+        sections_off=sections_off,
     )

@@ -50,6 +50,22 @@ def test_app_js_persists_theme_choice(client: TestClient) -> None:
     assert "wkx-theme" in response.text
 
 
+def test_app_js_persists_hidden_sections(client: TestClient) -> None:
+    # The sections menu keeps its Hidden overrides in localStorage the way the theme
+    # toggle keeps its choice; this pins the key the way wkx-theme is pinned.
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "wkx-sections" in response.text
+
+
+def test_index_carries_the_sections_menu(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert 'id="sections-toggle"' in response.text
+    assert 'id="sections-menu"' in response.text
+
+
 def test_the_shell_and_assets_revalidate_so_the_browser_never_runs_stale_code(
     client: TestClient,
 ) -> None:

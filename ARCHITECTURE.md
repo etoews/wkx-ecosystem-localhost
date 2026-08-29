@@ -15,11 +15,15 @@ The vocabulary used here (Collector, Section, Origin, Flag) is defined in
 
 `src/wkx_ecosystem_localhost/static/` is the whole frontend: `index.html` (the
 shell), `styles.css` (the wkx-namespace look and feel), and `app.js`. There is
-no build step. On load the board issues one `GET /api/<section>` request per
-Section, renders each as stat tiles over sortable tables, then opens two native
-`EventSource` streams for the slow network truths. Colour is reserved for the
-Flag layer. Neutral facts are told apart by weight, a muted tone, and a label,
-never by hue.
+no build step. On load the board first fetches `GET /api/config`, removes the
+panels the operator turned Off in configuration, and applies the viewer's Hidden
+overrides from the `sections` menu; only then does it issue one
+`GET /api/<section>` request for each remaining Section, render each as stat
+tiles over sortable tables, and open two native `EventSource` streams for the
+slow network truths. An Off Section is dropped before its request fires, so the
+board never asks for a panel it is about to remove; a Hidden Section is still
+fetched and still counts in the tally. Colour is reserved for the Flag layer.
+Neutral facts are told apart by weight, a muted tone, and a label, never by hue.
 
 ## The service
 
@@ -47,12 +51,18 @@ the real app end to end on a fake.
 | `/api/flags` | open Flags, each naming the Section and row it badges |
 | `/api/config` | the effective configuration, each value tagged with its source, read only |
 
+A Section named in `sections_off` is not collected and its route is not
+registered, so its `/api/<section>` returns 404. `/api/config` and `/api/flags`
+are never gated: config is the board's own self-description that the page boots
+from, and flags is the cross-cutting layer, not a Section.
+
 The supporting modules are shared by every route: `config.py` (the typed
 `Settings`, read from a TOML file, the environment, and `.env`, highest first;
 `.env` for secrets, the TOML for everything else; computed, machine-neutral
 defaults; the startup scan that rejects an unknown `WKX_ECO_LOCAL_*` variable; and
 the read-only effective-config view `/api/config` serves), `models.py` (the
-Section models the API serialises verbatim), `sse.py` (SSE framing for
+Section models the API serialises verbatim, and the `Section` enum that types
+`Flag.section` and `sections_off`), `sse.py` (SSE framing for
 `EventSource`), `redaction.py`, `semver.py`, `_logging.py`, and `exceptions.py`.
 
 `__main__.py` is the typer entry point. `serve` builds `Settings` once, binds

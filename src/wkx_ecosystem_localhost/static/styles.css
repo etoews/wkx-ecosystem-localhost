@@ -133,6 +133,76 @@ button.theme {
 }
 button.theme:hover { color: var(--text); border-color: var(--fog); }
 
+/* ---------- sections disclosure ----------
+ * The masthead's second control, beside the theme toggle: a pill that drops a
+ * small panel of one checkbox per Section. It borrows the theme pill's shape and
+ * the board's own rotating disclosure caret (the expandable plugin rows), so it
+ * reads as native rather than a bolted-on menu. Held open, the pill takes the
+ * same lift as its hover, so open looks like a held press. Colour stays reserved
+ * for the Flag layer: an Off Section is set apart by weight and a quiet label,
+ * never by hue, the way the config Section marks provenance. */
+.sections-ctrl { position: relative; display: inline-flex; }
+button.disc {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+button.disc:hover,
+button.disc[aria-expanded="true"] { color: var(--text); border-color: var(--fog); }
+.disc-caret { font-size: .8em; transition: transform .15s ease; }
+button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
+
+.disc-menu {
+  position: absolute;
+  top: calc(100% + .45rem);
+  right: 0;
+  z-index: 20;
+  min-width: 15rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--hull);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .4rem;
+  box-shadow: 0 8px 24px -8px rgba(4, 10, 16, .5);
+  animation: fade-in .12s ease-out;
+}
+.disc-menu[hidden] { display: none; }
+.disc-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .32rem .5rem;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: .74rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.disc-item:hover { background: var(--water); }
+.disc-item input { accent-color: var(--fog); cursor: pointer; margin: 0; flex: none; }
+.disc-label { flex: 1; }
+/* An Off Section reads recessive: it cannot be shown from here, so its row is
+ * quiet and its state is a word, told apart by weight — never by hue. */
+.disc-item--off, .disc-item--off:hover { color: var(--fog); cursor: default; background: transparent; }
+.disc-item--off input { cursor: default; }
+.disc-note {
+  font-size: .62rem;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--fog);
+  opacity: .85;
+}
+
 /* ---------- board & panels ---------- */
 .board {
   display: grid;

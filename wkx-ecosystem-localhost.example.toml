@@ -51,6 +51,14 @@
 # re-walk every tree. Default: 60.0.
 # footprint_cache_ttl = 60.0
 
+# The Sections switched off. Each name must be one of the ten Sections:
+# workspace, toolchains, claude, homebrew, system, docker, footprint, editor,
+# git-config, config. An unknown name stops the board at startup. An Off Section
+# is not collected, its /api/<section> route is not registered, and it raises no
+# Flags; the board removes its panel before any request fires. Needs attention is
+# not a Section and cannot go here. Default: none off.
+# sections_off = ["docker", "editor"]
+
 # The developer CLIs the system Section probes. Each entry is a [[system_tools]]
 # table with a name and, optionally, the arguments that ask the tool its version
 # (default ["--version"]). Setting this replaces the whole generic default list

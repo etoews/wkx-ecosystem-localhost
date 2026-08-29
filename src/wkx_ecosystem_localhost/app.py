@@ -2,8 +2,9 @@
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import TypeVar
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, StreamingResponse
@@ -46,6 +47,7 @@ from wkx_ecosystem_localhost.models import (
     FootprintSection,
     GitConfigSection,
     HomebrewSection,
+    Section,
     SubmoduleSection,
     SystemToolsSection,
     ToolchainsSection,
@@ -55,6 +57,8 @@ from wkx_ecosystem_localhost.models import (
 logger = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
+
+_Route = TypeVar("_Route", bound=Callable[..., object])
 
 
 class _NoCacheStaticFiles(StaticFiles):
@@ -106,12 +110,34 @@ def create_app(
     # synchronously behind a short-lived cache rather than on every request.
     app.state.footprint_cache = TtlCache[FootprintSection](settings.footprint_cache_ttl)
 
+    # The Sections switched off in configuration. An Off Section's route is never
+    # registered below, so ``/api/<section>`` 404s and its Collector never runs.
+    off = set(settings.sections_off)
+
+    def _section_route(section: Section, path: str) -> Callable[[_Route], _Route]:
+        """Register a GET route only when its Section is on.
+
+        An Off Section's route is never wired to the router, so ``/api/<section>``
+        returns 404 and its Collector never runs. The handler is still defined (a
+        harmless closure); it is simply not attached, so the Section leaves every
+        surface at once. ``/api/config`` and ``/api/flags`` are deliberately not
+        gated: config is the board's own self-description that the client boots
+        from, and flags is the cross-cutting layer, not a Section.
+        """
+
+        def register(func: _Route) -> _Route:
+            if section not in off:
+                app.get(path)(func)
+            return func
+
+        return register
+
     @app.get("/api/health")
     def health() -> dict[str, bool]:
         """Liveness probe for the board's own JS and for smoke tests."""
         return {"ok": True}
 
-    @app.get("/api/workspace")
+    @_section_route(Section.WORKSPACE, "/api/workspace")
     def workspace() -> WorkspaceSection:
         """Discovered repos with status and redacted config for the workspace Section."""
         return collect_workspace(
@@ -122,7 +148,7 @@ def create_app(
             excludes=settings.exclude,
         )
 
-    @app.get("/api/workspace/fetch")
+    @_section_route(Section.WORKSPACE, "/api/workspace/fetch")
     def workspace_fetch() -> StreamingResponse:
         """Stream each repo's ahead/behind as its background fetch lands (SSE).
 
@@ -157,7 +183,7 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @app.get("/api/submodules")
+    @_section_route(Section.WORKSPACE, "/api/submodules")
     def submodules() -> SubmoduleSection:
         """Each discovered repo's submodules with pins resolved for the submodules Section.
 
@@ -173,7 +199,7 @@ def create_app(
         )
         return collect_submodules(app.state.machine, repo_paths, home=app.state.home)
 
-    @app.get("/api/submodules/probe")
+    @_section_route(Section.WORKSPACE, "/api/submodules/probe")
     def submodules_probe() -> StreamingResponse:
         """Stream each submodule's latest release and tags-behind as its listing lands (SSE).
 
@@ -211,7 +237,7 @@ def create_app(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    @app.get("/api/toolchains")
+    @_section_route(Section.TOOLCHAINS, "/api/toolchains")
     def toolchains() -> ToolchainsSection:
         """The Python and Node/TypeScript toolchain facts for the toolchains Section.
 
@@ -227,7 +253,7 @@ def create_app(
         )
         return collect_toolchains(app.state.machine, repo_paths, home=app.state.home)
 
-    @app.get("/api/system")
+    @_section_route(Section.SYSTEM, "/api/system")
     def system() -> SystemToolsSection:
         """Each configured developer CLI as present-with-version or missing.
 
@@ -236,7 +262,7 @@ def create_app(
         """
         return collect_system_tools(app.state.machine, settings.system_tools)
 
-    @app.get("/api/claude")
+    @_section_route(Section.CLAUDE, "/api/claude")
     def claude() -> ClaudeSection:
         """Skills, plugins, and MCP servers with their Origins for the claude Section.
 
@@ -246,7 +272,7 @@ def create_app(
         """
         return collect_claude(app.state.machine, home=app.state.home)
 
-    @app.get("/api/git-config")
+    @_section_route(Section.GIT_CONFIG, "/api/git-config")
     def git_config() -> GitConfigSection:
         """The whole global gitconfig chain, every key shown with targeted redaction.
 
@@ -258,7 +284,7 @@ def create_app(
         """
         return collect_git_config(app.state.machine, home=app.state.home)
 
-    @app.get("/api/homebrew")
+    @_section_route(Section.HOMEBREW, "/api/homebrew")
     def homebrew() -> HomebrewSection:
         """Outdated formulae and casks, or Homebrew's absence, for the homebrew Section.
 
@@ -267,7 +293,7 @@ def create_app(
         """
         return collect_homebrew(app.state.machine)
 
-    @app.get("/api/docker")
+    @_section_route(Section.DOCKER, "/api/docker")
     def docker() -> DockerSection:
         """Daemon reachability, container and image counts, and reclaimable disk.
 
@@ -276,7 +302,7 @@ def create_app(
         """
         return collect_docker(app.state.machine)
 
-    @app.get("/api/editor")
+    @_section_route(Section.EDITOR, "/api/editor")
     def editor() -> EditorSection:
         """VS Code's presence, CLI version, and installed extensions.
 
@@ -286,7 +312,7 @@ def create_app(
         """
         return collect_editor(app.state.machine)
 
-    @app.get("/api/footprint")
+    @_section_route(Section.FOOTPRINT, "/api/footprint")
     def footprint() -> FootprintSection:
         """Per-repo ``.venv``/``node_modules`` disk usage plus the Docker disk.
 

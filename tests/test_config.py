@@ -20,6 +20,7 @@ from wkx_ecosystem_localhost.config import (
     resolve_config_file,
 )
 from wkx_ecosystem_localhost.exceptions import ConfigError
+from wkx_ecosystem_localhost.models import Section
 
 
 def test_defaults_are_computed_not_literal() -> None:
@@ -392,3 +393,26 @@ def test_describe_relativises_the_file_path() -> None:
 
 def test_env_prefix_is_wkx_eco_local() -> None:
     assert ENV_PREFIX == "WKX_ECO_LOCAL_"
+
+
+# ---------- describe: the sections_off block ----------
+
+
+def test_describe_reports_no_off_sections_by_default() -> None:
+    settings = Settings(_env_file=None, _config_file=None)
+
+    view = describe(settings, home=Path("/home/someone"), config_file=None, environ={})
+
+    assert view.sections_off.sections == []
+    assert view.sections_off.source == "default"
+
+
+def test_describe_reports_the_off_sections_from_the_file(tmp_path: Path) -> None:
+    path = tmp_path / "wkx-ecosystem-localhost.toml"
+    path.write_text('sections_off = ["docker", "editor"]\n')
+    settings = Settings(_env_file=None, _config_file=path)
+
+    view = describe(settings, home=Path("/home/someone"), config_file=path, environ={})
+
+    assert view.sections_off.sections == [Section.DOCKER, Section.EDITOR]
+    assert view.sections_off.source == "file"
