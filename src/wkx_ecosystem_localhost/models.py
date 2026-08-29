@@ -52,6 +52,21 @@ class ConfigEntry(BaseModel):
     raw: str | None = None
 
 
+class RoadmapProgress(BaseModel):
+    """Task-item progress parsed from a repo's ROADMAP.md.
+
+    ``ticked`` is the count of checked GitHub Flavored Markdown task items and
+    ``total`` the count of every task item, checked or not, so the board renders
+    "ticked / total" and derives the ratio it sorts by. A file present but
+    carrying no task items has ``total`` 0, which the board shows as the
+    not-applicable glyph rather than a zero fraction; a repo with no readable
+    ROADMAP.md carries no ``RoadmapProgress`` at all (the field is None).
+    """
+
+    ticked: int
+    total: int
+
+
 class Repo(BaseModel):
     """A discovered git repository and its working-tree state.
 
@@ -61,7 +76,9 @@ class Repo(BaseModel):
     ``github`` is the ``https://github.com/owner/repo`` link derived from the
     primary remote (preferring ``remote.origin.url``), or None when that remote is
     not a GitHub remote. Like every remote fact it exposes only owner and repo,
-    never a credential.
+    never a credential. ``roadmap`` is the repo's ROADMAP.md task-item progress, or
+    None when it has no readable ROADMAP.md; the absence is a plain fact, never a
+    Flag.
     """
 
     name: str
@@ -78,6 +95,7 @@ class Repo(BaseModel):
     ahead: int | None = None
     behind: int | None = None
     github: str | None = None
+    roadmap: RoadmapProgress | None = None
     config: list[ConfigEntry]
 
 

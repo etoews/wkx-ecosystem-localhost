@@ -64,8 +64,8 @@ class _CountingMachine:
     def run(self, argv: Sequence[str], *, cwd: Path | None = None, timeout: float) -> CommandResult:
         return self.inner.run(argv, cwd=cwd, timeout=timeout)
 
-    def read_file(self, path: Path) -> str | None:
-        return self.inner.read_file(path)
+    def read_file(self, path: Path, max_bytes: int | None = None) -> str | None:
+        return self.inner.read_file(path, max_bytes)
 
     def list_dir(self, path: Path) -> list[DirEntry]:
         self.list_dir_paths.append(path)
