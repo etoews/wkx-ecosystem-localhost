@@ -1,6 +1,7 @@
 """FastAPI application factory serving the board shell and the JSON API."""
 
 import logging
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -29,7 +30,13 @@ from wkx_ecosystem_localhost.collectors.submodules import (
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
 from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
-from wkx_ecosystem_localhost.config import Settings
+from wkx_ecosystem_localhost.config import (
+    ConfigView,
+    Settings,
+    check_environment,
+    describe,
+    resolve_config_file,
+)
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
@@ -68,7 +75,11 @@ class _NoCacheStaticFiles(StaticFiles):
 
 
 def create_app(
-    settings: Settings, *, machine: Machine | None = None, home: Path | None = None
+    settings: Settings,
+    *,
+    machine: Machine | None = None,
+    home: Path | None = None,
+    config_file: Path | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -82,11 +93,15 @@ def create_app(
         machine: The machine seam. Defaults to ``RealMachine``.
         home: Home directory used to relativise displayed paths. Defaults to the
             real home.
+        config_file: The TOML the settings were read from, reported by
+            ``/api/config``. Defaults to None (no file), so the suite never reads a
+            real file; the entry point passes the resolved path in production.
     """
     app = FastAPI(title="WKX Ecosystem localhost")
     app.state.settings = settings
     app.state.machine = machine if machine is not None else RealMachine()
     app.state.home = home if home is not None else Path.home()
+    app.state.config_file = config_file
     # The footprint probe walks whole trees with ``du``, so its Section is computed
     # synchronously behind a short-lived cache rather than on every request.
     app.state.footprint_cache = TtlCache[FootprintSection](settings.footprint_cache_ttl)
@@ -285,6 +300,22 @@ def create_app(
         """
         return collect_flags(app.state.machine, settings, home=app.state.home)
 
+    @app.get("/api/config")
+    def config() -> ConfigView:
+        """The effective configuration, each value tagged with where it came from.
+
+        A read-only view for the config Section: every scalar setting and the
+        system-tools probe list, paths relativised to ``~``, each tagged
+        ``default``, ``file``, or ``env``, plus the file path and whether it was
+        found. The board reports its configuration; it never writes it.
+        """
+        return describe(
+            settings,
+            home=app.state.home,
+            config_file=app.state.config_file,
+            environ=os.environ,
+        )
+
     app.mount("/static", _NoCacheStaticFiles(directory=_STATIC), name="static")
 
     @app.get("/", include_in_schema=False)
@@ -308,6 +339,11 @@ def create_app_from_env() -> FastAPI:
     subprocess that imports this factory and never runs the CLI callback. Without
     it the worker's root logger has no handler and its records fall through to
     ``logging.lastResort`` (bare, on stderr, WARNING and above only).
+
+    The environment is scanned here too, so a reload that picks up a misspelt
+    ``WKX_ECO_LOCAL_*`` variable fails fast in the worker rather than serving on.
     """
     configure_logging()
-    return create_app(Settings())
+    check_environment()
+    config_file = resolve_config_file(os.environ)
+    return create_app(Settings(), config_file=config_file)

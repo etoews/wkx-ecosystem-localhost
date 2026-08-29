@@ -45,11 +45,15 @@ the real app end to end on a fake.
 | `/api/editor` | VS Code presence and version, with its installed extensions |
 | `/api/footprint` | per-repo `.venv` and `node_modules` disk sizes alongside the Docker disk, cached |
 | `/api/flags` | open Flags, each naming the Section and row it badges |
+| `/api/config` | the effective configuration, each value tagged with its source, read only |
 
-The supporting modules are shared by every route: `config.py` (typed
-`Settings` with computed, machine-neutral defaults), `models.py` (the Section
-models the API serialises verbatim), `sse.py` (SSE framing for `EventSource`),
-`redaction.py`, `semver.py`, `_logging.py`, and `exceptions.py`.
+The supporting modules are shared by every route: `config.py` (the typed
+`Settings`, read from a TOML file, the environment, and `.env`, highest first;
+`.env` for secrets, the TOML for everything else; computed, machine-neutral
+defaults; the startup scan that rejects an unknown `WKX_ECO_LOCAL_*` variable; and
+the read-only effective-config view `/api/config` serves), `models.py` (the
+Section models the API serialises verbatim), `sse.py` (SSE framing for
+`EventSource`), `redaction.py`, `semver.py`, `_logging.py`, and `exceptions.py`.
 
 `__main__.py` is the typer entry point. `serve` builds `Settings` once, binds
 uvicorn to `127.0.0.1:8787`, and opens the board in a browser. The bind host is

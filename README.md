@@ -73,7 +73,45 @@ Then open `http://localhost:8787`.
 | --- | --- | --- |
 | `--port <n>` | `8787` | Bind on `127.0.0.1:<n>`. |
 | `--open-browser` | off | Open the board in the default browser at startup. |
-| `--reload` | off | Restart on package-source changes. For development. |
+| `--reload` | off | Restart on a source or configuration change. For development. |
+
+### Configuration
+
+Configuration is a TOML file. `.env` holds secrets only. The board reads its
+configuration and shows it in the config Section, but it never writes it.
+
+To change a setting, copy the example file and edit your copy:
+
+```sh
+cp wkx-ecosystem-localhost.example.toml wkx-ecosystem-localhost.toml
+```
+
+The board reads `wkx-ecosystem-localhost.toml` from the working directory (the
+repo root). The file is gitignored, because it names your machine.
+`wkx-ecosystem-localhost.example.toml` documents every key with a placeholder and
+holds no machine path, so it is safe to commit. Each key is optional. A missing
+file, or a missing key, falls back to a value that the board computes at run time,
+so the board runs with no configuration at all.
+
+Every key maps one to one onto a setting. A path accepts a leading `~`, which
+expands to your home directory. To read the file from another path, set the
+environment variable `WKX_ECO_LOCAL_CONFIG_FILE`.
+
+A setting can also come from the environment. A variable is the setting name with
+the prefix `WKX_ECO_LOCAL_`, for example `WKX_ECO_LOCAL_PORT`. Precedence, highest
+first: an explicit argument, an environment variable, `.env`, the TOML file, then
+the computed default.
+
+The board fails fast on a mistake. It refuses to start, with a clear error that
+names the key, when the TOML holds an unknown key, when `.env` holds an unknown
+prefixed key, or when the environment holds an unknown `WKX_ECO_LOCAL_*` variable
+such as a misspelt `WKX_ECO_LOCAL_PROT`.
+
+Secrets are separate. `.env` holds only a secret value (a `SecretStr` field), and
+the board stays wired to read `.env` for the first one. There is no secret today,
+so no `.env.example` ships until then. This split of configuration from secrets
+diverges from `standards/python/standards/configuration.md`, which keeps both in
+`.env`; the standard is planned to change to match.
 
 ### Development
 
@@ -83,9 +121,9 @@ Add `--reload` to restart the server on code changes:
 uv run wkx-ecosystem-localhost serve --reload
 ```
 
-A change to the package source restarts the server, and the new code is served.
-The server re-reads configuration on each restart, so configuration changes are
-picked up too. Frontend files under `static/` are served from disk, so they are
+The reloader watches the package source and the configuration file. A change to
+either restarts the server: new code is served, and the new configuration is read
+on the restart. Frontend files under `static/` are served from disk, so they are
 live on a browser refresh without `--reload`.
 
 To launch and drive the board programmatically, use the
@@ -125,10 +163,12 @@ launchctl kickstart -k gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
 launchctl bootout gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
 ```
 
-The reloader watches the package source only. It picks up Python code changes
-and re-reads configuration on the restart. It does not pick up dependency
-changes (`pyproject.toml` or `uv.lock`), and it does not pick up a `.env` change
-on its own. For those, restart the agent with `launchctl kickstart -k`.
+The reloader watches the package source and the configuration file
+(`wkx-ecosystem-localhost.toml`). It picks up a Python code change and a
+configuration edit, and reads the new configuration on the restart. It does not
+pick up a dependency change (`pyproject.toml` or `uv.lock`), and it does not pick
+up a `.env` change on its own. For those, restart the agent with `launchctl
+kickstart -k`.
 
 This pattern has one trade-off. If you save a file with a syntax error or a bad
 import, the reloader does not serve the broken code, so the board is down until

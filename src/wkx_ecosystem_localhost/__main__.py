@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import webbrowser
 from pathlib import Path
@@ -12,7 +13,7 @@ import uvicorn
 
 from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
+from wkx_ecosystem_localhost.config import Settings, check_environment, resolve_config_file
 
 # Deliberately not configurable: the board is loopback-only as a security
 # property. It inventories the machine, so nothing on the network may see it.
@@ -56,7 +57,9 @@ def serve(
     ] = False,
 ) -> None:
     """Serve the board on loopback."""
+    check_environment()
     settings = Settings()
+    config_file = resolve_config_file(os.environ)
     bind_port = port if port is not None else settings.port
     url = f"http://{_HOST}:{bind_port}/"
     if open_browser:
@@ -65,19 +68,33 @@ def serve(
     typer.echo(f"Serving the board at {url}")
     if reload:
         # The reloader re-imports the app in a subprocess on each change, so it
-        # needs an import-string factory (not a built instance) and the source
-        # tree to watch. Config is re-read on restart via the factory.
+        # needs an import-string factory (not a built instance) and the trees to
+        # watch. Config is re-read on restart via the factory. Alongside the
+        # package source, the configuration file's own directory is watched and
+        # the file added to the include globs, so a configuration edit restarts
+        # the always-on instance exactly as a code edit does.
+        reload_dirs = [str(_PACKAGE_DIR)]
+        reload_includes = ["*.py"]
+        if config_file is not None:
+            reload_dirs.append(str(config_file.resolve().parent))
+            reload_includes.append(config_file.name)
         uvicorn.run(
             _RELOAD_TARGET,
             factory=True,
             reload=True,
-            reload_dirs=[str(_PACKAGE_DIR)],
+            reload_dirs=reload_dirs,
+            reload_includes=reload_includes,
             host=_HOST,
             port=bind_port,
             log_config=None,
         )
     else:
-        uvicorn.run(create_app(settings), host=_HOST, port=bind_port, log_config=None)
+        uvicorn.run(
+            create_app(settings, config_file=config_file),
+            host=_HOST,
+            port=bind_port,
+            log_config=None,
+        )
 
 
 def main() -> None:

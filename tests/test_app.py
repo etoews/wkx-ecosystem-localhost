@@ -20,6 +20,14 @@ def test_index_carries_the_six_sections(client: TestClient) -> None:
         assert section in response.text
 
 
+def test_index_carries_the_config_section_last(client: TestClient) -> None:
+    response = client.get("/")
+
+    assert 'id="config"' in response.text
+    # The config Section is last on the board, after git config.
+    assert response.text.index('id="git-config"') < response.text.index('id="config"')
+
+
 def test_health(client: TestClient) -> None:
     response = client.get("/api/health")
 

@@ -1,0 +1,58 @@
+# WKX Ecosystem localhost configuration.
+#
+# Copy this file to wkx-ecosystem-localhost.toml in the working directory (the
+# repo root) and uncomment what you want to change. Every key is optional: a
+# missing file, or a missing key, falls back to a value computed at runtime, so
+# the board runs with no configuration at all.
+#
+# Keys are flat and map one to one onto the Settings fields. Paths accept a
+# leading ~, which expands to your home directory. This file holds no machine
+# path, so it is safe to commit; the real wkx-ecosystem-localhost.toml is
+# gitignored because it names your machine.
+#
+# Configuration lives here. Secrets do not: a secret (a SecretStr field) is read
+# from .env instead. There are none today. Precedence, highest first: an explicit
+# argument, an environment variable (WKX_ECO_LOCAL_*), .env, this file, then the
+# computed default. To read this file from another path, set the env-only
+# WKX_ECO_LOCAL_CONFIG_FILE.
+
+# The directories scanned for git repositories. Discovery stops descending at the
+# first .git. Default: ~/dev.
+# scan_roots = ["~/dev"]
+
+# The deepest directory level below a scan root that discovery descends into. A
+# safety cap against a runaway scan; the generous default suits nested layouts.
+# Default: 8.
+# scan_depth = 8
+
+# The port bound on 127.0.0.1. The bind host is not configurable: the board is
+# loopback-only by design. Default: 8787.
+# port = 8787
+
+# How many repositories are fetched at once by the background fetch pool.
+# Default: 4.
+# fetch_workers = 4
+
+# The per-fetch wall-clock ceiling in seconds, so one unreachable remote can
+# never hang the board. Default: 10.0.
+# fetch_timeout = 10.0
+
+# How long, in seconds, the disk footprint (du over each repo's .venv and
+# node_modules) is cached before it is measured again, so a reload does not
+# re-walk every tree. Default: 60.0.
+# footprint_cache_ttl = 60.0
+
+# The developer CLIs the system Section probes. Each entry is a [[system_tools]]
+# table with a name and, optionally, the arguments that ask the tool its version
+# (default ["--version"]). Setting this replaces the whole generic default list
+# (git, gh, uv, ruff, ty, pre-commit, docker, terraform, aws, code, node), so
+# list every tool you want probed.
+# [[system_tools]]
+# name = "git"
+#
+# [[system_tools]]
+# name = "kubectl"
+#
+# [[system_tools]]
+# name = "java"
+# version_args = ["-version"]

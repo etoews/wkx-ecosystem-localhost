@@ -9,3 +9,6 @@ build/
 *.egg-info/
 .env
 .playwright-mcp/
+
+# The real configuration file names this machine; keep it out of the public repo.
+wkx-ecosystem-localhost.toml

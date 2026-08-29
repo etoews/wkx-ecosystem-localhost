@@ -1784,3 +1784,111 @@ window.wkxTokens = (function () {
       note("Could not read the git config. Check that the board is still running.");
     });
 })();
+
+// ---------- config ----------
+// The board describing itself: the effective configuration that shapes every
+// other Section. Its one distinctive idea is provenance — every value carries
+// where it came from (default, file, or env), shown the wkx way, by weight and a
+// small mono label, never by hue: a computed default reads recessive, a value the
+// operator set through the file or the environment reads at full weight, so a
+// glance down the Source column separates what is customised from what runs on
+// defaults. Colour stays reserved for the Flag layer. Exclude, Off Sections, and
+// mutes arrive with later milestones, each adding its own table here.
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const mount = document.getElementById("config");
+  if (!mount) return;
+
+  function note(message) {
+    mount.replaceChildren(U.summaryLine([message]));
+  }
+
+  // The provenance marker: "default" recessive, "file"/"env" at full weight, so a
+  // customised value stands out from a computed default without any colour.
+  function sourceCell(source) {
+    const known = source === "file" || source === "env";
+    const span = U.el("span", "src src--" + (known ? source : "default"), source);
+    return U.td(span);
+  }
+
+  function settingsTable(values) {
+    const built = U.table([{ label: "Setting" }, { label: "Value" }, { label: "Source" }]);
+    values.forEach(function (item) {
+      built.tbody.append(
+        U.tr([
+          U.td(U.el("span", "t-name", item.key)),
+          U.td(U.el("span", "ver", item.value)),
+          sourceCell(item.source),
+          U.flagCell(),
+        ]),
+      );
+    });
+    return built.wrap;
+  }
+
+  // The system-tools probe list, the first list-shaped setting to get its own
+  // table. Each tool name is a token of kind "tool", so it lights up with the same
+  // tool wherever it appears in the system Section and beyond.
+  function toolsTable(tools) {
+    const built = U.table([{ label: "Tool" }, { label: "Version probe" }]);
+    tools.forEach(function (tool) {
+      const probe = (tool.version_args || ["--version"]).join(" ");
+      built.tbody.append(
+        U.tr([
+          U.td(U.token("tool", tool.name, "t-name")),
+          U.td(U.el("span", "q", probe)),
+          U.flagCell(),
+        ]),
+      );
+    });
+    return built.wrap;
+  }
+
+  function render(data) {
+    const values = data.values || [];
+    const tools = (data.system_tools && data.system_tools.tools) || [];
+    const toolsSource = (data.system_tools && data.system_tools.source) || "default";
+    const customised = values.filter(function (item) {
+      return item.source !== "default";
+    }).length;
+    const envCount = values.filter(function (item) {
+      return item.source === "env";
+    }).length;
+
+    const summary = U.tiles([
+      { value: data.found ? "loaded" : "defaults", label: "Config file" },
+      { value: String(customised), label: "Customised" },
+      { value: String(envCount), label: "From environment" },
+      { value: String(tools.length), label: "System tools" },
+    ]);
+
+    // Name the file and whether it was found, so the operator knows exactly which
+    // file the board read (or that it is running entirely on computed defaults).
+    const fileLine = data.file
+      ? data.found
+        ? U.summaryLine(["Read from ", U.el("span", "ver", data.file), "."])
+        : U.summaryLine([
+            "No ",
+            U.el("span", "ver", data.file),
+            " found; every value below is a computed default.",
+          ])
+      : U.summaryLine(["Running on computed defaults; no configuration file is in use."]);
+
+    const nodes = [summary, fileLine, U.el("p", "sub-head", "Settings"), settingsTable(values)];
+    nodes.push(U.el("p", "sub-head", "System tools (" + tools.length + ") · " + toolsSource), toolsTable(tools));
+
+    mount.replaceChildren.apply(mount, nodes);
+  }
+
+  fetch("/api/config")
+    .then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    })
+    .then(render)
+    .catch(function () {
+      note("Could not read the configuration. Check that the board is still running.");
+    });
+})();

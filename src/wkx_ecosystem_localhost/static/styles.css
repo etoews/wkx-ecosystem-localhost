@@ -272,6 +272,14 @@ th.flags, td.flags-col { text-align: right; }
 .bump .arr { color: var(--fog); }
 .bump .to { color: var(--text); font-weight: 600; }
 
+/* The config Section's provenance marker: where an effective value came from.
+ * A computed default reads recessive; a value the operator set through the file
+ * or the environment reads at full weight, so the Source column tells customised
+ * from default by weight and label alone — colour stays with the Flag layer. */
+.src { font-family: var(--mono); font-size: .68rem; letter-spacing: .02em; }
+.src--default { color: var(--fog); }
+.src--file, .src--env { color: var(--text); font-weight: 600; }
+
 /* long descriptions clamp to two lines; full text on hover via title. */
 .clamp2 {
   display: -webkit-box;

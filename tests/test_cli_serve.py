@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,6 +17,7 @@ from typer.testing import CliRunner
 
 from wkx_ecosystem_localhost import __main__ as cli
 from wkx_ecosystem_localhost.app import create_app_from_env
+from wkx_ecosystem_localhost.exceptions import ConfigError
 
 runner = CliRunner()
 
@@ -76,8 +78,43 @@ def test_serve_reload_watches_the_package_source(uvicorn_calls: list[Call]) -> N
     assert any(path.endswith("wkx_ecosystem_localhost") for path in watched)
 
 
+def test_serve_reload_watches_the_config_file(uvicorn_calls: list[Call]) -> None:
+    result = runner.invoke(cli.app, ["serve", "--reload"])
+
+    assert result.exit_code == 0
+    (_args, kwargs) = uvicorn_calls[0]
+    # The default config file joins the watch: its directory is watched and its
+    # name is an include glob, so a configuration edit restarts the instance.
+    watched = [str(path) for path in kwargs["reload_dirs"]]
+    includes = kwargs["reload_includes"]
+    assert "wkx-ecosystem-localhost.toml" in includes
+    assert "*.py" in includes  # the package source still triggers a reload too
+    config_dir = str(Path("wkx-ecosystem-localhost.toml").resolve().parent)
+    assert any(path == config_dir for path in watched)
+
+
+def test_serve_rejects_an_unknown_env_variable(
+    uvicorn_calls: list[Call], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("WKX_ECO_LOCAL_PROT", "9001")
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    # The startup scan fails fast before uvicorn is ever asked to bind.
+    assert result.exit_code != 0
+    assert uvicorn_calls == []
+    assert "WKX_ECO_LOCAL_PROT" in str(result.exception)
+
+
 def test_reload_factory_builds_the_real_app() -> None:
     assert isinstance(create_app_from_env(), FastAPI)
+
+
+def test_reload_factory_rejects_an_unknown_env_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WKX_ECO_LOCAL_PROT", "9001")
+
+    with pytest.raises(ConfigError):
+        create_app_from_env()
 
 
 def test_reload_factory_formats_worker_logs(capsys: pytest.CaptureFixture[str]) -> None:
