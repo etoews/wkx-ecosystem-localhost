@@ -2125,7 +2125,7 @@ window.wkxTokens = (function () {
   function toolsTable(tools) {
     const built = U.table([{ label: "Tool" }, { label: "Version probe" }]);
     tools.forEach(function (tool) {
-      const probe = (tool.version_args || ["--version"]).join(" ");
+      const probe = (tool.version_args && tool.version_args.length ? tool.version_args : ["--version"]).join(" ");
       built.tbody.append(
         U.tr([
           U.td(U.token("tool", tool.name, "t-name")),
@@ -2175,12 +2175,24 @@ window.wkxTokens = (function () {
     const offSource = (data.sections_off && data.sections_off.source) || "default";
     const mutes = (data.mute && data.mute.rules) || [];
     const muteSource = (data.mute && data.mute.source) || "default";
-    const customised = values.filter(function (item) {
-      return item.source !== "default";
-    }).length;
-    const envCount = values.filter(function (item) {
-      return item.source === "env";
-    }).length;
+    // Customised and From-environment count the scalar settings AND every
+    // list-shaped block (system tools, Excludes, Off Sections, mutes), so a config
+    // that customises only, say, sections_off is never reported as nothing changed.
+    const blockSources = [toolsSource, excludeSource, offSource, muteSource];
+    const customised =
+      values.filter(function (item) {
+        return item.source !== "default";
+      }).length +
+      blockSources.filter(function (source) {
+        return source !== "default";
+      }).length;
+    const envCount =
+      values.filter(function (item) {
+        return item.source === "env";
+      }).length +
+      blockSources.filter(function (source) {
+        return source === "env";
+      }).length;
 
     const summary = U.tiles([
       { value: data.found ? "loaded" : "defaults", label: "Config file" },

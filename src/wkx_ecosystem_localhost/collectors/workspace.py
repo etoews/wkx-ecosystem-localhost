@@ -13,6 +13,7 @@ is streamed over SSE in M2. Until then the board renders it as "pending".
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -200,6 +201,10 @@ class DiscoveryCache:
                 monotonic by default; tests inject a fake to drive expiry.
         """
         self._cache: TtlCache[tuple[_DiscoveryKey, list[Path]]] = TtlCache(ttl, clock)
+        # Serialises the cold-cache walk: the sync routes run in Starlette's
+        # threadpool, so several can hit an empty cache at once on the first board
+        # load; the lock makes them share one walk instead of each walking.
+        self._lock = threading.Lock()
 
     def discover(
         self,
@@ -227,15 +232,25 @@ class DiscoveryCache:
             excludes: Exclude globs pruning the walk. Part of the cache key.
 
         Returns:
-            Repo root paths, de-duplicated and sorted, shared for the TTL window.
+            Repo root paths, de-duplicated and sorted; a fresh list each call,
+            backed by a single walk per fresh input set within the TTL window.
         """
         key = _DiscoveryKey(roots=tuple(roots), max_depth=max_depth, excludes=tuple(excludes))
         cached = self._cache.get()
         if cached is not None and cached[0] == key:
-            return cached[1]
-        repos = discover_repos(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
-        self._cache.set((key, repos))
-        return repos
+            return list(cached[1])
+        with self._lock:
+            # Re-check inside the lock: a concurrent caller may have finished the
+            # walk while we waited, so the roots are walked once, not once per
+            # caller. A copy is returned so a consumer never mutates the shared slot.
+            cached = self._cache.get()
+            if cached is not None and cached[0] == key:
+                return list(cached[1])
+            repos = discover_repos(
+                machine, roots, home=home, max_depth=max_depth, excludes=excludes
+            )
+            self._cache.set((key, repos))
+            return list(repos)
 
 
 @dataclass(frozen=True)

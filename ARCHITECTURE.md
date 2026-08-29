@@ -57,7 +57,7 @@ are never gated: config is the board's own self-description that the page boots
 from, and flags is the cross-cutting layer, not a Section.
 
 The supporting modules are shared by every route: `config.py` (the typed
-`Settings`, read from a TOML file, the environment, and `.env`, highest first;
+`Settings`, read from the environment, `.env`, and a TOML file, highest first;
 `.env` for secrets, the TOML for everything else; computed, machine-neutral
 defaults; the startup scan that rejects an unknown `WKX_ECO_LOCAL_*` variable; and
 the read-only effective-config view `/api/config` serves), `models.py` (the
