@@ -23,7 +23,9 @@ on any column.
   in one shape (name · version · detail · state) so the columns align.
 - **Claude**: plugins with a count of the skills each ships (expand a plugin row
   to reveal them), your own skills in their own table, and MCP servers, each with
-  its Origin.
+  its Origin. Each skill shows its own state. A plugin skill has no switch of its
+  own, so it stays enabled; when its plugin is off, the row shows a quiet "plugin
+  disabled" note. A skill is disabled only when you set it to `off`.
 - **System**: a configurable probe of dev CLIs, present or missing, with versions.
 - **Homebrew**: outdated formulae and casks.
 - **Docker**: daemon state, containers, images, reclaimable disk.
@@ -36,7 +38,10 @@ on any column.
 
 Flags are amber (attention) or red (problem), badged on the affected row and
 grouped by category in the Needs attention summary; hovering a badge suggests how
-to resolve it. No ruleset: a flag states only what the data makes obvious.
+to resolve it. No ruleset: a flag states only what the data makes obvious. A
+disabled plugin raises one plugin-disabled flag and nothing more for its assets:
+its skills and its MCP servers stay quiet. The disabled-skill count is thus the
+count of skills you set to `off`, not the skills of a disabled plugin.
 
 ## Security posture
 
