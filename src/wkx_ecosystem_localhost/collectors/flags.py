@@ -226,7 +226,18 @@ def _system_flags(system: SystemToolsSection) -> list[Flag]:
 
 
 def _claude_flags(claude: ClaudeSection) -> list[Flag]:
-    """Per-item Claude Flags: a disabled skill or plugin, or an MCP needing auth."""
+    """Per-item Claude Flags: a disabled skill or plugin, or an MCP needing auth.
+
+    A disabled plugin raises exactly one ``plugin-disabled`` Flag and nothing else
+    for its assets: its skills are enabled on their own (a plugin skill has no
+    switch, so ``skill.enabled`` never falls false for one), and its MCP servers are
+    held back from the ``mcp-needs-auth`` Flag, so the disabled plugin is the single
+    fact to fix. Only a skill disabled on its own — a user skill set to ``off`` in
+    ``skillOverrides`` — raises ``skill-disabled``.
+    """
+    disabled_plugin_origins = {
+        f"{plugin.name}@{plugin.marketplace}" for plugin in claude.plugins if not plugin.enabled
+    }
     flags: list[Flag] = []
     for skill in claude.skills:
         if not skill.enabled:
@@ -251,7 +262,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
                 )
             )
     for server in claude.mcp_servers:
-        if server.needs_auth:
+        if server.needs_auth and server.origin not in disabled_plugin_origins:
             flags.append(
                 Flag(
                     section=Section.CLAUDE,
