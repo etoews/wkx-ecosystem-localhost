@@ -1032,6 +1032,40 @@ window.wkxTokens = (function () {
     return link;
   }
 
+  // The Roadmap cell: a repo's ROADMAP.md task-item progress, sat left of the
+  // Flags rail. A repo with no file shows an empty cell; a file with no task items
+  // shows the not-applicable glyph; otherwise "ticked / total" with a thin neutral
+  // meter beneath (no Flag colour, no --match) and the percentage as the title.
+  // data-sort is the ratio, so the column sorts by progress with empty and
+  // not-applicable cells sorting last. The cell is not a link and not a token, and
+  // its absence is never a Flag.
+  function roadmapCell(roadmap) {
+    if (!roadmap) {
+      const empty = U.td("");
+      empty.setAttribute("data-sort", "");
+      return empty;
+    }
+    if (!roadmap.total) {
+      const na = U.td(U.dash());
+      na.title = "no task items";
+      na.setAttribute("data-sort", "");
+      return na;
+    }
+    const ratio = roadmap.ticked / roadmap.total;
+    const pct = Math.round(ratio * 100);
+    const wrap = U.el("span", "rm");
+    wrap.append(U.el("span", "rm-count", roadmap.ticked + " / " + roadmap.total));
+    const meter = U.el("span", "rm-meter");
+    const fill = U.el("span", "rm-fill");
+    fill.style.width = pct + "%";
+    meter.append(fill);
+    wrap.append(meter);
+    const cell = U.td(wrap);
+    cell.title = pct + "%";
+    cell.setAttribute("data-sort", String(ratio));
+    return cell;
+  }
+
   function repoRow(repo) {
     const flags = U.flagCell("workspace:" + repo.path);
     const ahead = U.td(U.quiet("···"), "num");
@@ -1049,6 +1083,7 @@ window.wkxTokens = (function () {
       behind,
       U.td(workingTree(repo)),
       U.td(repo.stashes > 0 ? String(repo.stashes) : U.quiet("0"), "num"),
+      roadmapCell(repo.roadmap),
       flags,
     ]);
   }
@@ -1082,7 +1117,7 @@ window.wkxTokens = (function () {
     if (sub.github) parts.push(sep(), githubLink(sub.github));
     parts.push(sep(), pinned, sep(), latest, release, sep(), behind);
     const cell = U.td(U.cellFlex(parts), "sub-cell");
-    cell.colSpan = 7;
+    cell.colSpan = 8;
     const row = U.el("tr", "subrow");
     // A submodule is a row of the workspace table, not a Section of its own, so its
     // "releases behind" badge is homed on workspace beside its parent repo's flags.
@@ -1269,6 +1304,7 @@ window.wkxTokens = (function () {
       { label: "Behind", num: true },
       { label: "Working tree" },
       { label: "Stash", num: true },
+      { label: "Roadmap" },
     ]);
     workspace.repos.forEach(function (repo) {
       built.tbody.append(repoRow(repo));
