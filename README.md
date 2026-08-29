@@ -16,9 +16,10 @@ on any column.
 
 - **Needs attention**: every open flag rolled up by category, problems first,
   at the top of the board.
-- **Workspace**: discovered repos with branch, ahead/behind, working-tree state
-  and stashes, each submodule nested beneath its repo as "pinned · latest ·
-  releases-behind".
+- **Workspace**: discovered repos with branch, ahead/behind, working-tree state,
+  stashes, and a Roadmap column that shows each repo's `ROADMAP.md` task-item
+  progress as "ticked / total" with a thin meter; each submodule nested beneath
+  its repo as "pinned · latest · releases-behind".
 - **Toolchains**: Python and TypeScript/Node, global and per repo, every subtable
   in one shape (name · version · detail · state) so the columns align.
 - **Claude**: plugins with a count of the skills each ships (expand a plugin row

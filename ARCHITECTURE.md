@@ -42,7 +42,7 @@ the real app end to end on a fake.
 | --- | --- |
 | `/`, `/static/*` | the board shell and its assets |
 | `/api/health` | liveness for the board's own JS and for smoke tests |
-| `/api/workspace` | discovered repos with branch, working tree state, and stashes |
+| `/api/workspace` | discovered repos with branch, working tree state, stashes, and ROADMAP.md progress for the Roadmap column |
 | `/api/workspace/fetch` | SSE, each repo's ahead/behind as its background fetch lands |
 | `/api/submodules` | each repo's submodules with pins resolved |
 | `/api/submodules/probe` | SSE, each submodule's latest release and tags-behind |
@@ -84,7 +84,10 @@ Each file in `collectors/` is a Collector: a pure function from `Machine` probe
 results to a typed model, one per Section plus `fetch.py` for the streamed
 counts. A Collector never touches subprocess or the filesystem directly, and a
 probe that fails is a fact for the Collector to interpret, never an exception.
-It degrades its Section, not the board.
+It degrades its Section, not the board. `roadmap.py` supports the workspace
+Collector: it reads each repo's `ROADMAP.md` through the seam and counts the
+task items for the Roadmap column. The read has a 1 MiB cap. A missing file or a
+larger file is a plain absence, never a Flag.
 
 ## The Machine seam
 
