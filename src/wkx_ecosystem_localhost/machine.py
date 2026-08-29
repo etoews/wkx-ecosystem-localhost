@@ -64,8 +64,13 @@ class Machine(Protocol):
         """Run a fixed argument list, never a shell string, with a hard timeout."""
         ...
 
-    def read_file(self, path: Path) -> str | None:
-        """Return the file's text, or None if it is missing or unreadable."""
+    def read_file(self, path: Path, max_bytes: int | None = None) -> str | None:
+        """Return the file's text, or None if missing, unreadable, or oversized.
+
+        With ``max_bytes`` set, a file larger than that many bytes returns None
+        rather than a truncated read; the default (None) is unbounded, so existing
+        callers are unchanged.
+        """
         ...
 
     def list_dir(self, path: Path) -> list[DirEntry]:
@@ -118,11 +123,26 @@ class RealMachine:
             return CommandResult(NOT_FOUND_RETURNCODE, "", "program not found")
         return CommandResult(completed.returncode, completed.stdout, completed.stderr)
 
-    def read_file(self, path: Path) -> str | None:
-        """Return the UTF-8 text of ``path``, or None if it cannot be read."""
+    def read_file(self, path: Path, max_bytes: int | None = None) -> str | None:
+        """Return the UTF-8 text of ``path``, or None if it cannot be read.
+
+        With ``max_bytes`` set, at most that many bytes plus one are read: a file
+        larger than the cap returns None (never a truncated read), and a file
+        within it is decoded whole. A non-UTF-8 payload is treated as unreadable
+        (None). The default (None) reads the whole file, unchanged from before.
+        """
         try:
-            return path.read_text(encoding="utf-8")
+            if max_bytes is None:
+                return path.read_text(encoding="utf-8")
+            with path.open("rb") as handle:
+                data = handle.read(max_bytes + 1)
         except OSError:
+            return None
+        if len(data) > max_bytes:
+            return None
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
             return None
 
     def list_dir(self, path: Path) -> list[DirEntry]:

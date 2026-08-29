@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from wkx_ecosystem_localhost.cache import TtlCache
+from wkx_ecosystem_localhost.collectors.roadmap import collect_roadmap
 from wkx_ecosystem_localhost.github import github_link
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import ConfigEntry, Repo, WorkspaceSection
@@ -396,9 +397,10 @@ def collect_repo(
 
     Runs the three fixed git probes through the seam, parses their output, and
     redacts as it goes: the path is home-relative, the config is whitelisted with
-    the email masked and remotes credential-stripped. A probe that exits non-zero
-    is treated as "unknown" for that facet rather than failing the repo, so one
-    wedged command degrades a single row.
+    the email masked and remotes credential-stripped. It also reads the repo's
+    ROADMAP.md through the seam for task-item progress, or None when it has none. A
+    probe that exits non-zero is treated as "unknown" for that facet rather than
+    failing the repo, so one wedged command degrades a single row.
 
     Args:
         machine: The seam every probe runs through.
@@ -449,6 +451,7 @@ def collect_repo(
         ahead=None,
         behind=None,
         github=github_link(primary_remote) if primary_remote else None,
+        roadmap=collect_roadmap(machine, repo_path),
         config=config,
     )
 

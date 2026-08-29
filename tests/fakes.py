@@ -52,8 +52,16 @@ class FakeMachine:
             CommandResult(127, "", "fake: no such command"),
         )
 
-    def read_file(self, path: Path) -> str | None:
-        return self.files.get(path)
+    def read_file(self, path: Path, max_bytes: int | None = None) -> str | None:
+        text = self.files.get(path)
+        if text is None:
+            return None
+        # Honour the cap the way RealMachine does: a file larger than max_bytes is
+        # reported absent, never truncated. Byte length is measured on the UTF-8
+        # encoding so the cap matches the real seam's.
+        if max_bytes is not None and len(text.encode("utf-8")) > max_bytes:
+            return None
+        return text
 
     def list_dir(self, path: Path) -> list[DirEntry]:
         entries = [DirEntry(child.name, is_dir=True) for child in self.dirs if child.parent == path]
