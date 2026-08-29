@@ -26,8 +26,9 @@ fetched and still counts in the tally. Colour is reserved for the Flag layer.
 Neutral facts are told apart by weight, a muted tone, and a label, never by hue.
 
 A viewer's preferences live in the browser's `localStorage` and nowhere else:
-`wkx-theme` (light or dark; an absent key means auto) and `wkx-sections` (the
-Hidden overrides; an absent key means the server default). Each key holds
+`wkx-theme` (light or dark; an absent key means auto), `wkx-sections` (the Hidden
+overrides; an absent key means the server default), and `wkx-collapsed` (the
+Collapsed panels; an absent key means every panel is expanded). Each key holds
 overrides only, so a cleared store returns the board to its defaults, and no
 preference ever reaches the service.
 
