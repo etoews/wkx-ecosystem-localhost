@@ -10,5 +10,8 @@ build/
 .env
 .playwright-mcp/
 
+# Transient git worktrees created by parallel agent workflows.
+.claude/worktrees/
+
 # The real configuration file names this machine; keep it out of the public repo.
 wkx-ecosystem-localhost.toml
