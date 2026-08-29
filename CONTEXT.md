@@ -1,9 +1,10 @@
 # WKX Ecosystem localhost
 
-A read-only localhost dashboard that inventories this dev machine's ecosystem:
-repos, language toolchains, the Claude environment, and system tools. It shows
-facts and lights up data-evident anomalies; it never judges the machine against
-a written ruleset and never changes it. This glossary is the canonical
+A localhost dashboard that inventories this dev machine's ecosystem: repos,
+language toolchains, the Claude environment, and system tools. It shows facts
+and lights up data-evident anomalies; it never judges the machine against a
+written ruleset, and the one thing it writes is its own View, into its own
+configuration. This glossary is the canonical
 ubiquitous language for this context. Where a term has competing synonyms, the
 preferred term is defined and the rest are listed under `_Avoid_`.
 
@@ -12,8 +13,9 @@ preferred term is defined and the rest are listed under `_Avoid_`.
 ### The board and its parts
 
 **WKX Ecosystem localhost**:
-The whole thing: the read-only single-page board and the local service behind
-it. Named for the repo it lives in. The board is an observer, not an operator.
+The whole thing: the single-page board and the local service behind it. Named
+for the repo it lives in. The board observes the machine and never operates on
+it; the only thing it writes is its own View.
 _Avoid_: the app, the dashboard (as a proper noun)
 
 **Collector**:
@@ -38,18 +40,36 @@ a Section Off; the board never does.
 _Avoid_: disabled (reserved for skills and plugins), excluded, removed
 
 **Hidden**:
-A Section a viewer has taken off their own board with the client-side toggle.
-A Hidden Section is still collected and its Flags still count, because hiding
-is a reading preference, not a Mute.
+A Section, the Needs attention rollup, or a table column the operator has taken
+off the board. A Hidden Section is still collected and its Flags still count; a
+Hidden column's values are still collected and still reported. Hiding is a
+reading preference, not a Mute, and it is part of the View.
 _Avoid_: collapsed (the fold-to-heading state, which keeps the Section on the
-board), off
+board), off, dropped, removed
 
 **Collapsed**:
-A Section, or the Needs attention rollup, a viewer has folded to its heading
-with the client-side toggle. A Collapsed Section stays on the board, is still
-collected, and its Flags still count, because collapse is a reading
-convenience, not a Mute.
+A Section, or the Needs attention rollup, the operator has folded to its
+heading. A Collapsed Section stays on the board, is still collected, and its
+Flags still count, because collapse is a reading convenience, not a Mute.
+Collapsed is part of the View.
 _Avoid_: folded, minimised, hidden (the taken-off-the-board state)
+
+**Filter**:
+Text the operator gives a Section that keeps only the rows whose visible values
+contain it, regardless of letter case, with the matching text marked. A row the
+Filter drops is still collected and still reported, and its Flags still count,
+because a Filter narrows the reading, not the inventory. A Hidden column is
+outside a Filter's reach. The Filter is part of the View.
+_Avoid_: search, find, query
+
+**View**:
+The operator's arrangement of the board: the theme, which panels are Hidden or
+Collapsed, each Section's Filter, and each table's sort and Hidden columns. The
+View lives in the board's configuration; the board writes it there as the
+operator changes it and reads it back on load. A View changes what the board
+shows, never what it collects or reports.
+_Avoid_: preferences, settings (the rest of the configuration), layout, UI
+state
 
 **Exclude**:
 A glob in configuration that prunes matching directories from repo discovery,
