@@ -294,6 +294,21 @@ def test_scan_logs_the_unknown_variable(caplog: pytest.LogCaptureFixture) -> Non
     assert "WKX_ECO_LOCAL_TYPO" in caplog.text
 
 
+def test_legacy_prefix_variable_that_names_a_field_fails_fast() -> None:
+    with pytest.raises(ConfigError) as excinfo:
+        check_environment({"WKX_ECO_PORT": "9001"})
+
+    message = str(excinfo.value)
+    assert "WKX_ECO_PORT" in message
+    assert "WKX_ECO_LOCAL_PORT" in message
+
+
+def test_legacy_prefix_variable_that_names_no_field_is_ignored() -> None:
+    # An old-prefix variable that is not one of our fields is unrelated
+    # environment, so it must not trip the scan.
+    check_environment({"WKX_ECO_SOMETHING_ELSE": "x"})
+
+
 # ---------- resolve_config_file ----------
 
 

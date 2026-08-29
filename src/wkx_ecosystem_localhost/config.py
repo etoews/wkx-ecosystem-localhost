@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 # never collides with the wider wkx-* environment.
 ENV_PREFIX = "WKX_ECO_LOCAL_"
 
+# The prefix these variables used before the WKX_ECO_LOCAL_ rename. A leftover
+# variable under it that names a real field (e.g. WKX_ECO_PORT) is caught at
+# startup instead of silently reverting the field to its default.
+LEGACY_ENV_PREFIX = "WKX_ECO_"
+
 # Env-only override for the configuration file path. Deliberately not a Settings
 # field: it names the file the fields are read from, so it cannot itself be read
 # from that file, and it is exempt from the unknown-variable scan.
@@ -317,19 +322,22 @@ def _known_env_names() -> set[str]:
 
 
 def check_environment(environ: Mapping[str, str] | None = None) -> None:
-    """Fail fast on an unknown ``WKX_ECO_LOCAL_*`` variable in the environment.
+    """Fail fast on a stray ``WKX_ECO_LOCAL_*`` variable, or a leftover ``WKX_ECO_*``.
 
-    ``pydantic-settings`` reads declared fields only, so a misspelt variable such
-    as ``WKX_ECO_LOCAL_PROT`` is silently ignored rather than rejected. This scan
-    closes that gap: it names every prefixed variable that matches no field and
-    refuses to start, the same fail-fast posture ``extra="forbid"`` gives the TOML.
+    ``pydantic-settings`` reads declared fields only, so a misspelt variable such as
+    ``WKX_ECO_LOCAL_PROT`` is silently ignored, and a variable still under the old
+    ``WKX_ECO_`` prefix (from before the rename) is ignored the same way. This scan
+    closes both gaps: it names every ``WKX_ECO_LOCAL_*`` variable that matches no
+    field, and every leftover ``WKX_ECO_*`` variable whose name is a field under the
+    old prefix, and refuses to start — the fail-fast posture ``extra="forbid"`` gives
+    the TOML.
 
     Args:
         environ: The environment to scan. Defaults to the process environment.
 
     Raises:
-        ConfigError: If any ``WKX_ECO_LOCAL_*`` variable matches no field, naming
-            each one.
+        ConfigError: If a ``WKX_ECO_LOCAL_*`` variable matches no field, or a
+            ``WKX_ECO_*`` variable names a field under the old prefix, naming each.
     """
     env = os.environ if environ is None else environ
     known = _known_env_names()
@@ -342,6 +350,22 @@ def check_environment(environ: Mapping[str, str] | None = None) -> None:
         raise ConfigError(
             f"unknown {ENV_PREFIX} environment variable(s): {joined}. "
             "Each must match a configuration field; check for a typo."
+        )
+
+    field_names = {field.upper() for field in Settings.model_fields}
+    legacy = sorted(
+        name
+        for name in env
+        if name.upper().startswith(LEGACY_ENV_PREFIX)
+        and not name.upper().startswith(ENV_PREFIX)
+        and name.upper().removeprefix(LEGACY_ENV_PREFIX) in field_names
+    )
+    if legacy:
+        joined = ", ".join(legacy)
+        logger.error("legacy %s environment variable(s): %s", LEGACY_ENV_PREFIX, joined)
+        raise ConfigError(
+            f"{joined} use the old {LEGACY_ENV_PREFIX} prefix; the board now reads "
+            f"{ENV_PREFIX}* — rename, for example, {LEGACY_ENV_PREFIX}PORT to {ENV_PREFIX}PORT."
         )
 
 

@@ -56,7 +56,7 @@ check() { # <path>
 
 echo "==> JSON endpoints"
 for p in /api/health /api/workspace /api/submodules /api/toolchains \
-         /api/system /api/claude /api/homebrew /api/docker /api/flags; do
+         /api/system /api/claude /api/homebrew /api/docker /api/flags /api/config; do
   check "$p"
 done
 
