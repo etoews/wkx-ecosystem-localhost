@@ -13,10 +13,12 @@ is streamed over SSE in M2. Until then the board renders it as "pending".
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from wkx_ecosystem_localhost.cache import TtlCache
 from wkx_ecosystem_localhost.github import github_link
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import ConfigEntry, Repo, WorkspaceSection
@@ -155,6 +157,85 @@ def discover_repos(
                     continue
                 stack.append((path / entry.name, depth + 1))
     return sorted(found)
+
+
+@dataclass(frozen=True)
+class _DiscoveryKey:
+    """The discovery inputs a cached walk is valid for.
+
+    A cached result is served only when these match the current request, so a
+    configuration change (different roots, depth, or Excludes) is a miss rather
+    than a stale hit. The machine and home are not keyed: they are bound to one
+    app instance, which builds a fresh cache, so they cannot change under a hit.
+    """
+
+    roots: tuple[Path, ...]
+    max_depth: int
+    excludes: tuple[str, ...]
+
+
+class DiscoveryCache:
+    """Shares one board load's repo discovery across every route and the Flag layer.
+
+    A board load asks several routes (workspace, submodules, toolchains,
+    footprint) and the Flag layer for the repos under the scan roots. Each would
+    otherwise re-run ``discover_repos``, walking every tree again and re-matching
+    the per-directory Exclude globs. This wraps that walk in a ``TtlCache`` the
+    way the footprint Section is wrapped: the first caller of a board load pays
+    for the walk and the rest of the TTL window is served from memory.
+
+    The single cached slot holds the walk together with the ``_DiscoveryKey`` it
+    was run for, so a request whose inputs differ re-walks instead of taking a
+    stale result. One instance is built per ``create_app`` and bound to
+    ``app.state``, so a fresh app starts cold and a reload that rebuilds the app
+    (picking up a configuration change) starts cold too.
+    """
+
+    def __init__(self, ttl: float, clock: Callable[[], float] = time.monotonic) -> None:
+        """Build an empty discovery cache.
+
+        Args:
+            ttl: How long, in seconds, a discovery walk stays fresh.
+            clock: The time source passed through to the underlying ``TtlCache``,
+                monotonic by default; tests inject a fake to drive expiry.
+        """
+        self._cache: TtlCache[tuple[_DiscoveryKey, list[Path]]] = TtlCache(ttl, clock)
+
+    def discover(
+        self,
+        machine: Machine,
+        roots: Sequence[Path],
+        *,
+        home: Path,
+        max_depth: int,
+        excludes: Sequence[str] = (),
+    ) -> list[Path]:
+        """Return the repos under ``roots``, walking once per fresh input set.
+
+        A fresh value for the same inputs (roots, depth, Excludes) is returned
+        without re-walking; an empty or expired cache, or a change to any of those
+        inputs, re-walks with ``discover_repos`` and stores the result. The
+        argument list matches ``discover_repos`` so a caller swaps one for the
+        other by threading this cache through.
+
+        Args:
+            machine: The seam used to list directories.
+            roots: Directories to scan. Part of the cache key.
+            home: Home directory, for rendering each directory's ``~``-relative
+                path for Exclude matching. Not keyed (bound to the app instance).
+            max_depth: Discovery depth cap. Part of the cache key.
+            excludes: Exclude globs pruning the walk. Part of the cache key.
+
+        Returns:
+            Repo root paths, de-duplicated and sorted, shared for the TTL window.
+        """
+        key = _DiscoveryKey(roots=tuple(roots), max_depth=max_depth, excludes=tuple(excludes))
+        cached = self._cache.get()
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        repos = discover_repos(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
+        self._cache.set((key, repos))
+        return repos
 
 
 @dataclass(frozen=True)
@@ -365,6 +446,7 @@ def collect_workspace(
     max_depth: int,
     excludes: Sequence[str] = (),
     timeout: float = PROBE_TIMEOUT_S,
+    discovery: DiscoveryCache | None = None,
 ) -> WorkspaceSection:
     """Collect the workspace Section: discover repos, then probe each one.
 
@@ -379,11 +461,19 @@ def collect_workspace(
         excludes: Exclude globs pruning matching directories from discovery, so an
             excluded repo is absent from the Section. Empty by default.
         timeout: Per-probe wall-clock ceiling in seconds.
+        discovery: Shared discovery cache. When given, the repo walk is taken from
+            it so one board load walks the roots once across every route and the
+            Flag layer; when None (the default) the walk runs directly, so a unit
+            test drives the Collector without a cache.
 
     Returns:
         The Section model: the scanned roots and one entry per discovered repo,
         both rendered home-relative.
     """
-    repo_paths = discover_repos(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
+    repo_paths = (
+        discovery.discover(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
+        if discovery is not None
+        else discover_repos(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
+    )
     repos = [collect_repo(machine, path, home=home, timeout=timeout) for path in repo_paths]
     return WorkspaceSection(roots=[relativise(root, home) for root in roots], repos=repos)

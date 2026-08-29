@@ -30,7 +30,7 @@ from wkx_ecosystem_localhost.collectors.submodules import (
 )
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
-from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
+from wkx_ecosystem_localhost.collectors.workspace import DiscoveryCache, collect_workspace
 from wkx_ecosystem_localhost.config import (
     ConfigView,
     Settings,
@@ -109,6 +109,9 @@ def create_app(
     # The footprint probe walks whole trees with ``du``, so its Section is computed
     # synchronously behind a short-lived cache rather than on every request.
     app.state.footprint_cache = TtlCache[FootprintSection](settings.footprint_cache_ttl)
+    # Repo discovery is shared behind its own cache so one board load walks the scan
+    # roots once, no matter how many routes and the Flag layer ask for the repos.
+    app.state.discovery_cache = DiscoveryCache(settings.discovery_cache_ttl)
 
     # The Sections switched off in configuration. An Off Section's route is never
     # registered below, so ``/api/<section>`` 404s and its Collector never runs.
@@ -146,6 +149,7 @@ def create_app(
             home=app.state.home,
             max_depth=settings.scan_depth,
             excludes=settings.exclude,
+            discovery=app.state.discovery_cache,
         )
 
     @_section_route(Section.WORKSPACE, "/api/workspace/fetch")
@@ -158,7 +162,7 @@ def create_app(
         rest of the board. This is the only write the app performs, and it
         touches remote-tracking refs only.
         """
-        repo_paths = discover_repos(
+        repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
             settings.scan_roots,
             home=app.state.home,
@@ -190,7 +194,7 @@ def create_app(
         ``latest`` and ``behind`` arrive over the SSE probe below; this returns the
         pins straight away so the page renders without waiting on any network.
         """
-        repo_paths = discover_repos(
+        repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
             settings.scan_roots,
             home=app.state.home,
@@ -208,7 +212,7 @@ def create_app(
         are pushed the moment they are ready, so the network truth fills in
         progressively without blocking the board. No submodule objects are fetched.
         """
-        repo_paths = discover_repos(
+        repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
             settings.scan_roots,
             home=app.state.home,
@@ -244,7 +248,7 @@ def create_app(
         Reuses the same repo discovery as the workspace so the per-repo Python
         pins and per-repo TypeScript line up with the repos already on the board.
         """
-        repo_paths = discover_repos(
+        repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
             settings.scan_roots,
             home=app.state.home,
@@ -324,7 +328,7 @@ def create_app(
         cached = app.state.footprint_cache.get()
         if cached is not None:
             return cached
-        repo_paths = discover_repos(
+        repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
             settings.scan_roots,
             home=app.state.home,
@@ -345,7 +349,12 @@ def create_app(
         (behind remote, submodule tags behind) are not here; the board raises those
         as its SSE events land.
         """
-        return collect_flags(app.state.machine, settings, home=app.state.home)
+        return collect_flags(
+            app.state.machine,
+            settings,
+            home=app.state.home,
+            discovery=app.state.discovery_cache,
+        )
 
     @app.get("/api/config")
     def config() -> ConfigView:

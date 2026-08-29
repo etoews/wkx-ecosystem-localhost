@@ -201,6 +201,14 @@ class Settings(BaseSettings):
     # every request.
     footprint_cache_ttl: float = 60.0
 
+    # How long, in seconds, one repo discovery walk is shared before the roots are
+    # walked again. Every board load asks several routes and the Flag layer for the
+    # repos under the scan roots; without this cache each re-walks the trees, and
+    # the per-directory Exclude matching makes that walk costlier still. Mirrors
+    # footprint_cache_ttl: the roots are walked once and the result served from
+    # cache for the rest of the window.
+    discovery_cache_ttl: float = 60.0
+
     # Discovery Excludes: globs matched with ``PurePath.full_match`` against the
     # ``~``-relative path the board displays. A matching directory is pruned from
     # discovery, so an excluded subtree is never descended and none of its repos is
@@ -438,6 +446,7 @@ _SCALAR_FIELDS: tuple[str, ...] = (
     "fetch_workers",
     "fetch_timeout",
     "footprint_cache_ttl",
+    "discovery_cache_ttl",
 )
 
 

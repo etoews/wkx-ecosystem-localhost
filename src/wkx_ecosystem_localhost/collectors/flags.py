@@ -25,7 +25,11 @@ from wkx_ecosystem_localhost.collectors.git_config import collect_git_config
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
-from wkx_ecosystem_localhost.collectors.workspace import collect_workspace, discover_repos
+from wkx_ecosystem_localhost.collectors.workspace import (
+    DiscoveryCache,
+    collect_workspace,
+    discover_repos,
+)
 from wkx_ecosystem_localhost.config import Settings, ToolSpec
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import (
@@ -436,11 +440,33 @@ def _empty_toolchains() -> ToolchainsSection:
     )
 
 
+def _discover(
+    machine: Machine, settings: Settings, *, home: Path, discovery: DiscoveryCache | None
+) -> list[Path]:
+    """Walk the scan roots, through the shared cache when one is supplied."""
+    if discovery is not None:
+        return discovery.discover(
+            machine,
+            settings.scan_roots,
+            home=home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
+        )
+    return discover_repos(
+        machine,
+        settings.scan_roots,
+        home=home,
+        max_depth=settings.scan_depth,
+        excludes=settings.exclude,
+    )
+
+
 def collect_flags(
     machine: Machine,
     settings: Settings,
     *,
     home: Path,
+    discovery: DiscoveryCache | None = None,
 ) -> FlagsSection:
     """Collect the Flag layer: run the Sections' Collectors, then derive the Flags.
 
@@ -460,23 +486,22 @@ def collect_flags(
         settings: Typed configuration (scan roots, depth, Excludes, the system
             tools, and the Off Sections).
         home: Home directory, for relativising displayed paths.
+        discovery: Shared discovery cache. When given, both the toolchains read and
+            the workspace read take their repo walk from it, so a board load walks
+            the roots once across this layer and every route; when None the walks
+            run directly, so a unit test drives the layer without a cache.
 
     Returns:
         The Flag layer Section: the open Flags derivable from the Sections at rest.
     """
     off = set(settings.sections_off)
     # Repo discovery feeds the toolchains read, the sole consumer of repo_paths here
-    # (workspace does its own discovery), so it runs whenever toolchains is on —
-    # including when workspace is Off. With toolchains Off too, the whole tree walk
-    # would go unused, so it is skipped. The Exclude globs prune the walk either way.
+    # (workspace does its own discovery, sharing the same cache), so it runs whenever
+    # toolchains is on — including when workspace is Off. With toolchains Off too, the
+    # whole tree walk would go unused, so it is skipped. The Exclude globs prune the
+    # walk either way, and the shared cache keeps it to one walk per board load.
     repo_paths: Sequence[Path] = (
-        discover_repos(
-            machine,
-            settings.scan_roots,
-            home=home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        _discover(machine, settings, home=home, discovery=discovery)
         if Section.TOOLCHAINS not in off
         else ()
     )
@@ -487,6 +512,7 @@ def collect_flags(
             home=home,
             max_depth=settings.scan_depth,
             excludes=settings.exclude,
+            discovery=discovery,
         )
         if Section.WORKSPACE not in off
         else WorkspaceSection(roots=[], repos=[])

@@ -31,6 +31,17 @@ def test_defaults_are_computed_not_literal() -> None:
     assert settings.port == 8787
 
 
+def test_discovery_cache_ttl_defaults_and_shows_in_the_config_view() -> None:
+    settings = Settings(_env_file=None, _config_file=None)
+
+    view = describe(settings, home=Path("/home/someone"), config_file=None, environ={})
+
+    assert settings.discovery_cache_ttl == 60.0
+    by_key = {item.key: item for item in view.values}
+    assert by_key["discovery_cache_ttl"].value == "60.0"
+    assert by_key["discovery_cache_ttl"].source == "default"
+
+
 def test_env_overrides_port(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_PORT", "9001")
 

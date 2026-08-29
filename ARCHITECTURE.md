@@ -63,7 +63,10 @@ defaults; the startup scan that rejects an unknown `WKX_ECO_LOCAL_*` variable; a
 the read-only effective-config view `/api/config` serves), `models.py` (the
 Section models the API serialises verbatim, and the `Section` enum that types
 `Flag.section` and `sections_off`), `sse.py` (SSE framing for
-`EventSource`), `redaction.py`, `semver.py`, `_logging.py`, and `exceptions.py`.
+`EventSource`), `cache.py` (the one-slot TTL cache behind the footprint Section
+and behind repo discovery, so one board load walks the scan roots once no matter
+how many routes and the Flag layer ask for the repos), `redaction.py`,
+`semver.py`, `_logging.py`, and `exceptions.py`.
 
 `__main__.py` is the typer entry point. `serve` builds `Settings` once, binds
 uvicorn to `127.0.0.1:8787`, and opens the board in a browser. The bind host is

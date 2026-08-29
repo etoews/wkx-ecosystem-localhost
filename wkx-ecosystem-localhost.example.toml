@@ -51,6 +51,12 @@
 # re-walk every tree. Default: 60.0.
 # footprint_cache_ttl = 60.0
 
+# How long, in seconds, one repository discovery walk is shared across a board
+# load, so the several routes and the flag layer that ask for the repositories
+# walk the scan roots once, not many times. The result is measured again after
+# this window. Default: 60.0.
+# discovery_cache_ttl = 60.0
+
 # The Sections switched off. Each name must be one of the ten Sections:
 # workspace, toolchains, claude, homebrew, system, docker, footprint, editor,
 # git-config, config. An unknown name stops the board at startup. An Off Section
