@@ -54,6 +54,22 @@ def test_read_file_returns_none_for_a_missing_file(tmp_path: Path) -> None:
     assert RealMachine().read_file(tmp_path / "missing.txt") is None
 
 
+def test_read_file_reads_a_file_within_the_byte_cap(tmp_path: Path) -> None:
+    within = tmp_path / "within.txt"
+    within.write_text("hello", encoding="utf-8")
+
+    # Exactly at the cap is in bounds and read whole, never truncated.
+    assert RealMachine().read_file(within, max_bytes=5) == "hello"
+
+
+def test_read_file_returns_none_for_a_file_over_the_byte_cap(tmp_path: Path) -> None:
+    over = tmp_path / "over.txt"
+    over.write_text("hello", encoding="utf-8")
+
+    # A file larger than the cap is absent, never a truncated read.
+    assert RealMachine().read_file(over, max_bytes=4) is None
+
+
 def test_list_dir_reports_children_and_their_kind(tmp_path: Path) -> None:
     (tmp_path / "child_dir").mkdir()
     (tmp_path / "child_file").write_text("x", encoding="utf-8")
