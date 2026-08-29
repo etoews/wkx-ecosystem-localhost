@@ -12,7 +12,10 @@ glossary; [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together.
 ## The board
 
 Each Section leads with a row of stat tiles and a table beneath; every table sorts
-on any column.
+on any column. Click a Section heading to collapse the Section to its heading. The
+collapsed heading shows the Section count and its Flag tally. Click the heading
+again to expand the Section. The Section stays on the board while it is collapsed,
+so its Flags still count.
 
 - **Needs attention**: every open flag rolled up by category, problems first,
   at the top of the board.
