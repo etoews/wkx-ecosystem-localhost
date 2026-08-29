@@ -55,6 +55,13 @@ _ORIGIN_PROJECT = "project"
 
 _FRONTMATTER_FENCE = "---"
 
+# The ``skillOverrides`` tiers Claude Code records for a user skill. Only ``off``
+# disables the skill; the two visibility tiers restrict how it is offered but leave
+# it enabled, so the State column shows them and no Flag is raised. ``on`` is the
+# unrestricted default recorded for a skill with no override.
+_SKILL_OFF = "off"
+_VISIBILITY_TIERS = frozenset({"name-only", "user-invocable-only"})
+
 # Skills can nest a couple of category folders deep; this caps the descent as a
 # backstop against a pathologically deep (or, via a real directory, cyclic) tree.
 _SKILLS_MAX_DEPTH = 4
@@ -222,6 +229,25 @@ def parse_enabled_plugins(text: str) -> dict[str, bool]:
     return {key: bool(value) for key, value in enabled.items()}
 
 
+def parse_skill_overrides(text: str) -> dict[str, str]:
+    """Read the ``skillOverrides`` map from a settings file.
+
+    ``skillOverrides`` maps a user skill's name to one of ``on``, ``name-only``,
+    ``user-invocable-only``, or ``off``. Only string-valued entries are kept, so a
+    malformed value cannot masquerade as a tier. Plugin skills are exempt from this
+    setting, so a plugin skill's name never appears here.
+
+    Args:
+        text: The contents of ``settings.json`` or ``settings.local.json``.
+
+    Returns:
+        The skill-name to tier map, or an empty map when the file declares none or
+        cannot be parsed.
+    """
+    overrides = _as_dict(_as_dict(_load_json(text)).get("skillOverrides"))
+    return {key: value for key, value in overrides.items() if isinstance(value, str)}
+
+
 def classify_transport(config: object) -> str:
     """Name an MCP server's transport from its config shape, never its values.
 
@@ -318,22 +344,56 @@ def _plugin_auth_key(plugin_name: str, server_name: str) -> str:
     return f"plugin:{plugin_name}:{server_name}"
 
 
+def _user_skill_state(name: str, overrides: dict[str, str]) -> tuple[bool, str | None]:
+    """Resolve a user skill's own enabled state and visibility from ``skillOverrides``.
+
+    Only ``off`` disables the skill; ``name-only`` and ``user-invocable-only`` leave
+    it enabled but restrict how it is offered, so they are returned as the
+    visibility fact the State column shows. An unlisted skill, or one set to ``on``,
+    is enabled with no visibility restriction.
+
+    Args:
+        name: The skill's display name, the key ``skillOverrides`` records it under.
+        overrides: The merged skill-name to tier map.
+
+    Returns:
+        The ``(enabled, visibility)`` pair: ``enabled`` False only for ``off``, and
+        ``visibility`` the tier string for a restricted tier or None otherwise.
+    """
+    tier = overrides.get(name)
+    enabled = tier != _SKILL_OFF
+    visibility = tier if tier in _VISIBILITY_TIERS else None
+    return enabled, visibility
+
+
 def _collect_skills(
     machine: Machine,
     home: Path,
     plugins: Sequence[InstalledPlugin],
     enabled: dict[str, bool],
+    skill_overrides: dict[str, str],
 ) -> list[Skill]:
     """Discover user skills and each plugin's skills, each with its Origin.
 
     User skills live under ``~/.claude/skills``; a plugin's skills live under its
     install path's ``skills`` directory. A skill is a directory holding a
-    ``SKILL.md``. A user skill is always enabled; a plugin skill mirrors its
-    plugin's enabled state, so an installed-but-disabled skill is still shown.
+    ``SKILL.md``. A user skill's enabled state and visibility are its own, read from
+    ``skillOverrides``. A plugin skill has no switch of its own, so it is always
+    enabled; its ``plugin_enabled`` carries the owning plugin's state, so an
+    installed-but-disabled plugin's skills are still shown without being counted as
+    disabled skills.
     """
     skills: list[Skill] = []
     skills_root = home / _CLAUDE_DIR / _SKILLS_DIR
-    skills.extend(_skills_under(machine, skills_root, origin=_ORIGIN_USER, enabled=True))
+    skills.extend(
+        _skills_under(
+            machine,
+            skills_root,
+            origin=_ORIGIN_USER,
+            overrides=skill_overrides,
+            plugin_enabled=None,
+        )
+    )
 
     for plugin in plugins:
         if plugin.install_path is None:
@@ -344,14 +404,21 @@ def _collect_skills(
                 machine,
                 plugin_skills_root,
                 origin=plugin.key,
-                enabled=enabled.get(plugin.key, False),
+                overrides=None,
+                plugin_enabled=enabled.get(plugin.key, False),
             )
         )
     return skills
 
 
 def _skills_under(
-    machine: Machine, root: Path, *, origin: str, enabled: bool, _depth: int = 0
+    machine: Machine,
+    root: Path,
+    *,
+    origin: str,
+    overrides: dict[str, str] | None,
+    plugin_enabled: bool | None,
+    _depth: int = 0,
 ) -> list[Skill]:
     """List every skill under ``root``, recursing through grouping folders.
 
@@ -363,6 +430,12 @@ def _skills_under(
     a real directory, so a symlink is never followed into a loop; ``_depth`` caps
     the descent as a backstop. Hidden entries are skipped so a dotfile directory is
     never mistaken for a skill tree.
+
+    ``overrides`` is the ``skillOverrides`` map for a user-skill root (and None for a
+    plugin root); ``plugin_enabled`` is the owning plugin's state for a plugin root
+    (and None for the user root). A user skill takes its enabled state and
+    visibility from the overrides; a plugin skill is always enabled and carries its
+    plugin's state so the row can note a disabled plugin without disabling the skill.
     """
     skills: list[Skill] = []
     for entry in machine.list_dir(root):
@@ -372,17 +445,31 @@ def _skills_under(
         text = machine.read_file(child / _SKILL_FILE)
         if text is not None:
             parsed_name, description = parse_skill_frontmatter(text)
+            name = parsed_name or entry.name
+            if overrides is not None:
+                enabled, visibility = _user_skill_state(name, overrides)
+            else:
+                enabled, visibility = True, None
             skills.append(
                 Skill(
-                    name=parsed_name or entry.name,
+                    name=name,
                     origin=origin,
                     description=description,
                     enabled=enabled,
+                    plugin_enabled=plugin_enabled,
+                    visibility=visibility,
                 )
             )
         elif entry.is_dir and _depth < _SKILLS_MAX_DEPTH:
             skills.extend(
-                _skills_under(machine, child, origin=origin, enabled=enabled, _depth=_depth + 1)
+                _skills_under(
+                    machine,
+                    child,
+                    origin=origin,
+                    overrides=overrides,
+                    plugin_enabled=plugin_enabled,
+                    _depth=_depth + 1,
+                )
             )
     return skills
 
@@ -491,17 +578,24 @@ def collect_claude(machine: Machine, *, home: Path) -> ClaudeSection:
     marketplaces_text = machine.read_file(plugins_dir / _KNOWN_MARKETPLACES)
     marketplaces = parse_known_marketplaces(marketplaces_text) if marketplaces_text else {}
 
+    # Both plugin enablement and skill overrides live in the same two user-scope
+    # settings files and share the same precedence (local over base), so each file
+    # is read once and both maps are merged in the same pass. Per-repo
+    # .claude/settings.local.json is project-scoped and deliberately left out: the
+    # claude Section is the user environment.
     enabled: dict[str, bool] = {}
+    skill_overrides: dict[str, str] = {}
     for settings_name in (_SETTINGS, _SETTINGS_LOCAL):
         settings_text = machine.read_file(home / _CLAUDE_DIR / settings_name)
         if settings_text is not None:
             enabled.update(parse_enabled_plugins(settings_text))
+            skill_overrides.update(parse_skill_overrides(settings_text))
 
     auth_text = machine.read_file(home / _CLAUDE_DIR / _AUTH_CACHE)
     auth_keys = parse_auth_cache(auth_text) if auth_text else set()
 
     return ClaudeSection(
-        skills=_collect_skills(machine, home, installed, enabled),
+        skills=_collect_skills(machine, home, installed, enabled, skill_overrides),
         plugins=_collect_plugins(installed, marketplaces, enabled, home),
         mcp_servers=_collect_mcp_servers(machine, home, installed, auth_keys),
     )

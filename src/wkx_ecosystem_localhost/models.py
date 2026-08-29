@@ -257,16 +257,25 @@ class Skill(BaseModel):
     ``origin`` is the single word (or ``<plugin>@<marketplace>`` pair) that answers
     where the skill came from: ``user`` for one authored locally under
     ``~/.claude/skills``, or the plugin pair for one a plugin ships. ``enabled`` is
-    always True for a user skill and mirrors the owning plugin's enabled state for a
-    plugin skill, so an installed-but-disabled skill is shown and badged, never
-    filtered out. ``description`` is the one-line summary from the skill's front
-    matter, or None when it declares none.
+    the skill's own state, not its plugin's: a user skill is enabled unless the
+    ``skillOverrides`` setting sets it to ``off``, and a plugin skill is always
+    enabled because a plugin skill has no switch of its own. ``plugin_enabled``
+    carries the owning plugin's enabled state for a plugin skill and is None for a
+    user skill, so the board can note a skill whose plugin is off without turning
+    that into the skill's own disabled state. ``visibility`` is the non-default
+    ``skillOverrides`` tier of a user skill — ``name-only`` or
+    ``user-invocable-only`` — and None for a fully on skill or any plugin skill, so
+    the board shows the visibility fact without raising a Flag. ``description`` is
+    the one-line summary from the skill's front matter, or None when it declares
+    none.
     """
 
     name: str
     origin: str
     description: str | None = None
     enabled: bool
+    plugin_enabled: bool | None = None
+    visibility: str | None = None
 
 
 class Plugin(BaseModel):
