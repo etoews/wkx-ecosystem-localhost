@@ -223,7 +223,69 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
   text-transform: uppercase;
   color: var(--fog);
   margin-bottom: .5rem;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
 }
+
+/* The whole heading line is the collapse toggle (M11): a bare button wrapping a
+ * rotating caret and the label, styled to read exactly like the heading text it
+ * replaced. The caret follows the expandable plugin row's idiom — it points right
+ * when collapsed and turns down when open; the reduced-motion rule below stills
+ * the turn. */
+.signage-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+}
+.signage-toggle:focus-visible {
+  outline: 2px solid var(--match);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.signage-caret {
+  display: inline-block;
+  color: var(--fog);
+  font-size: .8em;
+  transition: transform .15s ease;
+}
+.signage-toggle[aria-expanded="true"] .signage-caret { transform: rotate(90deg); }
+
+/* The collapsed heading's count and tally, shown only while collapsed and pushed
+ * to the end of the line. The count reads at full weight in the numeric face; the
+ * tally reuses the summary's decorative level markers (.lvl). */
+.signage-info {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+.signage-count {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+.signage-tally {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+/* A Collapsed panel is just its heading, so drop the body's bottom padding and
+ * the heading's own margin, so the folded panel reads as a single tight line. */
+.panel--collapsed { padding-bottom: .9rem; }
+.panel--collapsed .signage { margin-bottom: 0; }
 .empty {
   font-size: .82rem;
   color: var(--fog);
