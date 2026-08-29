@@ -97,8 +97,7 @@ def test_pin_and_release_and_aria_are_wired() -> None:
     )
     # The interaction is exposed to assistive tech as a toggle button's state.
     assert "aria-pressed" in app_js, (
-        "app.js never sets aria-pressed; a token cell must expose its pin state "
-        "to assistive tech."
+        "app.js never sets aria-pressed; a token cell must expose its pin state to assistive tech."
     )
     # Pinning cooperates with the cells already wired to a click (expandable
     # plugin rows, sortable headers) rather than triggering both.

@@ -295,9 +295,7 @@ def probe_submodule(
     latest = select_latest(versions)
     github_release = lookup_github_release(machine, spec, latest, timeout=curl_timeout)
     if latest is None:
-        return ProbeOutcome(
-            latest=None, behind=None, unknown=False, github_release=github_release
-        )
+        return ProbeOutcome(latest=None, behind=None, unknown=False, github_release=github_release)
 
     pinned = parse_pinned(spec.pinned) if spec.pinned else None
     behind = count_behind(pinned, versions) if pinned is not None else None

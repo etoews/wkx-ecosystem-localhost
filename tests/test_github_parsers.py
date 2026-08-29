@@ -39,9 +39,7 @@ from wkx_ecosystem_localhost.github import (
         ("https://github.com:443/octocat/Hello-World.git", ("octocat", "Hello-World")),
     ],
 )
-def test_parse_owner_repo_reads_both_github_forms(
-    url: str, expected: tuple[str, str]
-) -> None:
+def test_parse_owner_repo_reads_both_github_forms(url: str, expected: tuple[str, str]) -> None:
     assert parse_owner_repo(url) == expected
 
 
