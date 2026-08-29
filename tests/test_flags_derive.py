@@ -8,9 +8,15 @@ multi-repo Sections, exactly as CONTEXT.md defines them.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection
+from pathlib import Path
 
-from wkx_ecosystem_localhost.collectors.flags import ATTENTION, PROBLEM, derive_flags
+import pytest
+from pydantic import ValidationError
+
+from wkx_ecosystem_localhost.collectors.flags import ATTENTION, CATEGORIES, PROBLEM, derive_flags
+from wkx_ecosystem_localhost.config import MuteRule, Settings
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
     DockerSection,
@@ -152,8 +158,8 @@ def _derive(
     )
 
 
-def _codes_for(flags: list, section: str, target: str) -> set[str]:
-    return {f.code for f in flags if f.section == section and f.target == target}
+def _categories_for(flags: list, section: str, target: str) -> set[str]:
+    return {f.category for f in flags if f.section == section and f.target == target}
 
 
 # ------------------------- the zero case -------------------------
@@ -169,7 +175,7 @@ def test_no_flags_when_everything_is_quiet() -> None:
 
 def test_dirty_tree_flag_badges_the_repo_row() -> None:
     flags = _derive(workspace=_workspace(_repo("~/dev/acme/web", dirty=True)))
-    dirty = [f for f in flags if f.code == "dirty-tree"]
+    dirty = [f for f in flags if f.category == "dirty-tree"]
     assert len(dirty) == 1
     assert dirty[0].section == "workspace"
     assert dirty[0].target == "~/dev/acme/web"
@@ -179,19 +185,19 @@ def test_dirty_tree_flag_badges_the_repo_row() -> None:
 def test_detached_head_flag() -> None:
     repo = _repo("~/dev/acme/api", branch=None, detached_sha="3333333", upstream=None)
     flags = _derive(workspace=_workspace(repo))
-    assert _codes_for(flags, "workspace", "~/dev/acme/api") == {"detached-head"}
+    assert _categories_for(flags, "workspace", "~/dev/acme/api") == {"detached-head"}
 
 
 def test_no_upstream_flag_only_on_a_branch_without_upstream() -> None:
     repo = _repo("~/dev/acme/cli", branch="wip", upstream=None)
     flags = _derive(workspace=_workspace(repo))
-    assert _codes_for(flags, "workspace", "~/dev/acme/cli") == {"no-upstream"}
+    assert _categories_for(flags, "workspace", "~/dev/acme/cli") == {"no-upstream"}
 
 
 def test_a_repo_can_carry_more_than_one_flag() -> None:
     repo = _repo("~/dev/acme/web", branch="wip", upstream=None, dirty=True)
     flags = _derive(workspace=_workspace(repo))
-    assert _codes_for(flags, "workspace", "~/dev/acme/web") == {"dirty-tree", "no-upstream"}
+    assert _categories_for(flags, "workspace", "~/dev/acme/web") == {"dirty-tree", "no-upstream"}
 
 
 # ------------------------- Homebrew -------------------------
@@ -204,7 +210,7 @@ def test_brew_outdated_flags_each_package_keyed_by_kind() -> None:
         casks=[OutdatedPackage(name="firefox", installed="120.0", current="121.0")],
     )
     flags = _derive(homebrew=brew)
-    outdated = [f for f in flags if f.code == "brew-outdated"]
+    outdated = [f for f in flags if f.category == "brew-outdated"]
     assert {f.target for f in outdated} == {"formula:wget", "cask:firefox"}
     assert all(f.level == ATTENTION for f in outdated)
 
@@ -219,7 +225,7 @@ def test_absent_homebrew_raises_no_flag() -> None:
 def test_docker_unreachable_is_a_problem_flag() -> None:
     flags = _derive(docker=DockerSection(daemon_reachable=False))
     assert len(flags) == 1
-    assert flags[0].code == "docker-unreachable"
+    assert flags[0].category == "docker-unreachable"
     assert flags[0].section == "docker"
     assert flags[0].target == "daemon"
     assert flags[0].level == PROBLEM
@@ -235,7 +241,7 @@ def test_missing_configured_tool_is_a_problem_flag() -> None:
     )
     flags = _derive(system=system)
     assert len(flags) == 1
-    assert flags[0].code == "tool-missing"
+    assert flags[0].category == "tool-missing"
     assert flags[0].target == "ty"
     assert flags[0].level == PROBLEM
 
@@ -249,8 +255,8 @@ def test_disabled_skill_and_plugin_flags() -> None:
         plugins=[Plugin(name="sketch", marketplace="studio", version="1.0.0", enabled=False)],
     )
     flags = _derive(claude=claude)
-    assert _codes_for(flags, "claude", "skill:wireframe") == {"skill-disabled"}
-    assert _codes_for(flags, "claude", "plugin:sketch") == {"plugin-disabled"}
+    assert _categories_for(flags, "claude", "skill:wireframe") == {"skill-disabled"}
+    assert _categories_for(flags, "claude", "plugin:sketch") == {"plugin-disabled"}
     assert all(f.level == ATTENTION for f in flags)
 
 
@@ -260,7 +266,7 @@ def test_mcp_needs_auth_is_a_problem_flag() -> None:
     )
     flags = _derive(claude=claude)
     assert len(flags) == 1
-    assert flags[0].code == "mcp-needs-auth"
+    assert flags[0].category == "mcp-needs-auth"
     assert flags[0].target == "mcp:cloud-mcp"
     assert flags[0].level == PROBLEM
 
@@ -276,7 +282,7 @@ def test_python_pin_drift_flags_every_repo_pin() -> None:
         ]
     )
     flags = _derive(toolchains=toolchains)
-    drift = [f for f in flags if f.code == "python-pin-drift"]
+    drift = [f for f in flags if f.category == "python-pin-drift"]
     assert {f.target for f in drift} == {"pin:~/dev/acme/web", "pin:~/dev/acme/api"}
     assert all(f.section == "toolchains" and f.level == ATTENTION for f in drift)
 
@@ -288,7 +294,7 @@ def test_no_python_pin_drift_when_all_repos_agree() -> None:
             RepoPin(repo="~/dev/acme/api", version="3.14.4"),
         ]
     )
-    assert [f for f in _derive(toolchains=toolchains) if f.code == "python-pin-drift"] == []
+    assert [f for f in _derive(toolchains=toolchains) if f.category == "python-pin-drift"] == []
 
 
 def test_typescript_version_drift_flags_repos_with_an_installed_version() -> None:
@@ -300,7 +306,7 @@ def test_typescript_version_drift_flags_repos_with_an_installed_version() -> Non
         ]
     )
     flags = _derive(toolchains=toolchains)
-    drift = [f for f in flags if f.code == "tool-version-drift"]
+    drift = [f for f in flags if f.category == "tool-version-drift"]
     # api declares but has nothing installed, so it is not part of the drift.
     assert {f.target for f in drift} == {"ts:~/dev/acme/web", "ts:~/dev/acme/app"}
 
@@ -312,7 +318,7 @@ def test_no_typescript_drift_when_a_single_version_is_installed() -> None:
             RepoTypeScript(repo="~/dev/acme/app", declared="^5.4.0", installed="5.4.5"),
         ]
     )
-    assert [f for f in _derive(toolchains=toolchains) if f.code == "tool-version-drift"] == []
+    assert [f for f in _derive(toolchains=toolchains) if f.category == "tool-version-drift"] == []
 
 
 def test_skill_name_shadowing_across_origins_flags_both_skills() -> None:
@@ -324,7 +330,7 @@ def test_skill_name_shadowing_across_origins_flags_both_skills() -> None:
         ]
     )
     flags = _derive(claude=claude)
-    shadow = [f for f in flags if f.code == "skill-shadow"]
+    shadow = [f for f in flags if f.category == "skill-shadow"]
     assert len(shadow) == 2
     assert all(f.target == "skill:layout" for f in shadow)
     # tidy-repo is unique, so it is never shadowed.
@@ -338,7 +344,7 @@ def test_same_skill_name_within_one_origin_is_not_shadowing() -> None:
             Skill(name="layout", origin="user", enabled=True),
         ]
     )
-    assert [f for f in _derive(claude=claude) if f.code == "skill-shadow"] == []
+    assert [f for f in _derive(claude=claude) if f.category == "skill-shadow"] == []
 
 
 def test_mcp_configured_in_two_scopes_flags_the_server_once() -> None:
@@ -350,7 +356,7 @@ def test_mcp_configured_in_two_scopes_flags_the_server_once() -> None:
         ]
     )
     flags = _derive(claude=claude)
-    two_scope = [f for f in flags if f.code == "mcp-two-scopes"]
+    two_scope = [f for f in flags if f.category == "mcp-two-scopes"]
     assert len(two_scope) == 1
     assert two_scope[0].target == "mcp:repo-mcp"
     assert two_scope[0].level == ATTENTION
@@ -385,7 +391,7 @@ def test_git_config_conflict_flags_a_single_valued_key_set_two_ways() -> None:
         ]
     )
     flags = _derive(git_config=git_config)
-    conflict = [f for f in flags if f.code == "git-config-conflict"]
+    conflict = [f for f in flags if f.category == "git-config-conflict"]
     assert len(conflict) == 1
     assert conflict[0].section == "git-config"
     assert conflict[0].target == "core.editor"
@@ -402,7 +408,7 @@ def test_git_config_conflict_ignores_a_multivalued_key() -> None:
             _entry(name, "git://github.com/"),
         ]
     )
-    assert [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"] == []
+    assert [f for f in _derive(git_config=git_config) if f.category == "git-config-conflict"] == []
 
 
 def test_git_config_conflict_ignores_a_duplicate_with_the_same_value() -> None:
@@ -412,7 +418,7 @@ def test_git_config_conflict_ignores_a_duplicate_with_the_same_value() -> None:
             _entry("user.name", "Ada Lovelace"),
         ]
     )
-    assert [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"] == []
+    assert [f for f in _derive(git_config=git_config) if f.category == "git-config-conflict"] == []
 
 
 def test_git_config_conflict_catches_a_masked_key_set_two_ways() -> None:
@@ -426,7 +432,7 @@ def test_git_config_conflict_catches_a_masked_key_set_two_ways() -> None:
             _entry(name, "•••", masked=True),
         ]
     )
-    conflict = [f for f in _derive(git_config=git_config) if f.code == "git-config-conflict"]
+    conflict = [f for f in _derive(git_config=git_config) if f.category == "git-config-conflict"]
     assert len(conflict) == 1
     assert conflict[0].target == name
 
@@ -439,7 +445,7 @@ def test_git_include_broken_is_a_problem_flag() -> None:
         ]
     )
     flags = _derive(git_config=git_config)
-    broken = [f for f in flags if f.code == "git-include-broken"]
+    broken = [f for f in flags if f.category == "git-include-broken"]
     assert len(broken) == 1
     assert broken[0].section == "git-config"
     assert broken[0].target == "~/.gitconfig-missing"
@@ -451,7 +457,7 @@ def test_git_config_credentials_is_a_problem_flag() -> None:
         entries=[_entry("myservice.endpoint", "•••", credentials=True, masked=True)]
     )
     flags = _derive(git_config=git_config)
-    creds = [f for f in flags if f.code == "git-config-credentials"]
+    creds = [f for f in flags if f.category == "git-config-credentials"]
     assert len(creds) == 1
     assert creds[0].target == "myservice.endpoint"
     assert creds[0].level == PROBLEM
@@ -459,7 +465,7 @@ def test_git_config_credentials_is_a_problem_flag() -> None:
 
 def test_git_no_identity_is_a_single_attention_flag() -> None:
     flags = _derive(git_config=_git_config(identity_present=False))
-    no_identity = [f for f in flags if f.code == "git-no-identity"]
+    no_identity = [f for f in flags if f.category == "git-no-identity"]
     assert len(no_identity) == 1
     assert no_identity[0].section == "git-config"
     assert no_identity[0].target == "identity"
@@ -467,7 +473,7 @@ def test_git_no_identity_is_a_single_attention_flag() -> None:
 
 
 def test_a_present_identity_raises_no_git_identity_flag() -> None:
-    assert [f for f in _derive() if f.code == "git-no-identity"] == []
+    assert [f for f in _derive() if f.category == "git-no-identity"] == []
 
 
 # ------------------------- Off Sections skip their derivation -------------------------
@@ -477,14 +483,14 @@ def test_off_section_raises_no_flags() -> None:
     dirty = _workspace(_repo("~/dev/acme/web", dirty=True))
 
     # On, the dirty tree flags; Off, its whole derivation is skipped.
-    assert [f for f in _derive(workspace=dirty) if f.code == "dirty-tree"]
+    assert [f for f in _derive(workspace=dirty) if f.category == "dirty-tree"]
     assert _derive(workspace=dirty, off={Section.WORKSPACE}) == []
 
 
 def test_off_docker_skips_the_unreachable_flag() -> None:
     down = DockerSection(daemon_reachable=False)
 
-    assert [f for f in _derive(docker=down) if f.code == "docker-unreachable"]
+    assert [f for f in _derive(docker=down) if f.category == "docker-unreachable"]
     assert _derive(docker=down, off={Section.DOCKER}) == []
 
 
@@ -505,10 +511,10 @@ def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
     )
 
     flags = _derive(toolchains=toolchains, claude=claude, off={Section.TOOLCHAINS})
-    codes = {f.code for f in flags}
+    categories = {f.category for f in flags}
 
-    assert "python-pin-drift" not in codes
-    assert "skill-shadow" in codes
+    assert "python-pin-drift" not in categories
+    assert "skill-shadow" in categories
 
 
 # ------------------------- no Status vocabulary -------------------------
@@ -544,3 +550,157 @@ def test_no_flag_message_uses_the_status_words() -> None:
         words = flag.message.lower().split()
         assert not any(word in banned for word in words), flag.message
         assert flag.level in (ATTENTION, PROBLEM)
+
+
+# ------------------------- the CATEGORIES registry -------------------------
+
+STATIC = Path(__file__).parent.parent / "src" / "wkx_ecosystem_localhost" / "static"
+
+# The client's CATEGORY_LABEL map: capture the object literal, then its keys. The
+# values carry no braces, so the first "}" closes the map; a colon follows every
+# key, so the label strings (which carry none) never match.
+_LABEL_BLOCK = re.compile(r"CATEGORY_LABEL\s*=\s*\{(.*?)\}", re.DOTALL)
+_LABEL_KEY = re.compile(r'"([a-z0-9-]+)"\s*:')
+
+
+def _client_category_labels() -> set[str]:
+    """The Category ids the board's CATEGORY_LABEL map names, read from app.js."""
+    app_js = (STATIC / "app.js").read_text()
+    match = _LABEL_BLOCK.search(app_js)
+    assert match, "CATEGORY_LABEL map not found in app.js"
+    return set(_LABEL_KEY.findall(match.group(1)))
+
+
+def test_categories_registry_lists_all_nineteen() -> None:
+    assert len(CATEGORIES) == 19
+
+
+def test_registry_carries_the_two_sse_raised_categories() -> None:
+    # behind-remote and submodule-tags-behind have no server-side derivation, so
+    # they must be named in the registry explicitly or a Mute of them fails.
+    assert "behind-remote" in CATEGORIES
+    assert "submodule-tags-behind" in CATEGORIES
+
+
+def test_every_derived_category_is_registered() -> None:
+    # No at-rest derivation may raise a Category the registry does not know, or a
+    # Mute of it could never validate. Exercise the whole layer, then check.
+    repo = _repo("~/dev/acme/web", branch="wip", upstream=None, dirty=True)
+    flags = _derive(
+        workspace=_workspace(repo),
+        toolchains=_toolchains(
+            repo_pins=[
+                RepoPin(repo="~/dev/acme/web", version="3.14.4"),
+                RepoPin(repo="~/dev/acme/api", version="3.13.13"),
+            ]
+        ),
+        system=_system(Tool(name="ty", version=None, present=False)),
+        claude=_claude(
+            skills=[
+                Skill(name="layout", origin="user", enabled=False),
+                Skill(name="layout", origin="tidy@studio", enabled=True),
+            ],
+            plugins=[Plugin(name="sketch", marketplace="studio", version="1.0.0", enabled=False)],
+            mcp_servers=[
+                McpServer(name="cloud-mcp", origin="user", transport="http", needs_auth=True)
+            ],
+        ),
+        homebrew=HomebrewSection(
+            present=True,
+            formulae=[OutdatedPackage(name="wget", installed="1.21.3", current="1.21.4")],
+        ),
+        docker=DockerSection(daemon_reachable=False),
+        git_config=_git_config(
+            includes=[GitInclude(condition=None, path="~/.gitconfig-missing", exists=False)],
+            identity_present=False,
+        ),
+    )
+    assert {flag.category for flag in flags} <= CATEGORIES
+
+
+def test_client_label_map_and_registry_agree() -> None:
+    # The board rolls Flags up by CATEGORY_LABEL; the server validates a Mute
+    # against CATEGORIES. If the two drift, a real Category would show a raw id or a
+    # Mute of it would be rejected, so they must name exactly the same ids.
+    assert _client_category_labels() == set(CATEGORIES)
+
+
+# ------------------------- mute rule validation -------------------------
+
+
+def test_mute_defaults_to_empty() -> None:
+    settings = Settings(_env_file=None, _config_file=None)
+
+    assert settings.mute == []
+
+
+def test_mute_accepts_a_known_category_without_a_target() -> None:
+    settings = Settings(
+        _env_file=None, _config_file=None, mute=[MuteRule(category="brew-outdated")]
+    )
+
+    assert settings.mute[0].category == "brew-outdated"
+    assert settings.mute[0].target is None
+
+
+def test_mute_accepts_an_exact_target() -> None:
+    settings = Settings(
+        _env_file=None,
+        _config_file=None,
+        mute=[MuteRule(category="dirty-tree", target="~/dev/scratch")],
+    )
+
+    assert settings.mute[0].target == "~/dev/scratch"
+
+
+def test_mute_accepts_the_sse_raised_categories() -> None:
+    # The client raises these two, so a Mute of them must still validate.
+    settings = Settings(
+        _env_file=None,
+        _config_file=None,
+        mute=[MuteRule(category="behind-remote"), MuteRule(category="submodule-tags-behind")],
+    )
+
+    assert {rule.category for rule in settings.mute} == {"behind-remote", "submodule-tags-behind"}
+
+
+def test_mute_rejects_an_unknown_category_naming_it() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(_env_file=None, _config_file=None, mute=[MuteRule(category="brew-outdate")])
+
+    assert "brew-outdate" in str(excinfo.value)
+
+
+def test_toml_mute_is_an_inline_array_of_rules(tmp_path: Path) -> None:
+    path = tmp_path / "wkx-ecosystem-localhost.toml"
+    path.write_text(
+        'mute = [ { category = "brew-outdated" }, '
+        '{ category = "dirty-tree", target = "~/dev/scratch" } ]\n'
+    )
+
+    settings = Settings(_env_file=None, _config_file=path)
+
+    assert [(rule.category, rule.target) for rule in settings.mute] == [
+        ("brew-outdated", None),
+        ("dirty-tree", "~/dev/scratch"),
+    ]
+
+
+def test_env_mute_reads_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WKX_ECO_LOCAL_MUTE", '[{"category": "brew-outdated"}]')
+
+    settings = Settings(_env_file=None, _config_file=None)
+
+    assert settings.mute == [MuteRule(category="brew-outdated")]
+
+
+def test_mute_rejects_a_misspelt_rule_key(tmp_path: Path) -> None:
+    # A typo'd key must fail fast, not be dropped: a misspelt `targett` would leave
+    # target None and silently widen the rule from one item to the whole category.
+    path = tmp_path / "wkx-ecosystem-localhost.toml"
+    path.write_text('mute = [ { category = "dirty-tree", targett = "~/dev/scratch" } ]\n')
+
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(_env_file=None, _config_file=path)
+
+    assert "targett" in str(excinfo.value)

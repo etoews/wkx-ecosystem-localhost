@@ -417,14 +417,15 @@ class Flag(BaseModel):
     knowing anything about how that row is drawn. ``section`` is a ``Section`` so a
     Flag can only ever name a real Section; it serialises as its plain label.
     ``level`` is ``attention`` (amber) or ``problem`` (red), the two levels from
-    CONTEXT.md. ``code`` is the stable machine name of the anomaly (so the board can
-    style or de-duplicate by it) and ``message`` its short, display-ready phrasing.
+    CONTEXT.md. ``category`` is the stable hyphenated Category id of the anomaly (so
+    the board rolls Flags up by it, styles or de-duplicates by it, and a Mute names
+    one) and ``message`` its short, display-ready phrasing.
     """
 
     section: Section
     target: str
     level: str
-    code: str
+    category: str
     message: str
 
 

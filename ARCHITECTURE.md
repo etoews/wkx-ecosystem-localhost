@@ -101,10 +101,21 @@ compute latest and releases-behind; no submodule objects are fetched.
 
 `flags.py` is the cross-cutting Flag layer, not a panel. It reruns the
 Collectors whose facts a Flag can be derived from and returns the open Flags,
-each naming the Section and row it badges, amber for attention and red for a
-problem. There is no external ruleset; a Flag states only what the data makes
-obvious. Flags that need the network to be known (behind remote,
-releases-behind) are raised by the board itself as the SSE events land.
+each naming the Category and row it badges, amber for attention and red for a
+problem. A Flag states only what the data makes obvious. The only configuration
+that touches a Flag is a Mute, which suppresses noise; it is a view preference,
+not a ruleset, because it never states what the machine must look like. Flags
+that need the network to be known (behind remote, releases-behind) are raised by
+the board itself as the SSE events land.
+
+Muting is applied in the client, not the server (ADR 0003). `/api/flags` reports
+every Flag, muted or not, because the API is the inventory; `/api/config` carries
+the Mute rules, and the board drops a muted Flag at one choke point before it
+badges a row or counts in the tally. A Muted tile in Needs attention shows how
+many the rules silenced, so nothing is hidden silently. This mirrors Hidden
+Sections, another client-side view preference: an Off Section is removed on the
+server (its route is not registered), but a Hidden Section and a muted Flag both
+stay on the wire and are shaped only in the board.
 
 ## Redaction
 

@@ -421,6 +421,9 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 .tile .l { font-family: var(--mono); font-size: .58rem; letter-spacing: .07em; text-transform: uppercase; color: var(--fog); margin-top: .3rem; }
 .tile--attention .n { color: var(--chg); }
 .tile--problem .n { color: var(--del); }
+/* muted: a deliberately silenced count, so it reads in the quiet tone rather than
+ * amber or red — a muted Flag is suppressed noise, not a live anomaly. */
+.tile--muted .n { color: var(--fog); }
 /* a tile that hosts a flag (the docker daemon) stacks the badge under its label */
 .tile .flag { margin-top: .4rem; }
 

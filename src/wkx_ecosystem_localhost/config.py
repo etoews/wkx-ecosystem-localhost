@@ -23,7 +23,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -132,6 +132,31 @@ def _default_system_tools() -> list[ToolSpec]:
     return [ToolSpec(name=name) for name in _DEFAULT_SYSTEM_TOOL_NAMES]
 
 
+class MuteRule(BaseModel):
+    """One Mute: a Flag Category to drop from the badges and the tally.
+
+    ``category`` names the Category to suppress and must be one of the board's known
+    Categories (``flags.CATEGORIES``); an unknown one fails fast at startup, so a
+    typo mutes nothing silently. ``target`` narrows the Mute to a single item by its
+    exact wire value — a repo's ``~``-relative path, ``formula:python@3.12``,
+    ``skill:foo`` — matched verbatim against ``Flag.target``; when it is None the
+    Mute drops the whole Category, including the two the board raises from SSE. A
+    Mute suppresses noise, it never states what the machine should look like, so it
+    is a view preference, not a ruleset (CONTEXT.md). Muting is applied client-side:
+    ``/api/config`` carries the rules and ``/api/flags`` still reports every Flag.
+
+    ``extra="forbid"`` so a misspelt key fails fast rather than being dropped: a
+    typo'd ``targett`` would otherwise leave ``target`` None and silently widen the
+    rule from one item to the whole Category, the same fail-fast posture the rest of
+    the configuration keeps.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: str
+    target: str | None = None
+
+
 class Settings(BaseSettings):
     """Configuration from the TOML file, the environment, and ``.env``.
 
@@ -184,6 +209,15 @@ class Settings(BaseSettings):
     # WKX_ECO_LOCAL_EXCLUDE (a JSON list); the built-in prunes stay built-in.
     exclude: list[str] = Field(default_factory=list)
 
+    # Muted Categories: a client-side view preference the board carries on
+    # /api/config. Each rule names a Flag Category, optionally narrowed to one item
+    # by its exact wire target; the client drops a matching Flag before it badges a
+    # row or counts in the tally, and reports how many it muted. /api/flags still
+    # reports every Flag: the API is the inventory. Set in the TOML as an inline
+    # array (mute = [ { category = "brew-outdated" } ]) or as WKX_ECO_LOCAL_MUTE (a
+    # JSON list). An unknown category fails fast against flags.CATEGORIES.
+    mute: list[MuteRule] = Field(default_factory=list)
+
     @field_validator("scan_roots", mode="after")
     @classmethod
     def _expand_scan_roots(cls, roots: list[Path]) -> list[Path]:
@@ -211,6 +245,32 @@ class Settings(BaseSettings):
                 "Hide it from the sections menu instead."
             )
         return sections
+
+    @field_validator("mute", mode="after")
+    @classmethod
+    def _mute_categories_are_known(cls, rules: list[MuteRule]) -> list[MuteRule]:
+        """Reject a Mute naming a Category the board never raises.
+
+        Each rule's ``category`` must be one of the board's known Flag Categories
+        (``flags.CATEGORIES``), so a typo such as ``brew-outdate`` fails fast at
+        startup — the way ``extra="forbid"`` rejects an unknown key — rather than
+        silently muting nothing. ``CATEGORIES`` is imported inside the validator
+        because ``flags`` imports this module; the local import keeps that from
+        being a circular import at load time.
+
+        Raises:
+            ValueError: If any rule names a Category not in the registry, naming each.
+        """
+        from wkx_ecosystem_localhost.collectors.flags import CATEGORIES
+
+        unknown = sorted({rule.category for rule in rules if rule.category not in CATEGORIES})
+        if unknown:
+            joined = ", ".join(unknown)
+            raise ValueError(
+                f"unknown mute category/categories: {joined}. Each must name a Flag "
+                "Category the board raises; check for a typo."
+            )
+        return rules
 
     @classmethod
     def settings_customise_sources(
@@ -294,9 +354,9 @@ class ConfigToolList(BaseModel):
     """The system-tools probe list as effective configuration, rendered as a table.
 
     ``source`` is where the whole list came from (a default list, the TOML, or the
-    environment); ``tools`` is the effective list in order. ``exclude`` and
-    ``sections_off`` sit beside this block; a sibling milestone adds ``mute`` the
-    same way, each its own typed block and table, without disturbing this one.
+    environment); ``tools`` is the effective list in order. ``exclude``,
+    ``sections_off``, and ``mute`` sit beside this block, each its own typed block
+    and table, without disturbing this one.
     """
 
     source: Source
@@ -310,8 +370,8 @@ class ConfigExcludes(BaseModel):
     environment); ``globs`` is the effective list in order. Each glob prunes every
     directory whose ``~``-relative path it full-matches from discovery, so an
     excluded subtree is absent from the board and raises no Flags (Exclude, not a
-    Mute). Sits beside ``system_tools`` as its own typed block, the pattern a sibling
-    milestone follows for ``sections_off`` and ``mute``.
+    Mute). Sits beside ``system_tools`` as its own typed block, the pattern
+    ``sections_off`` and ``mute`` follow.
     """
 
     source: Source
@@ -332,6 +392,21 @@ class ConfigSectionsOff(BaseModel):
     sections: list[Section]
 
 
+class ConfigMutes(BaseModel):
+    """The Mute rules as effective configuration, rendered as its own table.
+
+    The list-shaped setting following ``system_tools`` into its own typed block, the
+    pattern A set. ``source`` is where the list came from (an empty default, the
+    TOML, or the environment); ``rules`` is the effective Mute rules in order, each a
+    Category and an optional exact target. Muting is a client-side view preference:
+    the board lists the rules here, and the client drops the muted Flags before they
+    badge a row or count in the tally, but ``/api/flags`` still reports every Flag.
+    """
+
+    source: Source
+    rules: list[MuteRule]
+
+
 class ConfigView(BaseModel):
     """The read-only effective configuration for the config Section.
 
@@ -340,9 +415,9 @@ class ConfigView(BaseModel):
     of the TOML the values were read from, or None when the file source is off;
     ``found`` is whether that file exists. ``values`` are the scalar settings;
     ``system_tools`` is the probe list, ``exclude`` is the discovery Exclude globs,
-    and ``sections_off`` is the Off Sections. Each list-shaped setting gets its own
-    typed block beside ``system_tools`` so the Section grows one table at a time; a
-    sibling adds ``mute`` the same way.
+    ``sections_off`` is the Off Sections, and ``mute`` is the Mute rules. Each
+    list-shaped setting gets its own typed block beside ``system_tools`` so the
+    Section grows one table at a time.
     """
 
     file: str | None
@@ -351,6 +426,7 @@ class ConfigView(BaseModel):
     system_tools: ConfigToolList
     exclude: ConfigExcludes
     sections_off: ConfigSectionsOff
+    mute: ConfigMutes
 
 
 # The scalar settings shown in the config Section's Settings table, in a stable
@@ -439,6 +515,10 @@ def describe(
         source=_source_of("sections_off", toml_keys, environ),
         sections=settings.sections_off,
     )
+    mutes = ConfigMutes(
+        source=_source_of("mute", toml_keys, environ),
+        rules=settings.mute,
+    )
     file_display = relativise(config_file, home) if config_file is not None else None
     return ConfigView(
         file=file_display,
@@ -447,4 +527,5 @@ def describe(
         system_tools=tools,
         exclude=excludes,
         sections_off=sections_off,
+        mute=mutes,
     )

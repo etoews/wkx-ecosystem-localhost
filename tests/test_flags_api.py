@@ -9,14 +9,18 @@ so the cross-item drift and shadowing Flags derive here too.
 
 from __future__ import annotations
 
+import fixtures
 from fastapi.testclient import TestClient
+
+from wkx_ecosystem_localhost.app import create_app
+from wkx_ecosystem_localhost.config import MuteRule, Settings
 
 
 def _flag_index(flags: list[dict]) -> dict[tuple[str, str], set[str]]:
-    """Group Flag codes by their (section, target) so a row's Flags read at a glance."""
+    """Group Flag categories by their (section, target) so a row's Flags read at a glance."""
     index: dict[tuple[str, str], set[str]] = {}
     for flag in flags:
-        index.setdefault((flag["section"], flag["target"]), set()).add(flag["code"])
+        index.setdefault((flag["section"], flag["target"]), set()).add(flag["category"])
     return index
 
 
@@ -67,9 +71,9 @@ def test_flags_endpoint_derives_cross_item_drift(flags_client: TestClient) -> No
 def test_flags_endpoint_omits_the_sse_delivered_flags(flags_client: TestClient) -> None:
     # behind-remote and submodule-tags-behind need a background fetch, so the board
     # raises them as its SSE events land, never at rest.
-    codes = {flag["code"] for flag in flags_client.get("/api/flags").json()["flags"]}
-    assert "behind-remote" not in codes
-    assert "submodule-tags-behind" not in codes
+    categories = {flag["category"] for flag in flags_client.get("/api/flags").json()["flags"]}
+    assert "behind-remote" not in categories
+    assert "submodule-tags-behind" not in categories
 
 
 def test_flags_levels_are_the_two_levels_only(flags_client: TestClient) -> None:
@@ -81,3 +85,54 @@ def test_flags_levels_are_the_two_levels_only(flags_client: TestClient) -> None:
     assert ("system", "ty") in problems
     assert ("docker", "daemon") in problems
     assert ("claude", "mcp:cloud-mcp") in problems
+
+
+def _muted_client(*rules: MuteRule) -> TestClient:
+    """A flags-lighting client with the given Mute rules configured.
+
+    The same multi-repo, multi-Origin fake the Flag layer uses, so /api/flags can be
+    shown to still carry a muted Category and /api/config to carry the rules the
+    client will apply.
+    """
+    machine, home, roots, tools = fixtures.build_flags_workspace()
+    settings = Settings(
+        _env_file=None,
+        _config_file=None,
+        scan_roots=roots,
+        system_tools=tools,
+        mute=list(rules),
+    )
+    return TestClient(create_app(settings, machine=machine, home=home))
+
+
+def test_muted_flags_stay_on_the_wire() -> None:
+    # Muting is a client-side view preference; the API is the inventory, so
+    # /api/flags reports every Flag even for a muted Category and target.
+    client = _muted_client(
+        MuteRule(category="brew-outdated"),
+        MuteRule(category="dirty-tree", target="~/dev/acme/web"),
+    )
+
+    categories = {f["category"] for f in client.get("/api/flags").json()["flags"]}
+
+    assert "brew-outdated" in categories
+    # The whole-category mute does not strip the flag from the inventory either.
+    index = _flag_index(client.get("/api/flags").json()["flags"])
+    assert "dirty-tree" in index[("workspace", "~/dev/acme/web")]
+
+
+def test_config_carries_the_mute_rules_for_the_client() -> None:
+    # The rules the client applies ride on /api/config, both a whole-category rule
+    # and a targeted one, in order, with the target left None when absent.
+    client = _muted_client(
+        MuteRule(category="brew-outdated"),
+        MuteRule(category="dirty-tree", target="~/dev/acme/web"),
+    )
+
+    view = client.get("/api/config").json()
+
+    assert view["mute"]["source"] == "default"
+    assert view["mute"]["rules"] == [
+        {"category": "brew-outdated", "target": None},
+        {"category": "dirty-tree", "target": "~/dev/acme/web"},
+    ]

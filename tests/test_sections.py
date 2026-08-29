@@ -140,10 +140,10 @@ def test_off_section_carries_none_of_its_flags() -> None:
 
     flags = client.get("/api/flags").json()["flags"]
     sections = {flag["section"] for flag in flags}
-    codes = {flag["code"] for flag in flags}
+    categories = {flag["category"] for flag in flags}
 
     assert "docker" not in sections
-    assert "docker-unreachable" not in codes
+    assert "docker-unreachable" not in categories
     # The other Sections still raise their Flags, so the Off skip is surgical.
     assert ("system", "ty") in {(f["section"], f["target"]) for f in flags}
 
@@ -166,5 +166,5 @@ def test_workspace_off_still_discovers_repos_for_toolchains() -> None:
     assert toolchains.status_code == 200
     assert toolchains.json()["python"]["repo_pins"], "discovery should still find the repos"
 
-    codes = {flag["code"] for flag in client.get("/api/flags").json()["flags"]}
-    assert "python-pin-drift" in codes
+    categories = {flag["category"] for flag in client.get("/api/flags").json()["flags"]}
+    assert "python-pin-drift" in categories

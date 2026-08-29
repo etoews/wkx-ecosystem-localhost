@@ -488,16 +488,23 @@ window.wkxSections = (function () {
   return { ready: ready, whenActive: whenActive, isOff: isOff, config: config };
 })();
 
-// ---------- Flag layer (M6) + needs-attention summary ----------
+// ---------- Flag layer (M6) + needs-attention summary + muting (M10) ----------
 // The cross-cutting anomaly layer. It gathers no facts of its own — the server
 // derives the at-rest Flags over /api/flags — but it owns the two places a Flag
 // shows: an inline amber (attention) or red (problem) badge on the row carrying
 // the fact, and the needs-attention summary that groups every open Flag by
-// category. Every flaggable row stamps a data-flag-key of "<section>:<target>",
+// Category. Every flaggable row stamps a data-flag-key of "<section>:<target>",
 // so a Flag settles onto its row without this layer knowing how the row is drawn;
 // a MutationObserver re-decorates as panels and SSE updates land. The summary
 // reads the same registry, so at-rest and SSE-raised Flags share one source of
 // truth and the summary updates the moment a background probe lands.
+//
+// Muting is a client-side view preference (M10). The operator's Mute rules arrive
+// on /api/config; place() is the one choke point every Flag passes through, at
+// rest or raised from SSE, and it drops a muted Flag into a separate `muted` set
+// before it ever reaches the registry — so neither decorate() nor the summary's
+// Total/Attention/Problems tiles see it. A fourth Muted tile counts the muted set,
+// so nothing is hidden silently; /api/flags still reports every Flag, muted or not.
 window.wkxFlags = (function () {
   "use strict";
 
@@ -506,8 +513,9 @@ window.wkxFlags = (function () {
   const summaryMount = document.getElementById("summary");
   if (!board) return { add: function () {}, clear: function () {} };
 
-  // The category each Flag code rolls up to in the summary.
-  const CATEGORY = {
+  // The label each Flag Category rolls up to in the summary. Its keys are the
+  // nineteen Category ids; a test cross-checks them against flags.CATEGORIES.
+  const CATEGORY_LABEL = {
     "dirty-tree": "Dirty working trees",
     "detached-head": "Detached HEAD",
     "no-upstream": "No upstream",
@@ -553,25 +561,75 @@ window.wkxFlags = (function () {
   };
   const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
+  // The live Flags the board shows, and the muted ones it counts but hides. A
+  // Flag is in exactly one of the two, decided by place() the moment it arrives.
   const registry = new Map();
+  const muted = new Map();
   let decorating = false;
 
   function el(tag, className, text) {
     return U.el(tag, className, text);
   }
   function keyOf(flag) {
-    return flag.section + "|" + flag.target + "|" + flag.code;
+    return flag.section + "|" + flag.target + "|" + flag.category;
   }
   function rowKey(flag) {
     return flag.section + ":" + flag.target;
   }
 
+  // The operator's Mute rules, read from the /api/config body the boot gate
+  // already fetched. Empty until it lands (and if it fails), so a Flag arriving
+  // early is simply not muted rather than erroring. The body is fixed after boot,
+  // so the rules are cached on the first read that finds it — place() runs once per
+  // Flag, and every Flag placement is behind the boot gate, so the cache is warm.
+  let cachedRules = null;
+  function muteRules() {
+    if (cachedRules) return cachedRules;
+    const data = window.wkxSections.config();
+    const rules = (data && data.mute && data.mute.rules) || [];
+    if (data) cachedRules = rules; // cache only once the config body has loaded
+    return rules;
+  }
+
+  // A Flag is muted when a rule names its Category and either targets it exactly
+  // or (no target) mutes the whole Category, including the SSE-raised ones.
+  function isMuted(flag) {
+    return muteRules().some(function (rule) {
+      if (rule.category !== flag.category) return false;
+      return rule.target == null || rule.target === flag.target;
+    });
+  }
+
+  // The one choke point every Flag passes through, at rest or raised from SSE: a
+  // muted Flag lands in `muted` and never reaches the registry, so decorate() and
+  // the Total/Attention/Problems tiles never see it; a live one lands in the
+  // registry. Keeping a Flag out of both on the other outcome keeps a rule change
+  // from leaving a stale copy behind.
+  function place(flag) {
+    const key = keyOf(flag);
+    if (isMuted(flag)) {
+      registry.delete(key);
+      muted.set(key, flag);
+    } else {
+      muted.delete(key);
+      registry.set(key, flag);
+    }
+  }
+
+  // Drop a Flag by identity from wherever it sits, so clearing an SSE Flag (a repo
+  // caught up to its remote) removes it whether it was live or muted.
+  function remove(section, target, category) {
+    const key = section + "|" + target + "|" + category;
+    registry.delete(key);
+    muted.delete(key);
+  }
+
   function badge(flag) {
     const lvl = flag.level === "problem" ? "problem" : "attention";
     const node = el("span", "flag flag--" + lvl, flag.message);
-    node.dataset.flagCode = flag.code;
+    node.dataset.flagCategory = flag.category;
     // The tooltip is a fix, not a restatement; a11y still hears the level + fact.
-    node.title = RESOLUTION[flag.code] || flag.message;
+    node.title = RESOLUTION[flag.category] || flag.message;
     node.setAttribute("aria-label", lvl + ": " + flag.message);
     return node;
   }
@@ -585,9 +643,40 @@ window.wkxFlags = (function () {
   function renderSummary() {
     if (!summaryMount) return;
     const flags = Array.from(registry.values());
-    if (flags.length === 0) {
+    const mutedCount = muted.size;
+    if (flags.length === 0 && mutedCount === 0) {
       summaryMount.replaceChildren(
         U.summaryLine(["Every Section is clear — nothing wants attention right now."]),
+      );
+      return;
+    }
+
+    const problems = flags.filter(function (f) {
+      return f.level === "problem";
+    }).length;
+    const attention = flags.length - problems;
+
+    // Four tiles: Total, Attention, and Problems count the live Flags only; Muted
+    // counts the ones a rule silenced, so the suppression is always in view and
+    // never a silent subtraction. Muted reads in the quiet tone, not amber or red:
+    // a muted Flag is deliberately quieted, not a live anomaly.
+    const tiles = U.tiles([
+      { value: flags.length, label: "Total flags" },
+      { value: attention, label: "Attention", kind: "attention" },
+      { value: problems, label: "Problems", kind: "problem" },
+      { value: mutedCount, label: "Muted", kind: "muted" },
+    ]);
+
+    if (flags.length === 0) {
+      // Everything visible is clear, but a rule has muted some Flags — say so, so
+      // the Muted tile reads as a deliberate choice rather than a mystery.
+      summaryMount.replaceChildren(
+        tiles,
+        U.summaryLine([
+          mutedCount === 1
+            ? "Every visible Section is clear; 1 Flag is muted."
+            : "Every visible Section is clear; " + mutedCount + " Flags are muted.",
+        ]),
       );
       return;
     }
@@ -595,7 +684,7 @@ window.wkxFlags = (function () {
     const order = [];
     const groups = new Map();
     flags.forEach(function (flag) {
-      const label = CATEGORY[flag.code] || flag.code;
+      const label = CATEGORY_LABEL[flag.category] || flag.category;
       if (!groups.has(label)) {
         groups.set(label, { label: label, level: "attention", count: 0, targets: [] });
         order.push(label);
@@ -615,22 +704,12 @@ window.wkxFlags = (function () {
       return b.count - a.count;
     });
 
-    const problems = flags.filter(function (f) {
-      return f.level === "problem";
-    }).length;
-    const attention = flags.length - problems;
     const max = cats.reduce(function (m, c) {
       return Math.max(m, c.count);
     }, 1);
 
-    const tiles = U.tiles([
-      { value: flags.length, label: "Total flags" },
-      { value: attention, label: "Attention", kind: "attention" },
-      { value: problems, label: "Problems", kind: "problem" },
-    ]);
-
     // The summary rides the same rail as every Section: its right-most column is
-    // Flags too, holding each category's level badge, so the amber/red marks line
+    // Flags too, holding each Category's level badge, so the amber/red marks line
     // up from the top of the board down. The badge is the level marker (.lvl),
     // decorative and never touched by the flag layer's cleanup.
     const built = U.table([
@@ -672,7 +751,7 @@ window.wkxFlags = (function () {
       registry.forEach(function (flag) {
         const hosts = board.querySelectorAll('[data-flag-key="' + rowKey(flag) + '"]');
         hosts.forEach(function (host) {
-          if (host.querySelector(':scope > .flag[data-flag-code="' + flag.code + '"]')) return;
+          if (host.querySelector(':scope > .flag[data-flag-category="' + flag.category + '"]')) return;
           host.appendChild(badge(flag));
         });
       });
@@ -683,10 +762,10 @@ window.wkxFlags = (function () {
           return;
         }
         const key = host.getAttribute("data-flag-key");
-        const code = node.dataset.flagCode;
+        const category = node.dataset.flagCategory;
         let live = false;
         registry.forEach(function (flag) {
-          if (rowKey(flag) === key && flag.code === code) live = true;
+          if (rowKey(flag) === key && flag.category === category) live = true;
         });
         if (!live) node.remove();
       });
@@ -697,12 +776,12 @@ window.wkxFlags = (function () {
 
   const api = {
     add: function (flag) {
-      registry.set(keyOf(flag), flag);
+      place(flag);
       decorate();
       renderSummary();
     },
-    clear: function (section, target, code) {
-      registry.delete(section + "|" + target + "|" + code);
+    clear: function (section, target, category) {
+      remove(section, target, category);
       decorate();
       renderSummary();
     },
@@ -720,9 +799,9 @@ window.wkxFlags = (function () {
         return response.json();
       })
       .then(function (data) {
-        (data.flags || []).forEach(function (flag) {
-          registry.set(keyOf(flag), flag);
-        });
+        // Through the same choke point as the SSE-raised Flags, so a muted at-rest
+        // Flag is counted and hidden here too, not just the ones raised later.
+        (data.flags || []).forEach(place);
         decorate();
         renderSummary();
       })
@@ -1017,7 +1096,7 @@ window.wkxTokens = (function () {
         section: "workspace",
         target: repo,
         level: "attention",
-        code: "behind-remote",
+        category: "behind-remote",
         message: behind === 1 ? "1 commit behind remote" : behind + " commits behind remote",
       });
     } else {
@@ -1072,7 +1151,7 @@ window.wkxTokens = (function () {
         section: "workspace",
         target: path,
         level: "attention",
-        code: "submodule-tags-behind",
+        category: "submodule-tags-behind",
         message: behind === 1 ? "1 release behind" : behind + " releases behind",
       });
     } else {
@@ -1992,9 +2071,8 @@ window.wkxTokens = (function () {
 // small mono label, never by hue: a computed default reads recessive, a value the
 // operator set through the file or the environment reads at full weight, so a
 // glance down the Source column separates what is customised from what runs on
-// defaults. Colour stays reserved for the Flag layer. The discovery Excludes and
-// Off Sections each get their own table here beside system tools; mutes arrive with
-// a later milestone, adding one more.
+// defaults. Colour stays reserved for the Flag layer. The discovery Excludes, Off
+// Sections, and Mutes each get their own table here beside system tools.
 (function () {
   "use strict";
 
@@ -2071,6 +2149,22 @@ window.wkxTokens = (function () {
     return built.wrap;
   }
 
+  // The Mute rules, the third list-shaped setting to get its own table. Each rule
+  // names a Flag Category to silence; a target narrows it to one item's exact wire
+  // value, an empty target mutes the whole Category. Muting is a view preference,
+  // so a muted Flag is dropped from the badges and the tally but stays on
+  // /api/flags — this table is where the operator sees what they silenced.
+  function mutesTable(rules) {
+    const built = U.table([{ label: "Category" }, { label: "Target" }]);
+    rules.forEach(function (rule) {
+      const target = rule.target ? U.el("span", "ver", rule.target) : U.quiet("whole category");
+      built.tbody.append(
+        U.tr([U.td(U.el("span", "t-name", rule.category)), U.td(target), U.flagCell()]),
+      );
+    });
+    return built.wrap;
+  }
+
   function render(data) {
     const values = data.values || [];
     const tools = (data.system_tools && data.system_tools.tools) || [];
@@ -2079,6 +2173,8 @@ window.wkxTokens = (function () {
     const excludeSource = (data.exclude && data.exclude.source) || "default";
     const off = (data.sections_off && data.sections_off.sections) || [];
     const offSource = (data.sections_off && data.sections_off.source) || "default";
+    const mutes = (data.mute && data.mute.rules) || [];
+    const muteSource = (data.mute && data.mute.source) || "default";
     const customised = values.filter(function (item) {
       return item.source !== "default";
     }).length;
@@ -2092,6 +2188,7 @@ window.wkxTokens = (function () {
       { value: String(envCount), label: "From environment" },
       { value: String(tools.length), label: "System tools" },
       { value: String(off.length), label: "Off Sections" },
+      { value: String(mutes.length), label: "Mutes" },
     ]);
 
     // Name the file and whether it was found, so the operator knows exactly which
@@ -2124,6 +2221,12 @@ window.wkxTokens = (function () {
       off.length > 0
         ? offTable(off)
         : U.summaryLine(["No Sections are off; every Section is on the board."]),
+    );
+    nodes.push(U.el("p", "sub-head", "Mutes (" + mutes.length + ") · " + muteSource));
+    nodes.push(
+      mutes.length > 0
+        ? mutesTable(mutes)
+        : U.summaryLine(["No Flags are muted; every Flag badges its row and counts in the tally."]),
     );
 
     mount.replaceChildren.apply(mount, nodes);

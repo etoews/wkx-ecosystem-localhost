@@ -49,6 +49,37 @@ from wkx_ecosystem_localhost.models import (
 ATTENTION = "attention"
 PROBLEM = "problem"
 
+# Every Flag Category the board can raise: the stable registry a Mute validates a
+# rule's ``category`` against, so a misspelt Category fails fast. The seventeen
+# derived below, plus ``behind-remote`` and ``submodule-tags-behind`` — the two the
+# board raises client-side as its SSE events land (a repo behind its remote, a
+# submodule behind its tags). Those two have no server-side home, so they are named
+# here explicitly; they are still real Categories an operator can Mute. The client's
+# CATEGORY_LABEL map must list exactly these ids (a test cross-checks the two).
+CATEGORIES: frozenset[str] = frozenset(
+    {
+        "dirty-tree",
+        "detached-head",
+        "no-upstream",
+        "behind-remote",
+        "brew-outdated",
+        "python-pin-drift",
+        "tool-version-drift",
+        "submodule-tags-behind",
+        "docker-unreachable",
+        "tool-missing",
+        "skill-disabled",
+        "plugin-disabled",
+        "skill-shadow",
+        "mcp-needs-auth",
+        "mcp-two-scopes",
+        "git-config-conflict",
+        "git-include-broken",
+        "git-config-credentials",
+        "git-no-identity",
+    }
+)
+
 
 def derive_flags(
     *,
@@ -114,7 +145,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
                     section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
-                    code="dirty-tree",
+                    category="dirty-tree",
                     message="uncommitted changes",
                 )
             )
@@ -124,7 +155,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
                     section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
-                    code="detached-head",
+                    category="detached-head",
                     message="detached HEAD",
                 )
             )
@@ -134,7 +165,7 @@ def _workspace_flags(workspace: WorkspaceSection) -> list[Flag]:
                     section=Section.WORKSPACE,
                     target=repo.path,
                     level=ATTENTION,
-                    code="no-upstream",
+                    category="no-upstream",
                     message="no upstream",
                 )
             )
@@ -153,7 +184,7 @@ def _homebrew_flags(homebrew: HomebrewSection) -> list[Flag]:
                     section=Section.HOMEBREW,
                     target=f"{kind}:{package.name}",
                     level=ATTENTION,
-                    code="brew-outdated",
+                    category="brew-outdated",
                     message="update available",
                 )
             )
@@ -169,7 +200,7 @@ def _docker_flags(docker: DockerSection) -> list[Flag]:
             section=Section.DOCKER,
             target="daemon",
             level=PROBLEM,
-            code="docker-unreachable",
+            category="docker-unreachable",
             message="daemon unreachable",
         )
     ]
@@ -182,7 +213,7 @@ def _system_flags(system: SystemToolsSection) -> list[Flag]:
             section=Section.SYSTEM,
             target=tool.name,
             level=PROBLEM,
-            code="tool-missing",
+            category="tool-missing",
             message="not installed",
         )
         for tool in system.tools
@@ -200,7 +231,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
                     section=Section.CLAUDE,
                     target=f"skill:{skill.name}",
                     level=ATTENTION,
-                    code="skill-disabled",
+                    category="skill-disabled",
                     message="disabled",
                 )
             )
@@ -211,7 +242,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
                     section=Section.CLAUDE,
                     target=f"plugin:{plugin.name}",
                     level=ATTENTION,
-                    code="plugin-disabled",
+                    category="plugin-disabled",
                     message="disabled",
                 )
             )
@@ -222,7 +253,7 @@ def _claude_flags(claude: ClaudeSection) -> list[Flag]:
                     section=Section.CLAUDE,
                     target=f"mcp:{server.name}",
                     level=PROBLEM,
-                    code="mcp-needs-auth",
+                    category="mcp-needs-auth",
                     message="needs auth",
                 )
             )
@@ -256,7 +287,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
                 section=Section.GIT_CONFIG,
                 target=key,
                 level=ATTENTION,
-                code="git-config-conflict",
+                category="git-config-conflict",
                 message="set to differing values",
             )
         )
@@ -268,7 +299,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
                     section=Section.GIT_CONFIG,
                     target=include.path,
                     level=PROBLEM,
-                    code="git-include-broken",
+                    category="git-include-broken",
                     message="include file not found",
                 )
             )
@@ -280,7 +311,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
                     section=Section.GIT_CONFIG,
                     target=entry.key,
                     level=PROBLEM,
-                    code="git-config-credentials",
+                    category="git-config-credentials",
                     message="credentials embedded in value",
                 )
             )
@@ -291,7 +322,7 @@ def _git_config_flags(git_config: GitConfigSection) -> list[Flag]:
                 section=Section.GIT_CONFIG,
                 target="identity",
                 level=ATTENTION,
-                code="git-no-identity",
+                category="git-no-identity",
                 message="no identity in global git config",
             )
         )
@@ -323,7 +354,7 @@ def _drift_flags(
                         section=Section.TOOLCHAINS,
                         target=f"pin:{pin.repo}",
                         level=ATTENTION,
-                        code="python-pin-drift",
+                        category="python-pin-drift",
                         message="pin differs across repos",
                     )
                 )
@@ -338,7 +369,7 @@ def _drift_flags(
                             section=Section.TOOLCHAINS,
                             target=f"ts:{repo.repo}",
                             level=ATTENTION,
-                            code="tool-version-drift",
+                            category="tool-version-drift",
                             message="version differs across repos",
                         )
                     )
@@ -360,7 +391,7 @@ def _shadow_flags(claude: ClaudeSection) -> list[Flag]:
             section=Section.CLAUDE,
             target=f"skill:{skill.name}",
             level=ATTENTION,
-            code="skill-shadow",
+            category="skill-shadow",
             message="shadows another origin",
         )
         for skill in claude.skills
@@ -384,7 +415,7 @@ def _two_scope_flags(claude: ClaudeSection) -> list[Flag]:
                     section=Section.CLAUDE,
                     target=f"mcp:{server.name}",
                     level=ATTENTION,
-                    code="mcp-two-scopes",
+                    category="mcp-two-scopes",
                     message="configured in two scopes",
                 )
             )

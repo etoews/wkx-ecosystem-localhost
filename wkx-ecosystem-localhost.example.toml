@@ -59,6 +59,20 @@
 # not a Section and cannot go here. Default: none off.
 # sections_off = ["docker", "editor"]
 
+# The Flags to mute. This is an inline array of tables, one per rule. Each rule
+# names a Flag category and, optionally, a target that narrows the mute to one
+# item. A rule with no target mutes the whole category; a target matches the wire
+# value exactly (a repository's ~-relative path, or a prefixed item such as
+# formula:python@3.12 or skill:foo). An unknown category stops the board at
+# startup. Muting is a view preference: a muted Flag does not badge its row and
+# does not count in the tally, but the board still reports how many Flags it muted,
+# and /api/flags still returns every Flag. It suppresses noise; it is not a
+# ruleset. Default: none muted.
+# mute = [
+#   { category = "brew-outdated" },
+#   { category = "dirty-tree", target = "~/dev/scratch" },
+# ]
+
 # The developer CLIs the system Section probes. Each entry is a [[system_tools]]
 # table with a name and, optionally, the arguments that ask the tool its version
 # (default ["--version"]). Setting this replaces the whole generic default list
