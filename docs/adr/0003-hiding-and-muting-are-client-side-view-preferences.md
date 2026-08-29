@@ -6,7 +6,9 @@ and Muting a Flag category are view preferences the board applies in the client.
 Hidden Section is still fetched and its Flags still count. A muted Flag is dropped
 at one client choke point before it badges a row or counts in the Needs attention
 tally; a Muted tile shows how many the rules silenced, so nothing is hidden
-silently. Neither preference changes what the API reports.
+silently. Neither preference changes what the API reports. Collapsing a Section
+to its heading (M11) is the same kind of preference: a Collapsed Section is still
+fetched and its Flags still count.
 
 We chose this over server-side filtering in `/api/flags`. Two Flags, a repo behind
 its remote and a submodule behind its tags, are raised in the client as the SSE

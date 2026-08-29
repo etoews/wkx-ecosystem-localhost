@@ -44,6 +44,13 @@ is a reading preference, not a Mute.
 _Avoid_: collapsed (the fold-to-heading state, which keeps the Section on the
 board), off
 
+**Collapsed**:
+A Section, or the Needs attention rollup, a viewer has folded to its heading
+with the client-side toggle. A Collapsed Section stays on the board, is still
+collected, and its Flags still count, because collapse is a reading
+convenience, not a Mute.
+_Avoid_: folded, minimised, hidden (the taken-off-the-board state)
+
 **Exclude**:
 A glob in configuration that prunes matching directories from repo discovery,
 matched against the `~`-relative path the board displays. An excluded repo is

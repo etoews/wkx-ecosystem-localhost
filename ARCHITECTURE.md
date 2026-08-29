@@ -25,6 +25,12 @@ board never asks for a panel it is about to remove; a Hidden Section is still
 fetched and still counts in the tally. Colour is reserved for the Flag layer.
 Neutral facts are told apart by weight, a muted tone, and a label, never by hue.
 
+A viewer's preferences live in the browser's `localStorage` and nowhere else:
+`wkx-theme` (light or dark; an absent key means auto) and `wkx-sections` (the
+Hidden overrides; an absent key means the server default). Each key holds
+overrides only, so a cleared store returns the board to its defaults, and no
+preference ever reaches the service.
+
 ## The service
 
 `app.py` exposes `create_app(settings, machine, home)`, a FastAPI application

@@ -27,6 +27,12 @@ on any column.
 - **System**: a configurable probe of dev CLIs, present or missing, with versions.
 - **Homebrew**: outdated formulae and casks.
 - **Docker**: daemon state, containers, images, reclaimable disk.
+- **Footprint**: `.venv` and `node_modules` sizes per repo with a total, and
+  Docker disk as total and reclaimable.
+- **Editor**: VS Code presence and version, with its installed extensions.
+- **Git config**: the global gitconfig and the files it includes, each key with
+  its origin file, redacted per ADR 0001.
+- **Config**: the effective configuration, each value with its source, read only.
 
 Flags are amber (attention) or red (problem), badged on the affected row and
 grouped by category in the Needs attention summary; hovering a badge suggests how

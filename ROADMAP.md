@@ -39,15 +39,17 @@ are the cross-cutting decisions every milestone inherits.
 | [M7: Deferred additions](#m7-deferred-additions) | M | ✅ Complete |
 | [M8: Token-highlighting](#m8-token-highlighting) | M | ✅ Complete |
 | [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
-| [M10: Configurable board](#m10-configurable-board) | L | ⬜ Planned |
-| [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | L | ⬜ Planned |
+| [M10: Configurable board](#m10-configurable-board) | L | ✅ Complete |
+| [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | M | ⬜ Planned |
+| [M12: Table search and hideable columns](#m12-table-search-and-hideable-columns) | M | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
 **Critical path:** M0 → M1 → M2 is sequential. M3, M4, M5 parallelise after M1.
 M6 needs the collectors it flags. M7–M9 are opt-in. M10 builds on the Sections
-and Flags from M1–M6 and is otherwise independent. M11 refines the Sections and
-tables from M1–M9; it is independent of M10 and can follow it or run beside it.
+and Flags from M1–M6 and is otherwise independent. M11 refines the Sections, the
+Workspace table, and the Flag layer from M1–M9; it is independent of M10. M12
+refines every table; it is independent of M11 and can follow it or run beside it.
 
 ---
 
@@ -255,26 +257,47 @@ is in [CONTEXT.md](CONTEXT.md).
 
 ## M11: Board interaction and refinements
 
-A cluster of independent refinements after M10. Most are client-side view
-preferences that shape how each Section and table reads: collapse a Section,
-search and filter a table, hide a column. Two are not view preferences — a
-Roadmap progress column in the Workspace Section, backed by one read-only
-Collector, and a correction to the disabled-skill count. There is no new
-Section. No refinement writes server config; the client-side choices persist in
-`localStorage`, the way the theme toggle does.
+Three independent refinements after M10. One is a client-side view preference:
+collapse a Section to its heading. Two are not — a Roadmap progress column in
+the Workspace Section, backed by one read-only Collector, and a correction to
+how the claude Section counts a disabled skill. There is no new Section and no
+new route. No refinement writes server config; the collapse choice persists in
+`localStorage`, the way the theme toggle does. The vocabulary (Collapsed) is in
+[CONTEXT.md](CONTEXT.md). Table search and hideable columns, once part of this
+milestone, are [M12](#m12-table-search-and-hideable-columns).
 
 **Deliverables**
-- [ ] Collapsible Sections: each Section collapses to its `signage` heading and expands again. A client-side toggle holds the state in `localStorage`, the way the theme toggle does. Collapse hides the body but keeps the Section on the board; this differs from M10, where the operator turns a Section off and it disappears. A collapsed Section still counts in the Needs attention tally, because collapse is a reading convenience, not a mute.
-- [ ] Roadmap progress column: the Workspace Section gets a Roadmap column, to the left of the Flags rail. For a repo with a `ROADMAP.md`, the column shows its progress, such as ticked against total checkboxes. A repo with no `ROADMAP.md` shows an empty cell. The absence is a fact, never a Flag: it is not attention and not a problem, per _Inventory, not conformance_. A read-only Collector parses the file through the Machine seam and stays a pure function over synthetic fixtures in tests.
-- [ ] Correct the disabled-skill count: the claude environment does not count a skill as disabled when its plugin is disabled. A disabled plugin already reports as one disabled-plugin Flag; its skills must not each add a disabled-skill Flag or lift the disabled-skill count. Only a skill disabled on its own, with its plugin enabled, counts.
-- [ ] Table search and filter: the board's tables get a consistent search-and-filter control, next to the click-to-sort they already carry. A search box keeps only the rows that match its text, and sort still works on the narrowed rows. This helps the long tables — Workspace, Toolchains, Footprint. The control is client-side, with no Collector and no API change.
-- [ ] Hideable columns: each table's columns can be hidden and shown again, with each choice held client-side in `localStorage`. The operator drops the columns they do not need, such as Stash or Upstream. The name column and the Flags rail always stay, so every row is identifiable and its Flags stay visible.
-- [ ] The Roadmap Collector and the corrected skill count are covered by unit tests over synthetic fixtures (no captured machine data). The client-side toggles keep the `app.js` render smoke-clean, because the test suite does not run it.
+- [ ] Collapsible Sections: each Section, and the Needs attention rollup, collapses to its `signage` heading and expands again. The whole heading line is the toggle: a button that wraps the label and a rotating caret, the idiom the expandable plugin row already uses, with `aria-expanded` and `aria-controls`. The state lives in `localStorage` (`wkx-collapsed`, a map of panel id to `true`, overrides only, the way `wkx-sections` holds Hidden). Collapse hides the body but keeps the Section on the board; this differs from M10, where the operator turns a Section Off and it disappears. A Collapsed Section is still fetched and still counts in the Needs attention tally, because collapse is a reading convenience, not a Mute. While collapsed, the heading carries a one-line count the Section's render supplies from what it already computes for its tiles, and the Section's own Flag tally (attention and problems, muted excluded); expanded, the tiles carry both. No collapse-all.
+- [ ] Roadmap progress column: the Workspace Section gets a Roadmap column, to the left of the Flags rail. For a repo with a `ROADMAP.md` at its root (exact name), the column shows ticked against total task items, "42 / 58", with a thin neutral meter beneath and the percentage as the cell's title; it sorts by ratio, empty cells last. A task item is what GitHub Flavored Markdown calls one: a line whose first content is a list marker then `[ ]`, `[x]`, or `[X]`, at any indentation, outside a fenced code block. Nothing else counts, and no heading or table convention is read, so the count works for any repo's file. A file with no task items shows "—", the board's not-applicable glyph, titled "no task items". A repo with no `ROADMAP.md` shows an empty cell, and a submodule row always does, because a pinned checkout's roadmap belongs upstream. The absence is a fact, never a Flag: it is not attention and not a problem, per _Inventory, not conformance_. The cell is not a link and not a token. A `roadmap.py` Collector parses the file through the Machine seam with a pure parser, and `collect_workspace` calls it per repo into a new `Repo.roadmap` field (`ticked` and `total`, or `null`) on the existing `/api/workspace` payload; no new route. The read is bounded: `Machine.read_file` gains an optional `max_bytes`, the Collector caps a `ROADMAP.md` at 1 MiB, and a larger file counts as absent, never as a truncated count.
+- [ ] Correct the disabled-skill count: a skill's `enabled` becomes the skill's own state, not its plugin's state copied down. Claude Code's `skillOverrides` setting is the source for a user skill: the two user-scope settings files the Collector already reads narrowly for `enabledPlugins` also carry it, and only the `off` tier disables; `name-only` and `user-invocable-only` are visibility tiers the State column shows as facts, never Flags. Per-repo `.claude/settings.local.json` overrides are project-scoped and stay out. A plugin skill has no switch of its own, so it is always enabled on its own; a new `plugin_enabled` field (`null` for a user skill) carries its plugin's state, and the skills table shows a quiet "plugin disabled" note on such a row, with no badge. A disabled plugin already reports as one `plugin-disabled` Flag; its skills must not each add a `skill-disabled` Flag or lift the count, and its MCP servers must not raise `mcp-needs-auth`: a disabled plugin's assets raise no Flags of their own. Only a skill disabled on its own, with its plugin enabled, counts. `skill-disabled` stays in `CATEGORIES`, because a Mute may name it, and now has a real trigger.
+- [ ] ADR 0003 gains Collapsed beside Hidden as a client-side view preference. ARCHITECTURE.md's list of `localStorage` keys gains `wkx-collapsed`; the README describes collapse, the Roadmap column, and the corrected count.
+- [ ] The Roadmap parser and Collector, the bounded read, `skillOverrides`, and the corrected Flag derivation are covered by unit tests over synthetic fixtures (no captured machine data). The client-side toggle keeps the `app.js` render smoke-clean, because the test suite does not run it.
 
 **Hands-on artefact**
-- [ ] Collapse the Workspace Section to its heading and reload; it stays collapsed. Expand it; the repos return.
+- [ ] Collapse the Workspace Section to its heading and reload; it stays collapsed, and its heading shows the repo count and its Flag tally. Expand it; the repos return. Collapse Needs attention; the tally is unchanged.
 - [ ] A repo with a `ROADMAP.md` shows its progress in the Roadmap column; a repo with none shows an empty cell and no Flag.
-- [ ] Disable a plugin that ships skills; the disabled-skill count does not rise, and only the one disabled-plugin Flag appears.
+- [ ] Disable a plugin that ships skills; the disabled-skill count does not rise, and only the one disabled-plugin Flag appears. Set a user skill to `off` in `skillOverrides`; one `skill-disabled` Flag appears.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+
+---
+
+## M12: Table search and hideable columns
+
+Two client-side view preferences that shape how each table reads, moved out of
+M11 so that milestone stays small: search and filter a table, and hide a column.
+No Collector, no API change, no new Section. The choices that persist live in
+`localStorage`, the way the theme toggle does. The open design questions (which
+tables carry the controls, the matching semantics, whether a search persists,
+the control for columns, and whether Hidden generalises from a Section to a
+column in [CONTEXT.md](CONTEXT.md)) are settled in this milestone's own design
+session.
+
+**Deliverables**
+- [ ] Table search and filter: the board's tables get a consistent search-and-filter control, next to the click-to-sort they already carry. A search box keeps only the rows that match its text, and sort still works on the narrowed rows. This helps the long tables — Workspace, Toolchains, Footprint. The control is client-side, with no Collector and no API change.
+- [ ] Hideable columns: each table's columns can be hidden and shown again, with each choice held client-side in `localStorage`. The operator drops the columns they do not need, such as Stash or Upstream. The name column and the Flags rail always stay, so every row is identifiable and its Flags stay visible.
+- [ ] The client-side controls keep the `app.js` render smoke-clean, because the test suite does not run it.
+
+**Hands-on artefact**
 - [ ] Type in a table's search box; only the matching rows stay, and a click on a header still sorts them.
 - [ ] Hide a column; it goes and the choice survives a reload. Show it again; it returns.
 - [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
