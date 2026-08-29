@@ -44,9 +44,11 @@ def test_flags_endpoint_returns_every_at_rest_flag(flags_client: TestClient) -> 
     assert index[("claude", "plugin:sketch")] == {"plugin-disabled"}
     assert index[("claude", "mcp:cloud-mcp")] == {"mcp-needs-auth"}
 
-    # The disabled skill is also shadowed only if it shares a name; wireframe is
-    # unique, so it carries just the disabled Flag.
-    assert index[("claude", "skill:wireframe")] == {"skill-disabled"}
+    # A disabled plugin raises only its own plugin-disabled Flag: its wireframe
+    # skill stays enabled on its own, so it raises no skill-disabled Flag.
+    assert ("claude", "skill:wireframe") not in index
+    # The lone skill-disabled trigger is a user skill set off in skillOverrides.
+    assert index[("claude", "skill:muted-skill")] == {"skill-disabled"}
 
 
 def test_flags_endpoint_derives_cross_item_drift(flags_client: TestClient) -> None:

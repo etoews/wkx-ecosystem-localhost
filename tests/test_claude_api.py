@@ -25,7 +25,16 @@ def test_claude_skills_carry_origin_and_enabled(claude_client: TestClient) -> No
     assert skills["tidy-repo"]["origin"] == "user"
     assert skills["tidy-repo"]["enabled"] is True
     assert skills["layout"]["origin"] == "tidy@studio-official"
-    assert skills["wireframe"]["enabled"] is False
+    # A plugin skill stays enabled on its own; its plugin's off state rides
+    # plugin_enabled, not the skill's enabled.
+    assert skills["wireframe"]["enabled"] is True
+    assert skills["wireframe"]["plugin_enabled"] is False
+    # A user skill set off in skillOverrides is disabled on its own.
+    assert skills["muted-skill"]["enabled"] is False
+    assert skills["muted-skill"]["plugin_enabled"] is None
+    # A visibility tier stays enabled and is carried for the State column.
+    assert skills["quiet-skill"]["enabled"] is True
+    assert skills["quiet-skill"]["visibility"] == "name-only"
 
 
 def test_claude_plugins_show_repo_version_and_disabled(claude_client: TestClient) -> None:

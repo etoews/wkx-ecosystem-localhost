@@ -24,19 +24,66 @@ def test_collect_skills_carries_origin_and_enabled_state() -> None:
 
     names = {skill.name for skill in section.skills}
     assert {"tidy-repo", "scratch", "layout", "wireframe"} <= names
-    # A user skill: user Origin, always enabled, front matter read.
+    # A user skill: user Origin, enabled on its own, no owning plugin, front matter read.
     tidy = _skill(section.skills, "tidy-repo")
     assert tidy.origin == "user"
     assert tidy.enabled is True
+    assert tidy.plugin_enabled is None
+    assert tidy.visibility is None
     assert tidy.description == "Use when a working tree needs a quick, safe tidy-up."
     # A user skill with no front matter falls back to the directory name.
     assert _skill(section.skills, "scratch").description is None
-    # A plugin skill: plugin Origin, enabled state mirrors the owning plugin.
+    # A plugin skill: plugin Origin, enabled on its own, plugin_enabled mirrors it.
     layout = _skill(section.skills, "layout")
     assert layout.origin == "tidy@studio-official"
     assert layout.enabled is True
-    # A disabled plugin's skill is still shown, badged disabled.
-    assert _skill(section.skills, "wireframe").enabled is False
+    assert layout.plugin_enabled is True
+
+
+def test_disabled_plugins_skill_stays_enabled_on_its_own() -> None:
+    # A plugin skill has no switch of its own: sketch is disabled, but its wireframe
+    # skill is enabled, carrying its plugin's off state in plugin_enabled instead.
+    machine, home = fixtures.build_claude_workspace()
+
+    section = collect_claude(machine, home=home)
+
+    wireframe = _skill(section.skills, "wireframe")
+    assert wireframe.origin == "sketch@studio-official"
+    assert wireframe.enabled is True
+    assert wireframe.plugin_enabled is False
+    assert wireframe.visibility is None
+
+
+def test_user_skill_off_in_overrides_is_disabled_on_its_own() -> None:
+    machine, home = fixtures.build_claude_workspace()
+
+    muted = _skill(collect_claude(machine, home=home).skills, "muted-skill")
+
+    assert muted.origin == "user"
+    assert muted.enabled is False
+    assert muted.plugin_enabled is None
+    assert muted.visibility is None
+
+
+def test_user_skill_visibility_tier_stays_enabled_and_carries_the_tier() -> None:
+    # name-only and user-invocable-only are visibility facts, not a disabled state.
+    machine, home = fixtures.build_claude_workspace()
+
+    quiet = _skill(collect_claude(machine, home=home).skills, "quiet-skill")
+
+    assert quiet.enabled is True
+    assert quiet.visibility == "name-only"
+
+
+def test_skill_overrides_precedence_matches_enabled_plugins() -> None:
+    # flip-skill is off in settings.json and on in settings.local.json; local wins,
+    # exactly as it does for enabledPlugins.
+    machine, home = fixtures.build_claude_workspace()
+
+    flip = _skill(collect_claude(machine, home=home).skills, "flip-skill")
+
+    assert flip.enabled is True
+    assert flip.visibility is None
 
 
 def test_collect_skills_finds_a_symlinked_user_skill() -> None:

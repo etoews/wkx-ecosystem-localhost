@@ -249,15 +249,35 @@ def test_missing_configured_tool_is_a_problem_flag() -> None:
 # ------------------------- Claude per-item -------------------------
 
 
-def test_disabled_skill_and_plugin_flags() -> None:
+def test_user_skill_off_raises_one_skill_disabled_flag() -> None:
+    # A user skill disabled on its own (skillOverrides off) is the skill-disabled
+    # trigger: enabled is its own state, no owning plugin.
     claude = _claude(
-        skills=[Skill(name="wireframe", origin="sketch@studio", enabled=False)],
-        plugins=[Plugin(name="sketch", marketplace="studio", version="1.0.0", enabled=False)],
+        skills=[Skill(name="muted-skill", origin="user", enabled=False)],
     )
     flags = _derive(claude=claude)
-    assert _categories_for(flags, "claude", "skill:wireframe") == {"skill-disabled"}
-    assert _categories_for(flags, "claude", "plugin:sketch") == {"plugin-disabled"}
+    assert _categories_for(flags, "claude", "skill:muted-skill") == {"skill-disabled"}
     assert all(f.level == ATTENTION for f in flags)
+
+
+def test_disabled_plugin_raises_only_its_own_flag() -> None:
+    # A disabled plugin reports one plugin-disabled Flag and nothing else for its
+    # assets: its skills stay enabled on their own (plugin_enabled carries the off
+    # state) and its MCP servers raise no mcp-needs-auth Flag.
+    claude = _claude(
+        skills=[
+            Skill(name="wireframe", origin="sketch@studio", enabled=True, plugin_enabled=False)
+        ],
+        plugins=[Plugin(name="sketch", marketplace="studio", version="1.0.0", enabled=False)],
+        mcp_servers=[
+            McpServer(name="cloud-mcp", origin="sketch@studio", transport="http", needs_auth=True)
+        ],
+    )
+    flags = _derive(claude=claude)
+    assert _categories_for(flags, "claude", "plugin:sketch") == {"plugin-disabled"}
+    assert _categories_for(flags, "claude", "skill:wireframe") == set()
+    assert _categories_for(flags, "claude", "mcp:cloud-mcp") == set()
+    assert [f.category for f in flags] == ["plugin-disabled"]
 
 
 def test_mcp_needs_auth_is_a_problem_flag() -> None:

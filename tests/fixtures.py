@@ -425,6 +425,14 @@ SKILL_TIDY_REPO = (
     "# tidy-repo\n\nBody prose with a colon: not front matter.\n"
 )
 SKILL_SCRATCH_NO_FM = "# scratch\n\nA skill file with no front matter block.\n"
+# User skills exercising skillOverrides: one set off (its own disabled state), one
+# left name-only (a visibility tier that stays enabled), and one flipped back on in
+# settings.local.json to prove local overrides base.
+SKILL_MUTED = "---\nname: muted-skill\ndescription: A user skill set off in skillOverrides.\n---\n"
+SKILL_QUIET = (
+    "---\nname: quiet-skill\ndescription: A user skill left name-only in skillOverrides.\n---\n"
+)
+SKILL_FLIP = "---\nname: flip-skill\ndescription: Off in base, on in local settings.\n---\n"
 # A user skill reached through a symlink: the seam reports the entry as a
 # non-directory (see RealMachine.list_dir), yet its SKILL.md is readable, so
 # discovery must recognise it by the file rather than the is_dir flag.
@@ -474,7 +482,9 @@ KNOWN_MARKETPLACES_JSON = """\
 """
 
 # settings.json enables all but sketch; settings.local.json adds gizmo, so the
-# merge (local over base) is exercised.
+# merge (local over base) is exercised. skillOverrides sets muted-skill off and
+# quiet-skill name-only, and sets flip-skill off so settings.local.json can flip it
+# back on, proving the same local-over-base precedence for skill overrides too.
 SETTINGS_JSON = """\
 {
   "model": "claude-opus-4-8",
@@ -482,10 +492,17 @@ SETTINGS_JSON = """\
     "tidy@studio-official": true,
     "sketch@studio-official": false,
     "cloudkit@studio-official": true
+  },
+  "skillOverrides": {
+    "muted-skill": "off",
+    "quiet-skill": "name-only",
+    "flip-skill": "off"
   }
 }
 """
-SETTINGS_LOCAL_JSON = '{"enabledPlugins": {"gizmo@local-shelf": true}}\n'
+SETTINGS_LOCAL_JSON = (
+    '{"enabledPlugins": {"gizmo@local-shelf": true}, "skillOverrides": {"flip-skill": "on"}}\n'
+)
 
 # cloudkit ships two MCP servers; cloud-mcp needs auth (recorded in the cache),
 # local-mcp does not.
@@ -536,8 +553,10 @@ USER_CONFIG_JSON = """\
 def build_claude_workspace() -> tuple[FakeMachine, Path]:
     """Build a fake machine exercising the claude Collector end to end.
 
-    Two user skills (one with front matter, one without) plus one symlinked in
-    (reported as a non-directory, recognised by its SKILL.md), four installed
+    Two user skills (one with front matter, one without), three more exercising
+    skillOverrides (one set off, one left name-only, one flipped back on in
+    settings.local.json), plus one symlinked in (reported as a non-directory,
+    recognised by its SKILL.md), four installed
     plugins (tidy and cloudkit enabled, sketch disabled but shown, gizmo enabled
     only in settings.local.json and from a non-GitHub marketplace so it has no
     repo), plugin skills from an enabled and a disabled plugin including one nested
@@ -550,6 +569,9 @@ def build_claude_workspace() -> tuple[FakeMachine, Path]:
         dirs={
             CLAUDE_SKILLS / "tidy-repo",
             CLAUDE_SKILLS / "scratch",
+            CLAUDE_SKILLS / "muted-skill",
+            CLAUDE_SKILLS / "quiet-skill",
+            CLAUDE_SKILLS / "flip-skill",
             TIDY_PATH / "skills" / "layout",
             # A category grouping folder holding a nested skill, to exercise recursion.
             TIDY_PATH / "skills" / "advanced",
@@ -562,6 +584,9 @@ def build_claude_workspace() -> tuple[FakeMachine, Path]:
         files={
             CLAUDE_SKILLS / "tidy-repo" / "SKILL.md": SKILL_TIDY_REPO,
             CLAUDE_SKILLS / "scratch" / "SKILL.md": SKILL_SCRATCH_NO_FM,
+            CLAUDE_SKILLS / "muted-skill" / "SKILL.md": SKILL_MUTED,
+            CLAUDE_SKILLS / "quiet-skill" / "SKILL.md": SKILL_QUIET,
+            CLAUDE_SKILLS / "flip-skill" / "SKILL.md": SKILL_FLIP,
             CLAUDE_SKILLS / "linked-skill" / "SKILL.md": SKILL_LINKED,
             TIDY_PATH / "skills" / "layout" / "SKILL.md": SKILL_LAYOUT,
             TIDY_PATH / "skills" / "advanced" / "deep-layout" / "SKILL.md": SKILL_DEEP_LAYOUT,
@@ -764,6 +789,9 @@ FLAGS_SETTINGS_JSON = """\
   "enabledPlugins": {
     "tidy@studio-official": true,
     "sketch@studio-official": false
+  },
+  "skillOverrides": {
+    "muted-skill": "off"
   }
 }
 """
@@ -776,10 +804,15 @@ FLAGS_TIDY_MCP_JSON = (
 FLAGS_AUTH_CACHE_JSON = '{"plugin:tidy:cloud-mcp": {"timestamp": 1, "id": "aaa"}}'
 
 # A user skill named "layout" shadows tidy's plugin skill of the same name; a
-# unique user skill sits alongside so only the shared name is flagged.
+# unique user skill sits alongside so only the shared name is flagged. A third user
+# skill is set off in skillOverrides, the only skill-disabled trigger now that a
+# disabled plugin's skills stay enabled on their own.
 FLAGS_SKILL_USER_LAYOUT = "---\nname: layout\ndescription: A user layout skill.\n---\n\n# layout\n"
 FLAGS_SKILL_USER_UNIQUE = (
     "---\nname: tidy-repo\ndescription: A unique user skill.\n---\n\n# tidy-repo\n"
+)
+FLAGS_SKILL_USER_MUTED = (
+    "---\nname: muted-skill\ndescription: A user skill set off in skillOverrides.\n---\n"
 )
 
 # The user config: repo-mcp is configured under the user scope and again under a
@@ -811,10 +844,12 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
     ``api`` is detached, and ``cli`` is on a branch with no upstream. ``web`` pins
     Python 3.14.4 and ``api`` pins 3.13.13 (pin drift); ``web`` has TypeScript
     5.3.3 installed and ``cli`` has 5.4.5 (version drift). One configured tool
-    (``ty``) is missing. The Claude environment carries a disabled plugin and its
-    disabled skill, an MCP server that needs auth, a user skill whose name shadows
-    a plugin skill across Origins, and an MCP configured under both a user and a
-    project scope. Homebrew reports outdated packages and the Docker daemon is
+    (``ty``) is missing. The Claude environment carries a disabled plugin (whose
+    skills stay enabled on their own), a user skill set off in skillOverrides (the
+    lone skill-disabled trigger), an MCP server that needs auth, a user skill whose
+    name shadows a plugin skill across Origins, and an MCP configured under both a
+    user and a project scope. Homebrew reports outdated packages and the Docker
+    daemon is
     unreachable. Returns the machine, its home, the scan roots, and the configured
     tool list.
     """
@@ -827,6 +862,7 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
             CLI,
             CLAUDE_SKILLS / "layout",
             CLAUDE_SKILLS / "tidy-repo",
+            CLAUDE_SKILLS / "muted-skill",
             TIDY_PATH / "skills" / "layout",
             SKETCH_PATH / "skills" / "wireframe",
         },
@@ -843,6 +879,7 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
             # Claude environment
             CLAUDE_SKILLS / "layout" / "SKILL.md": FLAGS_SKILL_USER_LAYOUT,
             CLAUDE_SKILLS / "tidy-repo" / "SKILL.md": FLAGS_SKILL_USER_UNIQUE,
+            CLAUDE_SKILLS / "muted-skill" / "SKILL.md": FLAGS_SKILL_USER_MUTED,
             TIDY_PATH / "skills" / "layout" / "SKILL.md": SKILL_LAYOUT,
             SKETCH_PATH / "skills" / "wireframe" / "SKILL.md": SKILL_WIREFRAME,
             CLAUDE_PLUGINS / "installed_plugins.json": FLAGS_INSTALLED_PLUGINS_JSON,

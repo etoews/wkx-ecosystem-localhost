@@ -17,6 +17,7 @@ from wkx_ecosystem_localhost.collectors.claude import (
     parse_known_marketplaces,
     parse_mcp_servers,
     parse_skill_frontmatter,
+    parse_skill_overrides,
     parse_user_config_mcp,
 )
 
@@ -156,6 +157,47 @@ def test_parse_enabled_plugins_reads_the_map() -> None:
 
 def test_parse_enabled_plugins_absent_map_is_empty() -> None:
     assert parse_enabled_plugins('{"model": "x"}') == {}
+
+
+# ------------------------- skill overrides -------------------------
+
+SKILL_OVERRIDES = """\
+{
+  "model": "claude-opus-4-8",
+  "skillOverrides": {
+    "muted-skill": "off",
+    "quiet-skill": "name-only",
+    "narrow-skill": "user-invocable-only",
+    "loud-skill": "on"
+  }
+}
+"""
+
+
+def test_parse_skill_overrides_reads_the_tier_map() -> None:
+    overrides = parse_skill_overrides(SKILL_OVERRIDES)
+
+    assert overrides == {
+        "muted-skill": "off",
+        "quiet-skill": "name-only",
+        "narrow-skill": "user-invocable-only",
+        "loud-skill": "on",
+    }
+
+
+def test_parse_skill_overrides_drops_non_string_values() -> None:
+    # A malformed value must not masquerade as a tier.
+    overrides = parse_skill_overrides('{"skillOverrides": {"ok": "off", "bad": true}}')
+
+    assert overrides == {"ok": "off"}
+
+
+def test_parse_skill_overrides_absent_map_is_empty() -> None:
+    assert parse_skill_overrides('{"model": "x"}') == {}
+
+
+def test_parse_skill_overrides_malformed_json_is_empty() -> None:
+    assert parse_skill_overrides("{oops") == {}
 
 
 # ------------------------- transport classification -------------------------
