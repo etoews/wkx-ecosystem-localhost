@@ -6,6 +6,7 @@ uvicorn.run is stubbed so these exercise how serve calls it, never a real socket
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,24 @@ def uvicorn_calls(monkeypatch: pytest.MonkeyPatch) -> list[Call]:
     return calls
 
 
+ReloaderCall = tuple[uvicorn.Config, Path | None]
+
+
+@pytest.fixture
+def reloader_calls(monkeypatch: pytest.MonkeyPatch) -> list[ReloaderCall]:
+    """Capture the reloader wiring instead of binding a socket and running it.
+
+    The --reload path builds a uvicorn.Config and hands it, with the config file, to
+    _run_reloader. Stubbing that seam exercises the wiring — which trees are watched,
+    which file is polled — without a real socket or a running reloader.
+    """
+    calls: list[ReloaderCall] = []
+    monkeypatch.setattr(
+        cli, "_run_reloader", lambda config, config_file: calls.append((config, config_file))
+    )
+    return calls
+
+
 def test_serve_default_binds_a_built_app(uvicorn_calls: list[Call]) -> None:
     result = runner.invoke(cli.app, ["serve"])
 
@@ -59,38 +78,41 @@ def test_serve_default_binds_a_built_app(uvicorn_calls: list[Call]) -> None:
     assert not kwargs.get("reload", False)  # the production path never reloads
 
 
-def test_serve_reload_uses_the_factory_import_string(uvicorn_calls: list[Call]) -> None:
+def test_serve_reload_uses_the_factory_import_string(reloader_calls: list[ReloaderCall]) -> None:
     result = runner.invoke(cli.app, ["serve", "--reload"])
 
     assert result.exit_code == 0
-    (args, kwargs) = uvicorn_calls[0]
-    assert args[0] == "wkx_ecosystem_localhost.app:create_app_from_env"
-    assert kwargs["factory"] is True
-    assert kwargs["reload"] is True
+    (config, _config_file) = reloader_calls[0]
+    assert config.app == "wkx_ecosystem_localhost.app:create_app_from_env"
+    assert config.factory is True
+    assert config.reload is True
 
 
-def test_serve_reload_watches_the_package_source(uvicorn_calls: list[Call]) -> None:
+def test_serve_reload_watches_only_the_package_source(reloader_calls: list[ReloaderCall]) -> None:
     result = runner.invoke(cli.app, ["serve", "--reload"])
 
     assert result.exit_code == 0
-    (_args, kwargs) = uvicorn_calls[0]
-    watched = [str(path) for path in kwargs["reload_dirs"]]
-    assert any(path.endswith("wkx_ecosystem_localhost") for path in watched)
+    (config, _config_file) = reloader_calls[0]
+    # Only the package source is watched for code changes. Anything else — a test, a
+    # standards/ file, a top-level .py, .venv — sits outside it and cannot bounce the
+    # server. uvicorn resolves reload_dirs to absolute directories.
+    watched = [str(path) for path in config.reload_dirs]
+    assert watched == [str(cli._PACKAGE_DIR)]
+    # The repo root (the config file's own directory) is deliberately not watched:
+    # watching it would drag every .py in the repo into the reload.
+    assert str(Path.cwd()) not in watched
 
 
-def test_serve_reload_watches_the_config_file(uvicorn_calls: list[Call]) -> None:
+def test_serve_reload_hands_the_config_file_to_the_reloader(
+    reloader_calls: list[ReloaderCall],
+) -> None:
     result = runner.invoke(cli.app, ["serve", "--reload"])
 
     assert result.exit_code == 0
-    (_args, kwargs) = uvicorn_calls[0]
-    # The default config file joins the watch: its directory is watched and its
-    # name is an include glob, so a configuration edit restarts the instance.
-    watched = [str(path) for path in kwargs["reload_dirs"]]
-    includes = kwargs["reload_includes"]
-    assert "wkx-ecosystem-localhost.toml" in includes
-    assert "*.py" in includes  # the package source still triggers a reload too
-    config_dir = str(Path("wkx-ecosystem-localhost.toml").resolve().parent)
-    assert any(path == config_dir for path in watched)
+    (_config, config_file) = reloader_calls[0]
+    # The config file is not in reload_dirs; it is polled by _ConfigAwareReload, so a
+    # TOML save restarts the instance without widening the directory watch.
+    assert config_file == Path("wkx-ecosystem-localhost.toml")
 
 
 def test_serve_rejects_an_unknown_env_variable(
@@ -130,3 +152,59 @@ def test_reload_factory_formats_worker_logs(capsys: pytest.CaptureFixture[str]) 
     assert "WARNING" in out
     assert "wkx_ecosystem_localhost.machine" in out
     assert "probe program not found: tsc" in out
+
+
+# _ConfigWatch is the runtime half of the fix: the reloader polls it every cycle so a
+# TOML save restarts the always-on instance. These exercise that matching against a
+# real file on disk, not the reloader's arguments, which is where the M10 gap hid.
+
+
+def _bump_mtime(path: Path) -> None:
+    """Move a file's mtime a second ahead, so a change shows whatever the clock resolution."""
+    stamp = path.stat().st_mtime + 1
+    os.utime(path, (stamp, stamp))
+
+
+def test_config_watch_reports_no_change_when_the_file_is_untouched(tmp_path: Path) -> None:
+    config_file = tmp_path / "wkx-ecosystem-localhost.toml"
+    config_file.write_text("# config\n")
+    watch = cli._ConfigWatch(config_file)
+
+    assert watch.changed() is None
+
+
+def test_config_watch_reports_a_save_once(tmp_path: Path) -> None:
+    config_file = tmp_path / "wkx-ecosystem-localhost.toml"
+    config_file.write_text("port = 8787\n")
+    watch = cli._ConfigWatch(config_file)
+
+    config_file.write_text("port = 8788\n")
+    _bump_mtime(config_file)
+
+    assert watch.changed() == config_file.resolve()
+    assert watch.changed() is None  # the change is consumed; no spurious re-reload
+
+
+def test_config_watch_reports_the_file_being_created(tmp_path: Path) -> None:
+    config_file = tmp_path / "wkx-ecosystem-localhost.toml"
+    watch = cli._ConfigWatch(config_file)  # constructed before the file exists
+
+    config_file.write_text("# now it exists\n")
+
+    assert watch.changed() == config_file.resolve()
+
+
+def test_config_watch_reports_the_file_being_removed(tmp_path: Path) -> None:
+    config_file = tmp_path / "wkx-ecosystem-localhost.toml"
+    config_file.write_text("# config\n")
+    watch = cli._ConfigWatch(config_file)
+
+    config_file.unlink()
+
+    assert watch.changed() == config_file.resolve()
+
+
+def test_config_watch_never_reports_when_the_file_source_is_off() -> None:
+    watch = cli._ConfigWatch(None)  # the suite and any --config-less run opt out
+
+    assert watch.changed() is None
