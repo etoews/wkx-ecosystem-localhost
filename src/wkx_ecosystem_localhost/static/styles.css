@@ -360,6 +360,17 @@ th.flags, td.flags-col { text-align: right; }
   max-width: 62ch;
 }
 
+/* A quiet note under a plugin skill's State when its plugin is off: the skill is
+ * enabled on its own, so this explains why it will not run, no badge. Sits on an
+ * inner element, never the cell, so the State td stays a table cell. */
+.skill-plugin-note {
+  font-size: .62rem;
+  letter-spacing: .04em;
+  color: var(--fog);
+  opacity: .85;
+  margin-top: .15rem;
+}
+
 /* Nested submodule row: one indented detail line beneath its parent repo, its
  * facts strung on separators rather than spread across columns it has no values
  * for. The cell is the flag host, so a "releases behind" badge lands inline. */

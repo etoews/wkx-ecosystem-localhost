@@ -1571,10 +1571,30 @@ window.wkxTokens = (function () {
     return built.wrap;
   }
 
+  // The State word is the skill's own state: "disabled" when it is off, the
+  // visibility tier (name-only, user-invocable-only) when it is enabled but
+  // restricted, and "enabled" otherwise. Only "disabled" carries a Flag.
+  function skillStateWord(skill) {
+    if (!skill.enabled) return "disabled";
+    if (skill.visibility) return skill.visibility;
+    return "enabled";
+  }
+
+  // The State cell: the state word, plus a quiet "plugin disabled" note when a
+  // plugin skill's owning plugin is off. A plugin skill has no switch of its own,
+  // so it stays enabled; the note explains why it will not run, with no badge.
+  function skillStateCell(skill) {
+    const cell = U.td(U.quiet(skillStateWord(skill)));
+    if (skill.plugin_enabled === false) {
+      cell.append(U.el("div", "skill-plugin-note", "plugin disabled"));
+    }
+    return cell;
+  }
+
   function skillTable(skills, originText) {
     const built = U.table(SKILL_COLUMNS);
     skills.forEach(function (skill) {
-      const state = U.td(U.quiet(skill.enabled ? "enabled" : "disabled"));
+      const state = skillStateCell(skill);
       const desc = skill.description ? U.el("div", "clamp2", skill.description) : U.dash();
       if (skill.description) desc.title = skill.description;
       built.tbody.append(
