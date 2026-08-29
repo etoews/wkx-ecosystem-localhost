@@ -387,6 +387,28 @@ tr.subrow:hover td { background: var(--hull); }
 .sub-release:empty { display: none; }
 .sub-sep { color: var(--fog); opacity: .5; }
 
+/* ---------- roadmap progress (workspace Roadmap column) ----------
+ * A repo's ROADMAP.md task-item progress: the fraction over a thin neutral meter.
+ * Neutral by design — the track and fill are the board's line and fog tones, never
+ * a Flag colour or --match — because roadmap progress is a plain fact, not an
+ * anomaly. The meter is on this inner span, never the cell, so the td stays a
+ * table cell (tests/test_static_assets.py). Its width is set inline as a
+ * percentage; the small transition is stilled by the reduced-motion rule below. */
+.rm { display: inline-flex; flex-direction: column; gap: .25rem; min-width: 5.5rem; }
+.rm-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rm-meter {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+.rm-fill {
+  display: block;
+  height: 100%;
+  background: var(--fog);
+  transition: width .2s ease;
+}
+
 /* An expandable plugin row: click (or Enter/Space) to reveal the skills it ships,
  * collapsed by default. A caret turns to point down when open. */
 tr[hidden] { display: none; }
