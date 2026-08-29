@@ -1792,8 +1792,9 @@ window.wkxTokens = (function () {
 // small mono label, never by hue: a computed default reads recessive, a value the
 // operator set through the file or the environment reads at full weight, so a
 // glance down the Source column separates what is customised from what runs on
-// defaults. Colour stays reserved for the Flag layer. Exclude, Off Sections, and
-// mutes arrive with later milestones, each adding its own table here.
+// defaults. Colour stays reserved for the Flag layer. The discovery Excludes get
+// their own table beside system tools; Off Sections and mutes arrive with later
+// milestones, each adding its own table here.
 (function () {
   "use strict";
 
@@ -1828,6 +1829,18 @@ window.wkxTokens = (function () {
     return built.wrap;
   }
 
+  // The discovery Exclude globs, the list-shaped setting that shapes which repos
+  // reach the board at all. Each glob is the ~-relative pattern the operator wrote;
+  // a matching directory is pruned from discovery, so an excluded repo is absent
+  // and raises no Flags (Exclude, not a mute). A path-like value, shown the wkx way.
+  function excludesTable(globs) {
+    const built = U.table([{ label: "Exclude glob" }]);
+    globs.forEach(function (glob) {
+      built.tbody.append(U.tr([U.td(U.el("span", "ver", glob)), U.flagCell()]));
+    });
+    return built.wrap;
+  }
+
   // The system-tools probe list, the first list-shaped setting to get its own
   // table. Each tool name is a token of kind "tool", so it lights up with the same
   // tool wherever it appears in the system Section and beyond.
@@ -1850,6 +1863,8 @@ window.wkxTokens = (function () {
     const values = data.values || [];
     const tools = (data.system_tools && data.system_tools.tools) || [];
     const toolsSource = (data.system_tools && data.system_tools.source) || "default";
+    const excludes = (data.exclude && data.exclude.globs) || [];
+    const excludeSource = (data.exclude && data.exclude.source) || "default";
     const customised = values.filter(function (item) {
       return item.source !== "default";
     }).length;
@@ -1877,6 +1892,17 @@ window.wkxTokens = (function () {
       : U.summaryLine(["Running on computed defaults; no configuration file is in use."]);
 
     const nodes = [summary, fileLine, U.el("p", "sub-head", "Settings"), settingsTable(values)];
+    if (excludes.length > 0) {
+      nodes.push(
+        U.el("p", "sub-head", "Excludes (" + excludes.length + ") · " + excludeSource),
+        excludesTable(excludes),
+      );
+    } else {
+      nodes.push(
+        U.el("p", "sub-head", "Excludes · " + excludeSource),
+        U.summaryLine(["No discovery Excludes are configured; every repository under the scan roots is shown."]),
+      );
+    }
     nodes.push(U.el("p", "sub-head", "System tools (" + tools.length + ") · " + toolsSource), toolsTable(tools));
 
     mount.replaceChildren.apply(mount, nodes);

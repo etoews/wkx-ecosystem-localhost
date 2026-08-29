@@ -119,6 +119,7 @@ def create_app(
             settings.scan_roots,
             home=app.state.home,
             max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
 
     @app.get("/api/workspace/fetch")
@@ -132,7 +133,11 @@ def create_app(
         touches remote-tracking refs only.
         """
         repo_paths = discover_repos(
-            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
 
         def events() -> Iterator[str]:
@@ -160,7 +165,11 @@ def create_app(
         pins straight away so the page renders without waiting on any network.
         """
         repo_paths = discover_repos(
-            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
         return collect_submodules(app.state.machine, repo_paths, home=app.state.home)
 
@@ -174,7 +183,11 @@ def create_app(
         progressively without blocking the board. No submodule objects are fetched.
         """
         repo_paths = discover_repos(
-            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
 
         def events() -> Iterator[str]:
@@ -206,7 +219,11 @@ def create_app(
         pins and per-repo TypeScript line up with the repos already on the board.
         """
         repo_paths = discover_repos(
-            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
         return collect_toolchains(app.state.machine, repo_paths, home=app.state.home)
 
@@ -282,7 +299,11 @@ def create_app(
         if cached is not None:
             return cached
         repo_paths = discover_repos(
-            app.state.machine, settings.scan_roots, max_depth=settings.scan_depth
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
         )
         section = collect_footprint(app.state.machine, repo_paths, home=app.state.home)
         app.state.footprint_cache.set(section)

@@ -15,7 +15,7 @@ from wkx_ecosystem_localhost.collectors.workspace import discover_repos
 
 def _section():  # type: ignore[no-untyped-def]
     machine, home, roots = fixtures.build_footprint_workspace()
-    repo_paths = discover_repos(machine, roots, max_depth=8)
+    repo_paths = discover_repos(machine, roots, home=home, max_depth=8)
     return collect_footprint(machine, repo_paths, home=home)
 
 

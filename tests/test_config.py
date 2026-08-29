@@ -79,6 +79,20 @@ def test_env_extends_system_tools_without_code_change(monkeypatch: pytest.Monkey
     assert settings.system_tools[0].argv() == ("kubectl", "--version")
 
 
+def test_default_exclude_is_empty() -> None:
+    settings = Settings(_env_file=None, _config_file=None)
+
+    assert settings.exclude == []
+
+
+def test_env_sets_exclude_as_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WKX_ECO_LOCAL_EXCLUDE", '["~/dev/experiments", "**/vendor"]')
+
+    settings = Settings(_env_file=None, _config_file=None)
+
+    assert settings.exclude == ["~/dev/experiments", "**/vendor"]
+
+
 def test_unknown_argument_is_rejected() -> None:
     # extra="forbid" guards explicit construction. The separate startup scan
     # (test below) is what catches a misspelt WKX_ECO_LOCAL_* variable, which the
@@ -140,6 +154,14 @@ def test_toml_system_tools_table(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, _config_file=path)
 
     assert [tool.name for tool in settings.system_tools] == ["kubectl", "just"]
+
+
+def test_toml_sets_exclude(tmp_path: Path) -> None:
+    path = _write_toml(tmp_path, 'exclude = ["~/dev/experiments", "**/vendor"]\n')
+
+    settings = Settings(_env_file=None, _config_file=path)
+
+    assert settings.exclude == ["~/dev/experiments", "**/vendor"]
 
 
 def test_unknown_toml_key_fails_naming_it(tmp_path: Path) -> None:
@@ -325,6 +347,27 @@ def test_describe_tags_the_env_source(tmp_path: Path) -> None:
     # Environment beats the file, so the value reads as env even though the file
     # also sets the key.
     assert by_key["port"].source == "env"
+
+
+def test_describe_carries_empty_excludes_by_default() -> None:
+    settings = Settings(_env_file=None, _config_file=None)
+    home = Path("/home/someone")
+
+    view = describe(settings, home=home, config_file=None, environ={})
+
+    assert view.exclude.source == "default"
+    assert view.exclude.globs == []
+
+
+def test_describe_tags_the_exclude_block_from_the_file(tmp_path: Path) -> None:
+    path = _write_toml(tmp_path, 'exclude = ["~/dev/experiments", "**/vendor"]\n')
+    settings = Settings(_env_file=None, _config_file=path)
+    home = Path("/home/someone")
+
+    view = describe(settings, home=home, config_file=path, environ={})
+
+    assert view.exclude.source == "file"
+    assert view.exclude.globs == ["~/dev/experiments", "**/vendor"]
 
 
 def test_describe_relativises_scan_roots() -> None:

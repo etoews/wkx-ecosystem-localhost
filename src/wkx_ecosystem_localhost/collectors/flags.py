@@ -383,17 +383,26 @@ def collect_flags(
 
     Args:
         machine: The seam every Collector reads through.
-        settings: Typed configuration (scan roots, depth, and the system tools).
+        settings: Typed configuration (scan roots, depth, Excludes, and the system
+            tools).
         home: Home directory, for relativising displayed paths.
 
     Returns:
         The Flag layer Section: the open Flags derivable from the Sections at rest.
     """
     repo_paths: Sequence[Path] = discover_repos(
-        machine, settings.scan_roots, max_depth=settings.scan_depth
+        machine,
+        settings.scan_roots,
+        home=home,
+        max_depth=settings.scan_depth,
+        excludes=settings.exclude,
     )
     workspace = collect_workspace(
-        machine, settings.scan_roots, home=home, max_depth=settings.scan_depth
+        machine,
+        settings.scan_roots,
+        home=home,
+        max_depth=settings.scan_depth,
+        excludes=settings.exclude,
     )
     toolchains = collect_toolchains(machine, repo_paths, home=home)
     system_tools: Sequence[ToolSpec] = settings.system_tools

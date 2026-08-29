@@ -25,6 +25,15 @@
 # Default: 8.
 # scan_depth = 8
 
+# Globs that prune matching directories from repository discovery. Each glob is
+# matched against the ~-relative path the board shows, for example ~/dev/scratch
+# or **/vendor. Discovery does not descend into a matching directory and does not
+# report any repository in it: an excluded repository is absent from the board and
+# raises no flags. Use ** to match at any depth; a leading ~/ is accepted. The
+# built-in prunes (hidden directories, node_modules, venv) always apply. Set this
+# to add your own. Default: none.
+# exclude = ["~/dev/scratch", "**/vendor"]
+
 # The port bound on 127.0.0.1. The bind host is not configurable: the board is
 # loopback-only by design. Default: 8787.
 # port = 8787

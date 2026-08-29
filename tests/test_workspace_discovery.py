@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from fakes import FakeMachine
-from fixtures import DEV
+from fixtures import DEV, HOME
 
 from wkx_ecosystem_localhost.collectors.workspace import discover_repos
 
@@ -47,14 +47,14 @@ def _workspace() -> FakeMachine:
 
 
 def test_discover_finds_repos_and_stops_at_the_first_git() -> None:
-    found = discover_repos(_workspace(), [DEV], max_depth=8)
+    found = discover_repos(_workspace(), [DEV], home=HOME, max_depth=8)
 
     assert found == [DEV / "acme" / "api", DEV / "acme" / "web", DEV / "personal" / "blog"]
     assert DEV / "personal" / "blog" / "vendor" / "nested-lib" not in found
 
 
 def test_discover_skips_hidden_and_dependency_directories() -> None:
-    found = discover_repos(_workspace(), [DEV], max_depth=8)
+    found = discover_repos(_workspace(), [DEV], home=HOME, max_depth=8)
 
     assert DEV / ".hidden" / "secret" not in found
     assert DEV / "node_modules" / "pkg" not in found
@@ -73,7 +73,7 @@ def test_discover_respects_the_depth_cap(max_depth: int, expected_found: bool) -
     repo = root / "a" / "b" / "c"
     machine = FakeMachine(dirs={root, root / "a", root / "a" / "b", repo}, repos={repo})
 
-    found = discover_repos(machine, [root], max_depth=max_depth)
+    found = discover_repos(machine, [root], home=HOME, max_depth=max_depth)
 
     assert (repo in found) is expected_found
 
@@ -81,13 +81,49 @@ def test_discover_respects_the_depth_cap(max_depth: int, expected_found: bool) -
 def test_discover_does_not_double_count_overlapping_roots() -> None:
     machine = _workspace()
 
-    found = discover_repos(machine, [DEV, DEV / "acme"], max_depth=8)
+    found = discover_repos(machine, [DEV, DEV / "acme"], home=HOME, max_depth=8)
 
     # ~/dev/acme is inside ~/dev; its repos are found once, not twice.
     assert found == [DEV / "acme" / "api", DEV / "acme" / "web", DEV / "personal" / "blog"]
 
 
 def test_discover_tolerates_a_missing_root() -> None:
-    found = discover_repos(FakeMachine(), [Path("/home/does-not-exist")], max_depth=8)
+    found = discover_repos(FakeMachine(), [Path("/home/does-not-exist")], home=HOME, max_depth=8)
 
     assert found == []
+
+
+# ---------- Exclude globs ----------
+
+_API = DEV / "acme" / "api"
+_WEB = DEV / "acme" / "web"
+_BLOG = DEV / "personal" / "blog"
+_ALL_REPOS = [_API, _WEB, _BLOG]
+
+
+@pytest.mark.parametrize(
+    ("excludes", "expected"),
+    [
+        # A leading ~/ that exactly matches a repo's displayed path: that repo is
+        # pruned before its .git is read, so it is not reported.
+        (["~/dev/personal/blog"], [_API, _WEB]),
+        # A leading ~/ that matches an intermediate directory: the whole subtree is
+        # pruned, so neither repo below ~/dev/acme is descended into or reported.
+        (["~/dev/acme"], [_BLOG]),
+        # ** matches at any depth, pruning the matched directory and its subtree.
+        (["**/acme"], [_BLOG]),
+        # No glob matches any visited directory: every repo is still discovered.
+        (["~/dev/nowhere", "**/absent"], _ALL_REPOS),
+    ],
+)
+def test_discover_prunes_excluded_directories(excludes: list[str], expected: list[Path]) -> None:
+    found = discover_repos(_workspace(), [DEV], home=HOME, max_depth=8, excludes=excludes)
+
+    assert found == expected
+
+
+def test_discover_without_excludes_reports_every_repo() -> None:
+    # The default empty excludes changes nothing: the baseline discovery stands.
+    found = discover_repos(_workspace(), [DEV], home=HOME, max_depth=8, excludes=[])
+
+    assert found == _ALL_REPOS

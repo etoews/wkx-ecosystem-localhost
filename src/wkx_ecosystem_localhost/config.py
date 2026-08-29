@@ -168,6 +168,14 @@ class Settings(BaseSettings):
     # every request.
     footprint_cache_ttl: float = 60.0
 
+    # Discovery Excludes: globs matched with ``PurePath.full_match`` against the
+    # ``~``-relative path the board displays. A matching directory is pruned from
+    # discovery, so an excluded subtree is never descended and none of its repos is
+    # reported. An excluded repo is absent from the board and raises no Flags
+    # (Exclude, not a Mute). Set in the TOML (``exclude = [...]``) or as
+    # WKX_ECO_LOCAL_EXCLUDE (a JSON list); the built-in prunes stay built-in.
+    exclude: list[str] = Field(default_factory=list)
+
     @field_validator("scan_roots", mode="after")
     @classmethod
     def _expand_scan_roots(cls, roots: list[Path]) -> list[Path]:
@@ -256,13 +264,28 @@ class ConfigToolList(BaseModel):
     """The system-tools probe list as effective configuration, rendered as a table.
 
     ``source`` is where the whole list came from (a default list, the TOML, or the
-    environment); ``tools`` is the effective list in order. A sibling milestone adds
-    ``exclude``, ``sections_off``, and ``mute`` here, each its own typed block and
-    table, without disturbing this one.
+    environment); ``tools`` is the effective list in order. ``exclude`` already sits
+    beside this block; a sibling milestone adds ``sections_off`` and ``mute`` the
+    same way, each its own typed block and table, without disturbing this one.
     """
 
     source: Source
     tools: list[ToolSpec]
+
+
+class ConfigExcludes(BaseModel):
+    """The discovery Exclude globs as effective configuration, rendered as a table.
+
+    ``source`` is where the whole list came from (the empty default, the TOML, or the
+    environment); ``globs`` is the effective list in order. Each glob prunes every
+    directory whose ``~``-relative path it full-matches from discovery, so an
+    excluded subtree is absent from the board and raises no Flags (Exclude, not a
+    Mute). Sits beside ``system_tools`` as its own typed block, the pattern a sibling
+    milestone follows for ``sections_off`` and ``mute``.
+    """
+
+    source: Source
+    globs: list[str]
 
 
 class ConfigView(BaseModel):
@@ -271,16 +294,18 @@ class ConfigView(BaseModel):
     A view, never a write path: the board reports its configuration and shows where
     each value came from, but never changes it. ``file`` is the ``~``-relative path
     of the TOML the values were read from, or None when the file source is off;
-    ``found`` is whether that file exists. ``values`` are the scalar settings and
-    ``system_tools`` is the probe list; each list-shaped setting a sibling adds gets
-    its own typed block beside ``system_tools`` so the Section grows one table at a
-    time.
+    ``found`` is whether that file exists. ``values`` are the scalar settings;
+    ``system_tools`` is the probe list and ``exclude`` is the discovery Exclude
+    globs. Each list-shaped setting gets its own typed block beside ``system_tools``
+    so the Section grows one table at a time; a sibling adds ``sections_off`` and
+    ``mute`` the same way.
     """
 
     file: str | None
     found: bool
     values: list[ConfigItem]
     system_tools: ConfigToolList
+    exclude: ConfigExcludes
 
 
 # The scalar settings shown in the config Section's Settings table, in a stable
@@ -361,5 +386,15 @@ def describe(
         source=_source_of("system_tools", toml_keys, environ),
         tools=settings.system_tools,
     )
+    excludes = ConfigExcludes(
+        source=_source_of("exclude", toml_keys, environ),
+        globs=settings.exclude,
+    )
     file_display = relativise(config_file, home) if config_file is not None else None
-    return ConfigView(file=file_display, found=found, values=values, system_tools=tools)
+    return ConfigView(
+        file=file_display,
+        found=found,
+        values=values,
+        system_tools=tools,
+        exclude=excludes,
+    )

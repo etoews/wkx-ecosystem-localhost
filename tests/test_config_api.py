@@ -69,6 +69,26 @@ def test_config_lists_system_tools_as_a_table() -> None:
     assert "docker" in names
 
 
+def test_config_reports_empty_excludes_by_default() -> None:
+    client = _client(config_file=None)
+
+    body = client.get("/api/config").json()
+
+    assert body["exclude"]["source"] == "default"
+    assert body["exclude"]["globs"] == []
+
+
+def test_config_reports_excludes_from_the_file(tmp_path: Path) -> None:
+    path = tmp_path / "wkx-ecosystem-localhost.toml"
+    path.write_text('exclude = ["~/dev/experiments", "**/vendor"]\n')
+    client = _client(config_file=path)
+
+    body = client.get("/api/config").json()
+
+    assert body["exclude"]["source"] == "file"
+    assert body["exclude"]["globs"] == ["~/dev/experiments", "**/vendor"]
+
+
 def test_config_relativises_the_file_path(tmp_path: Path) -> None:
     path = HOME / "wkx-ecosystem-localhost.toml"
     # No real file at HOME; the route still reports the ~-relative path it would read.

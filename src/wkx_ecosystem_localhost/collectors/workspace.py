@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from wkx_ecosystem_localhost.github import github_link
 from wkx_ecosystem_localhost.machine import Machine
@@ -77,7 +77,33 @@ _DETACHED = "(detached)"
 _SHORT_SHA_LEN = 7
 
 
-def discover_repos(machine: Machine, roots: Sequence[Path], *, max_depth: int) -> list[Path]:
+def _is_excluded(display_path: str, excludes: Sequence[str]) -> bool:
+    """Whether the ``~``-relative display path full-matches any Exclude glob.
+
+    Matching is on the same ``~``-relative string the board shows, parsed as a pure
+    POSIX path so ``**`` spans any depth and a leading ``~/`` in a pattern matches
+    the ``~`` the displayed path already starts with. An empty ``excludes`` matches
+    nothing.
+
+    Args:
+        display_path: The directory's ``~``-relative path, as the board displays it.
+        excludes: The configured Exclude globs.
+
+    Returns:
+        True when any glob full-matches the display path.
+    """
+    candidate = PurePosixPath(display_path)
+    return any(candidate.full_match(pattern) for pattern in excludes)
+
+
+def discover_repos(
+    machine: Machine,
+    roots: Sequence[Path],
+    *,
+    home: Path,
+    max_depth: int,
+    excludes: Sequence[str] = (),
+) -> list[Path]:
     """Find every git repo under ``roots``.
 
     Walks each root, stopping the moment a directory contains a ``.git`` entry:
@@ -86,11 +112,20 @@ def discover_repos(machine: Machine, roots: Sequence[Path], *, max_depth: int) -
     (``node_modules``, virtualenvs) are pruned, and ``max_depth`` caps the descent
     so a pathological tree cannot run the scan away.
 
+    An Exclude glob prunes a directory too: any visited directory whose
+    ``~``-relative path full-matches a glob in ``excludes`` is neither reported nor
+    descended into, so an excluded subtree is absent from the board and raises no
+    Flags. This is on top of the built-in prunes, which always apply.
+
     Args:
         machine: The seam used to list directories.
         roots: Directories to scan. Missing ones contribute nothing.
+        home: Home directory, to render each directory's ``~``-relative path for
+            Exclude matching (the same form the board displays).
         max_depth: The deepest directory level below a root that is descended
             into (a root is depth 0).
+        excludes: Exclude globs, matched with ``PurePath.full_match`` against each
+            directory's ``~``-relative path. Empty by default (nothing excluded).
 
     Returns:
         Repo root paths, de-duplicated and sorted for a stable board order.
@@ -104,6 +139,8 @@ def discover_repos(machine: Machine, roots: Sequence[Path], *, max_depth: int) -
             if path in seen:
                 continue
             seen.add(path)
+            if _is_excluded(relativise(path, home), excludes):
+                continue
 
             entries = machine.list_dir(path)
             if any(entry.name == _GIT_MARKER for entry in entries):
@@ -326,6 +363,7 @@ def collect_workspace(
     *,
     home: Path,
     max_depth: int,
+    excludes: Sequence[str] = (),
     timeout: float = PROBE_TIMEOUT_S,
 ) -> WorkspaceSection:
     """Collect the workspace Section: discover repos, then probe each one.
@@ -338,12 +376,14 @@ def collect_workspace(
         roots: Directories to scan for repos.
         home: Home directory, for relativising displayed paths.
         max_depth: Discovery depth cap.
+        excludes: Exclude globs pruning matching directories from discovery, so an
+            excluded repo is absent from the Section. Empty by default.
         timeout: Per-probe wall-clock ceiling in seconds.
 
     Returns:
         The Section model: the scanned roots and one entry per discovered repo,
         both rendered home-relative.
     """
-    repo_paths = discover_repos(machine, roots, max_depth=max_depth)
+    repo_paths = discover_repos(machine, roots, home=home, max_depth=max_depth, excludes=excludes)
     repos = [collect_repo(machine, path, home=home, timeout=timeout) for path in repo_paths]
     return WorkspaceSection(roots=[relativise(root, home) for root in roots], repos=repos)
