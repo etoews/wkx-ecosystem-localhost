@@ -511,7 +511,16 @@ window.wkxFlags = (function () {
   const U = window.wkxUI;
   const board = document.querySelector(".board");
   const summaryMount = document.getElementById("summary");
-  if (!board) return { add: function () {}, clear: function () {} };
+  if (!board) {
+    return {
+      add: function () {},
+      clear: function () {},
+      tally: function () {
+        return { attention: 0, problems: 0 };
+      },
+      subscribe: function () {},
+    };
+  }
 
   // The label each Flag Category rolls up to in the summary. Its keys are the
   // nineteen Category ids; a test cross-checks them against flags.CATEGORIES.
@@ -566,6 +575,16 @@ window.wkxFlags = (function () {
   const registry = new Map();
   const muted = new Map();
   let decorating = false;
+
+  // Listeners woken whenever the live registry changes, so a reader of the tally
+  // (the collapse layer's collapsed headings) re-renders as Flags land and clear.
+  // Muted Flags never reach the registry, so they never wake a listener.
+  const subscribers = [];
+  function notify() {
+    subscribers.forEach(function (fn) {
+      fn();
+    });
+  }
 
   function el(tag, className, text) {
     return U.el(tag, className, text);
@@ -644,6 +663,11 @@ window.wkxFlags = (function () {
     if (!summaryMount) return;
     const flags = Array.from(registry.values());
     const mutedCount = muted.size;
+    // Needs attention shows its own total on its collapsed heading — the count of
+    // open Flags — rather than a per-Section tally, because it is the rollup.
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("summary", flags.length === 1 ? "1 flag" : flags.length + " flags");
+    }
     if (flags.length === 0 && mutedCount === 0) {
       summaryMount.replaceChildren(
         U.summaryLine(["Every Section is clear — nothing wants attention right now."]),
@@ -774,16 +798,40 @@ window.wkxFlags = (function () {
     }
   }
 
+  // A Section's live Flag tally: attention and problem counts over the registry,
+  // so muted Flags are already excluded. Keyed by the Flag's section, which equals
+  // the panel id (the Section enum value); "summary" is never a Flag's section, so
+  // its tally is empty and the rollup shows its own total instead.
+  function tally(section) {
+    let attention = 0;
+    let problems = 0;
+    registry.forEach(function (flag) {
+      if (flag.section !== section) return;
+      if (flag.level === "problem") problems++;
+      else attention++;
+    });
+    return { attention: attention, problems: problems };
+  }
+
   const api = {
     add: function (flag) {
       place(flag);
       decorate();
       renderSummary();
+      notify();
     },
     clear: function (section, target, category) {
       remove(section, target, category);
       decorate();
       renderSummary();
+      notify();
+    },
+    tally: tally,
+    // Register a listener for registry changes; it fires on every add and clear
+    // and once more when the at-rest Flags land. Returns nothing; there is no
+    // unsubscribe, because the collapse layer lives for the life of the page.
+    subscribe: function (fn) {
+      subscribers.push(fn);
     },
   };
 
@@ -804,6 +852,7 @@ window.wkxFlags = (function () {
         (data.flags || []).forEach(place);
         decorate();
         renderSummary();
+        notify();
       })
       .catch(function () {
         if (summaryMount) {
@@ -815,6 +864,198 @@ window.wkxFlags = (function () {
   });
 
   return api;
+})();
+
+// ---------- collapse (M11) ----------
+// A viewer's fold-to-heading preference, the third client-side view preference
+// beside the theme and Hidden. Every panel — the ten Sections and the Needs
+// attention rollup — collapses to its `signage` heading and expands again. The
+// whole heading line is the toggle: a <button> inside the `signage` paragraph
+// wrapping the label and a rotating caret, the idiom the expandable plugin row
+// uses, with `aria-expanded` and `aria-controls` naming the panel's mount.
+//
+// State is `localStorage["wkx-collapsed"]`, a map of panel id → true, overrides
+// only the way `wkx-sections` holds Hidden: collapsing writes the key, expanding
+// deletes it, an empty map removes the item, and an absent item means every panel
+// is expanded. Access sits in try/catch, so a storage-blocked browser simply
+// forgoes persistence. Collapsed and Hidden are independent, and an Off panel's
+// stale key is inert because its mount is gone.
+//
+// A Collapsed panel stays on the board and is still fetched, so its Flags still
+// count (CONTEXT.md): collapse is a reading convenience, not a Mute. Hiding the
+// body keeps the mount in the DOM (the `hidden` attribute, never a display class
+// on a table element), so the Flag layer still badges its rows and the tally still
+// reads them. While collapsed, and only then because the tiles carry these when
+// expanded, the heading shows two things: the one-line count the Section's render
+// supplies through count(), and the Section's live Flag tally from the registry,
+// re-rendered as Flags land and clear. Before the data lands the count is the
+// pending glyph.
+window.wkxCollapse = (function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const flags = window.wkxFlags;
+  const KEY = "wkx-collapsed";
+  const PENDING = "···"; // the board's pending glyph, shown before a count lands
+  // Every panel id, the Section enum values plus "summary" (Needs attention).
+  const IDS = [
+    "summary",
+    "workspace",
+    "toolchains",
+    "claude",
+    "homebrew",
+    "system",
+    "docker",
+    "footprint",
+    "editor",
+    "git-config",
+    "config",
+  ];
+
+  const counts = {}; // panel id → the latest one-line count its render supplied
+  const parts = {}; // panel id → its built DOM handles, once wired
+  let overrides = load();
+
+  // Overrides only: the map holds only the panels folded away from the default
+  // (expanded). Mirrors wkx-sections and wkx-theme, which store nothing for their
+  // own defaults. A malformed or blocked store reads as no overrides.
+  function load() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(KEY) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (_err) {
+      return {};
+    }
+  }
+  function save() {
+    try {
+      if (Object.keys(overrides).length === 0) localStorage.removeItem(KEY);
+      else localStorage.setItem(KEY, JSON.stringify(overrides));
+    } catch (_err) {
+      // A private-mode or storage-blocked browser simply forgoes persistence.
+    }
+  }
+
+  // An absent key means expanded; the map holds only the Collapsed panels.
+  function collapsed(id) {
+    return overrides[id] === true;
+  }
+
+  // Format a plural count from a bare noun, e.g. label(14, "repo") → "14 repos".
+  function label(n, singular) {
+    return n + " " + (n === 1 ? singular : singular + "s");
+  }
+
+  // The live Flag tally as level badges (attention, then problem), reusing the
+  // summary's decorative `.lvl` marker — never the flag layer's `.flag`, which its
+  // decorate() cleanup would strip from a heading that hosts no data-flag-key.
+  function renderTally(id) {
+    const p = parts[id];
+    if (!p) return;
+    const t = flags.tally(id);
+    const nodes = [];
+    if (t.attention > 0) {
+      const badge = U.level("attention", String(t.attention));
+      badge.setAttribute("aria-label", label(t.attention, "attention flag"));
+      badge.title = label(t.attention, "attention flag");
+      nodes.push(badge);
+    }
+    if (t.problems > 0) {
+      const badge = U.level("problem", String(t.problems));
+      badge.setAttribute("aria-label", label(t.problems, "problem flag"));
+      badge.title = label(t.problems, "problem flag");
+      nodes.push(badge);
+    }
+    p.tally.replaceChildren.apply(p.tally, nodes);
+  }
+
+  function renderCount(id) {
+    const p = parts[id];
+    if (!p) return;
+    p.count.textContent = counts[id] != null ? counts[id] : PENDING;
+  }
+
+  // Reflect a panel's state onto its DOM: the mount keeps its place but hides its
+  // body when collapsed, the caret and aria-expanded flip, and the collapsed
+  // heading's count and tally show only while collapsed.
+  function apply(id) {
+    const p = parts[id];
+    if (!p) return;
+    const isCollapsed = collapsed(id);
+    p.section.classList.toggle("panel--collapsed", isCollapsed);
+    p.mount.hidden = isCollapsed;
+    p.info.hidden = !isCollapsed;
+    p.toggle.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    if (isCollapsed) {
+      renderCount(id);
+      renderTally(id);
+    }
+  }
+
+  function setCollapsed(id, value) {
+    if (value) overrides[id] = true;
+    else delete overrides[id]; // expanding drops the key, so the map stays overrides-only
+    save();
+    apply(id);
+  }
+
+  // Turn a panel's `signage` heading into the toggle: a button wrapping a rotating
+  // caret and the existing label, plus a heading-only info span for the collapsed
+  // count and tally. Returns the handles apply() and the renderers work through.
+  function wire(id) {
+    const mount = document.getElementById(id);
+    if (!mount) return null;
+    const section = mount.closest("section");
+    const signage = section && section.querySelector(".signage");
+    if (!section || !signage) return null;
+
+    const labelText = signage.textContent.trim();
+    const toggle = U.el("button", "signage-toggle");
+    toggle.type = "button";
+    toggle.setAttribute("aria-controls", id);
+    toggle.append(
+      U.el("span", "signage-caret", "▸"),
+      U.el("span", "signage-label", labelText),
+    );
+
+    const count = U.el("span", "signage-count");
+    const tally = U.el("span", "signage-tally");
+    const info = U.el("span", "signage-info");
+    info.append(count, tally);
+
+    signage.replaceChildren(toggle, info);
+    toggle.addEventListener("click", function () {
+      setCollapsed(id, !collapsed(id));
+    });
+
+    return { section: section, mount: mount, toggle: toggle, info: info, count: count, tally: tally };
+  }
+
+  IDS.forEach(function (id) {
+    const p = wire(id);
+    if (p) {
+      parts[id] = p;
+      apply(id);
+    }
+  });
+
+  // Re-render the tally of every Collapsed panel as Flags land and clear; an
+  // expanded panel carries its Flags on its tiles, so it needs no update.
+  flags.subscribe(function () {
+    IDS.forEach(function (id) {
+      if (collapsed(id)) renderTally(id);
+    });
+  });
+
+  return {
+    label: label,
+    // A Section's render supplies its one-line count here (e.g. "14 repos"); the
+    // collapsed heading shows it, and the pending glyph until the first call.
+    count: function (id, text) {
+      counts[id] = text;
+      if (collapsed(id)) renderCount(id);
+    },
+  };
 })();
 
 // ---------- token highlight (M8) ----------
@@ -1268,6 +1509,9 @@ window.wkxTokens = (function () {
 
   function render(workspace, submodules) {
     const roots = workspace.roots.join(", ");
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("workspace", window.wkxCollapse.label(workspace.repos.length, "repo"));
+    }
     if (workspace.repos.length === 0) {
       note("No git repositories found under " + roots + ".");
       return;
@@ -1467,6 +1711,9 @@ window.wkxTokens = (function () {
   function render(data) {
     const py = data.python;
     const node = data.node;
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("toolchains", window.wkxCollapse.label(py.interpreters.length, "interpreter"));
+    }
     const nodes = [
       U.tiles([
         { value: py.interpreters.length, label: "Interpreters" },
@@ -1667,6 +1914,9 @@ window.wkxTokens = (function () {
     const skills = data.skills || [];
     const plugins = data.plugins || [];
     const servers = data.mcp_servers || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("claude", window.wkxCollapse.label(plugins.length, "plugin"));
+    }
     if (skills.length === 0 && plugins.length === 0 && servers.length === 0) {
       note("No Claude skills, plugins, or MCP servers found.");
       return;
@@ -1731,6 +1981,9 @@ window.wkxTokens = (function () {
 
   function render(data) {
     const tools = data.tools || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("system", window.wkxCollapse.label(tools.length, "tool"));
+    }
     if (tools.length === 0) {
       note("No developer tools are configured to probe.");
       return;
@@ -1815,6 +2068,9 @@ window.wkxTokens = (function () {
     const formulae = data.formulae || [];
     const casks = data.casks || [];
     const total = formulae.length + casks.length;
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("homebrew", total + " outdated");
+    }
     if (total === 0) {
       note("Every formula and cask is current.");
       return;
@@ -1861,6 +2117,9 @@ window.wkxTokens = (function () {
 
   function render(data) {
     const reachable = data.daemon_reachable;
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("docker", reachable ? "daemon up" : "daemon down");
+    }
     // Tiles only, no table: the daemon tile is the M6 flag host, and a down
     // daemon shows its facts as "—" rather than as meaningless zeros.
     const specs = [{ value: reachable ? "up" : "down", label: "Daemon", flagKey: "docker:daemon" }];
@@ -1913,6 +2172,9 @@ window.wkxTokens = (function () {
 
   function render(data) {
     const repos = data.repos || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("footprint", window.wkxCollapse.label(repos.length, "repo") + " measured");
+    }
     const dockerDisk = !data.docker_reachable
       ? "down"
       : data.docker_total != null
@@ -1990,6 +2252,9 @@ window.wkxTokens = (function () {
       return;
     }
     const extensions = data.extensions || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("editor", window.wkxCollapse.label(extensions.length, "extension"));
+    }
     const summary = U.tiles([
       { value: data.version || "unknown", label: "VS Code" },
       { value: String(extensions.length), label: "Extensions" },
@@ -2057,6 +2322,9 @@ window.wkxTokens = (function () {
   function render(data) {
     const entries = data.entries || [];
     const includes = data.includes || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("git-config", window.wkxCollapse.label(entries.length, "key"));
+    }
 
     const summary = U.tiles([
       { value: String(entries.length), label: "Keys" },
@@ -2223,6 +2491,9 @@ window.wkxTokens = (function () {
 
   function render(data) {
     const values = data.values || [];
+    if (window.wkxCollapse) {
+      window.wkxCollapse.count("config", window.wkxCollapse.label(values.length, "setting"));
+    }
     const tools = (data.system_tools && data.system_tools.tools) || [];
     const toolsSource = (data.system_tools && data.system_tools.source) || "default";
     const excludes = (data.exclude && data.exclude.globs) || [];
