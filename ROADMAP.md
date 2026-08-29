@@ -244,12 +244,12 @@ is in [CONTEXT.md](CONTEXT.md).
 - [x] Config parsing, provenance, the environment scan, discovery excludes, Section Off, and Flag muting are covered by unit tests over synthetic fixtures (no captured machine data). Tests keep constructing `Settings` explicitly and never read a real `.env` or TOML.
 
 **Hands-on artefact**
-- [ ] Add an `exclude` glob to the TOML and save; the always-on instance restarts, and the Workspace Section drops the matching repos on reload.
+- [x] Add an `exclude` glob to the TOML and save; the always-on instance restarts, and the Workspace Section drops the matching repos on reload.
 - [x] Add `docker` to `sections_off`; the Docker panel and its `docker-unreachable` Flag are gone, and `/api/docker` returns 404. Hide the Editor Section from the `sections` menu and reload; it stays hidden, and its Flags still count.
 - [x] Add a mute for `brew-outdated`; its badges vanish, the tally drops by that count, and the Muted tile shows it.
-- [ ] Set a misspelt `WKX_ECO_LOCAL_PROT`; the server refuses to start with a clear error that names it.
-- [ ] The config Section shows every effective value with its source.
-- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+- [x] Set a misspelt `WKX_ECO_LOCAL_PROT`; the server refuses to start with a clear error that names it.
+- [x] The config Section shows every effective value with its source.
+- [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
 
 ---
 
