@@ -279,8 +279,13 @@ class Settings(BaseSettings):
 
 def _known_env_names() -> set[str]:
     """The full set of ``WKX_ECO_LOCAL_*`` variable names the board understands."""
+    # VIEW_FILE_ENV lives in view.py; import it lazily to keep config free of a
+    # view import at module load, the way _mute_moved_message does for the path.
+    from wkx_ecosystem_localhost.view import VIEW_FILE_ENV
+
     names = {f"{ENV_PREFIX}{field.upper()}" for field in Settings.model_fields}
     names.add(CONFIG_FILE_ENV)
+    names.add(VIEW_FILE_ENV)
     return names
 
 

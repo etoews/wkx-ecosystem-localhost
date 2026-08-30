@@ -207,6 +207,17 @@ def test_config_file_env_variable_is_not_a_field(
     check_environment()  # does not raise
 
 
+def test_view_file_env_variable_is_not_a_field(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # WKX_ECO_LOCAL_VIEW_FILE names the file the board writes its View to, so, like
+    # WKX_ECO_LOCAL_CONFIG_FILE, it is not a field and must pass the startup scan;
+    # otherwise setting it stops the board before it serves.
+    monkeypatch.setenv("WKX_ECO_LOCAL_VIEW_FILE", str(tmp_path / "x.view.toml"))
+
+    check_environment()  # does not raise
+
+
 # ---------- precedence ----------
 
 
