@@ -15,6 +15,13 @@
 # argument, an environment variable (WKX_ECO_LOCAL_*), .env, this file, then the
 # computed default. To read this file from another path, set the env-only
 # WKX_ECO_LOCAL_CONFIG_FILE.
+#
+# The View is a separate file. Configuration is what you set and the board reads
+# once at startup; the View is how you arrange the board (the theme, the Hidden and
+# Collapsed panels, and the Mutes). The board keeps the View in its own file,
+# wkx-ecosystem-localhost.view.toml, and writes it as you change the board. You do
+# not edit the View file by hand. To read it from another path, set the env-only
+# WKX_ECO_LOCAL_VIEW_FILE.
 
 # The directories scanned for git repositories. Discovery stops descending at the
 # first .git. Default: ~/dev.
@@ -65,19 +72,11 @@
 # not a Section and cannot go here. Default: none off.
 # sections_off = ["docker", "editor"]
 
-# The Flags to mute. This is an inline array of tables, one per rule. Each rule
-# names a Flag category and, optionally, a target that narrows the mute to one
-# item. A rule with no target mutes the whole category; a target matches the wire
-# value exactly (a repository's ~-relative path, or a prefixed item such as
-# formula:python@3.12 or skill:foo). An unknown category stops the board at
-# startup. Muting is a view preference: a muted Flag does not badge its row and
-# does not count in the tally, but the board still reports how many Flags it muted,
-# and /api/flags still returns every Flag. It suppresses noise; it is not a
-# ruleset. Default: none muted.
-# mute = [
-#   { category = "brew-outdated" },
-#   { category = "dirty-tree", target = "~/dev/scratch" },
-# ]
+# Mute is not configuration. From M12 it is part of the View, which the board
+# keeps in its own file, wkx-ecosystem-localhost.view.toml, beside this one. The
+# board writes the View; you do not edit it by hand. A `mute` key here stops the
+# board at startup with a message that names the View file, so move any Mute rules
+# to the View file. See ADR 0004 for why the View is a file of its own.
 
 # The developer CLIs the system Section probes. Each entry is a [[system_tools]]
 # table with a name and, optionally, the arguments that ask the tool its version

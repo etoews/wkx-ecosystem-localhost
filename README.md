@@ -50,9 +50,16 @@ count of skills you set to `off`, not the skills of a disabled plugin.
 ## Security posture
 
 - Binds to `127.0.0.1` only; no auth, because loopback plus read-only.
-- Every collector is a probe. The one write allowed anywhere is a
+- Every collector is a probe. The board writes two things and nothing else: a
   non-interactive background `git fetch`, bounded and timed out, which never
-  touches a working tree.
+  touches a working tree; and its own View file (see below). It never writes its
+  configuration and never changes what it inventories.
+- The View file is the board's first write route. The board accepts a write only
+  from loopback and its own origin: the request must send `application/json`, a
+  `Host` that is the bound host and port, and a same-origin `Origin` (or none, for
+  a non-browser client). Any other request gets `403`. Each write changes one
+  preference, merges under a lock, and writes the file atomically; a corrupt file
+  on disk stops the write, because the board never rebuilds the file from memory.
 - This repo is machine-neutral: code and docs reference no specific machine,
   config is typed with computed defaults, example data is synthetic, and the
   UI relativises paths and strips credentials from remotes by default.
@@ -127,6 +134,26 @@ the board stays wired to read `.env` for the first one. There is no secret today
 so no `.env.example` ships until then. This split of configuration from secrets
 diverges from `standards/python/standards/configuration.md`, which keeps both in
 `.env`; the standard is planned to change to match.
+
+### The View
+
+Configuration is what you set; the View is how you arrange the board. The View is
+the theme, which panels are Hidden or Collapsed, and the Mutes. The board keeps
+the View in its own file, `wkx-ecosystem-localhost.view.toml`, beside the
+configuration. This is the one file the board writes: it writes the View as you
+change the board, and reads it on every request, so a hand edit shows on the next
+refresh with no restart. You do not need to edit the file.
+
+The View file holds only what you change from the defaults, so a fresh board
+writes nothing. Delete the file to reset the board to its defaults. To read it
+from another path, set the environment variable `WKX_ECO_LOCAL_VIEW_FILE`, the way
+`WKX_ECO_LOCAL_CONFIG_FILE` sets the configuration path.
+
+Mute is part of the View now, not the configuration. A `mute` key left in the
+configuration file stops the board at startup with a message that names the View
+file. The board never refuses to start on the View file itself: a name it does not
+know is dropped with a warning and raised as a Flag in the config Section, so the
+board always starts on a file it wrote.
 
 ### Development
 

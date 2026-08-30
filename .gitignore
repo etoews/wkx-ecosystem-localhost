@@ -15,3 +15,7 @@ build/
 
 # The real configuration file names this machine; keep it out of the public repo.
 wkx-ecosystem-localhost.toml
+
+# The View file is the board's own file: it writes it as the operator arranges the
+# board. It is per-machine and not part of the public repo.
+wkx-ecosystem-localhost.view.toml

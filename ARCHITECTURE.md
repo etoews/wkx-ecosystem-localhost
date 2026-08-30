@@ -15,22 +15,29 @@ The vocabulary used here (Collector, Section, Origin, Flag) is defined in
 
 `src/wkx_ecosystem_localhost/static/` is the whole frontend: `index.html` (the
 shell), `styles.css` (the wkx-namespace look and feel), and `app.js`. There is
-no build step. On load the board first fetches `GET /api/config`, removes the
-panels the operator turned Off in configuration, and applies the viewer's Hidden
-overrides from the `sections` menu; only then does it issue one
-`GET /api/<section>` request for each remaining Section, render each as stat
-tiles over sortable tables, and open two native `EventSource` streams for the
-slow network truths. An Off Section is dropped before its request fires, so the
-board never asks for a panel it is about to remove; a Hidden Section is still
-fetched and still counts in the tally. Colour is reserved for the Flag layer.
-Neutral facts are told apart by weight, a muted tone, and a label, never by hue.
+no build step. On load the board reads `GET /api/config` for the Off Sections and
+`GET /api/view` for the View, removes the panels the operator turned Off in
+configuration, and applies the Hidden and Collapsed state and the theme; only then
+does it issue one `GET /api/<section>` request for each remaining Section, render
+each as stat tiles over sortable tables, and open native `EventSource` streams for
+the slow network truths and for View convergence. An Off Section is dropped before
+its request fires, so the board never asks for a panel it is about to remove; a
+Hidden Section is still fetched and still counts in the tally. The `/` route
+stamps the View's theme onto `<html>` as it serves the shell, so the theme never
+flashes. Colour is reserved for the Flag layer. Neutral facts are told apart by
+weight, a muted tone, and a label, never by hue.
 
-A viewer's preferences live in the browser's `localStorage` and nowhere else:
-`wkx-theme` (light or dark; an absent key means auto), `wkx-sections` (the Hidden
-overrides; an absent key means the server default), and `wkx-collapsed` (the
-Collapsed panels; an absent key means every panel is expanded). Each key holds
-overrides only, so a cleared store returns the board to its defaults, and no
-preference ever reaches the service.
+A viewer's preferences live in the View file, not the browser. The View is the
+theme, which panels are Hidden or Collapsed, and the Mutes; the board keeps it in
+`wkx-ecosystem-localhost.view.toml` beside the configuration, writes it as the
+viewer changes the board, and reads it live on every request (ADR 0004). One
+client module, `wkxView`, owns this: on load it reads `GET /api/view`, writes each
+change through `PATCH /api/view` one preference at a time, and holds
+`/api/view/stream` open so a write in one tab converges in every other. The file
+holds overrides only, so a fresh board writes nothing and deleting the file resets
+the board to its defaults. On the first load after this change `wkxView` migrates
+the old `localStorage` keys (`wkx-theme`, `wkx-sections`, `wkx-collapsed`) into the
+View and deletes them, so no `localStorage` key remains.
 
 ## The service
 
@@ -57,6 +64,8 @@ the real app end to end on a fake.
 | `/api/footprint` | per-repo `.venv` and `node_modules` disk sizes alongside the Docker disk, cached |
 | `/api/flags` | open Flags, each naming the Section and row it badges |
 | `/api/config` | the effective configuration, each value tagged with its source, read only |
+| `/api/view` | the effective View; `GET` reads it, `PATCH` writes one preference behind the loopback write guard |
+| `/api/view/stream` | SSE, a `view` event on every successful write, so every open tab converges |
 
 A Section named in `sections_off` is not collected and its route is not
 registered, so its `/api/<section>` returns 404. `/api/config` and `/api/flags`
@@ -67,7 +76,10 @@ The supporting modules are shared by every route: `config.py` (the typed
 `Settings`, read from the environment, `.env`, and a TOML file, highest first;
 `.env` for secrets, the TOML for everything else; computed, machine-neutral
 defaults; the startup scan that rejects an unknown `WKX_ECO_LOCAL_*` variable; and
-the read-only effective-config view `/api/config` serves), `models.py` (the
+the read-only effective-config view `/api/config` serves; it reads TOML with
+`tomlkit`, the one TOML library the board uses), `view.py` (the View model, the
+live drop-and-warn read, and the one-preference merge written atomically under a
+process lock and refused when the file on disk does not parse), `models.py` (the
 Section models the API serialises verbatim, and the `Section` enum that types
 `Flag.section` and `sections_off`), `sse.py` (SSE framing for
 `EventSource`), `cache.py` (the one-slot TTL cache behind the footprint Section
@@ -105,10 +117,12 @@ machine data.
 Two truths need the network and would otherwise stall the board, so both
 arrive over Server-Sent Events on a bounded worker pool, each result pushed
 the moment it is ready. `/api/workspace/fetch` runs a non-interactive
-background `git fetch` per repo, bounded and timed out. This is the one write
-the app performs anywhere, and it touches remote-tracking refs only, never a
-working tree. `/api/submodules/probe` lists each submodule's remote tags to
-compute latest and releases-behind; no submodule objects are fetched.
+background `git fetch` per repo, bounded and timed out. This touches
+remote-tracking refs only, never a working tree; the board's only other write is
+its own View file (ADR 0004). `/api/submodules/probe` lists each submodule's
+remote tags to compute latest and releases-behind; no submodule objects are
+fetched. `/api/view/stream` is a third SSE stream, but a long-lived one: it stays
+open and pushes a `view` event on every successful write, so every tab converges.
 
 ## Flags
 
@@ -122,13 +136,17 @@ that need the network to be known (behind remote, releases-behind) are raised by
 the board itself as the SSE events land.
 
 Muting is applied in the client, not the server (ADR 0003). `/api/flags` reports
-every Flag, muted or not, because the API is the inventory; `/api/config` carries
-the Mute rules, and the board drops a muted Flag at one choke point before it
-badges a row or counts in the tally. A Muted tile in Needs attention shows how
-many the rules silenced, so nothing is hidden silently. This mirrors Hidden
-Sections, another client-side view preference: an Off Section is removed on the
+every Flag, muted or not, because the API is the inventory; the Mute rules are
+part of the View, so `/api/view` carries them (they moved out of the
+configuration in M12, ADR 0004), and the board drops a muted Flag at one choke
+point before it badges a row or counts in the tally. A Muted tile in Needs
+attention shows how many the rules silenced, so nothing is hidden silently. This
+mirrors Hidden Sections, another view preference: an Off Section is removed on the
 server (its route is not registered), but a Hidden Section and a muted Flag both
-stay on the wire and are shaped only in the board.
+stay on the wire and are shaped only in the board. The config Section raises two
+Flags of its own from the state of the View file: `view-not-saved` (red) when a
+write fails, and `view-unknown-key` (amber) when the file names something the
+board does not know.
 
 ## Redaction
 
@@ -141,10 +159,15 @@ identity, a token, or a username.
 ## Security posture
 
 - Binds to `127.0.0.1` only, with no auth, because loopback plus read-only.
-- Every Collector is a probe with a fixed argv and a timeout; the one write is
-  the background `git fetch` described above.
+- Every Collector is a probe with a fixed argv and a timeout. The board writes two
+  things: the background `git fetch` described above, and its own View file.
+- The View file is the one write route. A write is accepted only from loopback and
+  the board's own origin: `application/json`, a `Host` that is the bound host and
+  port, and a same-origin `Origin` (or none, for a non-browser client); anything
+  else is `403`. Each write changes one preference, merges under a lock, and writes
+  the file atomically; a file that does not parse stops the write.
 - The repo is machine-neutral: no literal paths in code or docs, computed
-  configuration defaults, and synthetic fixture data.
+  configuration defaults, and synthetic fixture data. The View file is gitignored.
 
 ## The diagram
 
