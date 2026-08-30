@@ -229,6 +229,23 @@ def test_a_write_error_surfaces_as_view_write_error(tmp_path: Path) -> None:
         apply_preference(path, ThemePreference(theme="dark"))
 
 
+def test_a_read_only_view_file_refuses_the_write(tmp_path: Path) -> None:
+    # An operator who makes the View file read-only means it. The atomic rename
+    # would otherwise replace it (the directory stays writable), so the write is
+    # refused explicitly and surfaces as view-not-saved, rather than silently
+    # overwriting a file the operator protected.
+    path = _view_file(tmp_path)
+    apply_preference(path, ThemePreference(theme="dark"))
+    path.chmod(0o444)
+    try:
+        with pytest.raises(ViewWriteError):
+            apply_preference(path, ThemePreference(theme="light"))
+        # The protected file keeps the value it had.
+        assert 'theme = "dark"' in path.read_text()
+    finally:
+        path.chmod(0o644)
+
+
 # ---------- the drop-and-warn read ----------
 
 

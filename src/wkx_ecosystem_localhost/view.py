@@ -458,11 +458,16 @@ def _write_atomic(path: Path, view: View) -> None:
 
     The temporary file is created in the destination directory so the rename is
     atomic on the same filesystem. A failure at any step raises ``ViewWriteError``
-    and leaves any existing file untouched.
+    and leaves any existing file untouched. A read-only existing file is refused
+    up front: the rename would otherwise replace it through the writable
+    directory, defeating the operator who protected it.
 
     Raises:
-        ViewWriteError: If the file cannot be written or renamed into place.
+        ViewWriteError: If the file is read-only, cannot be written, or cannot be
+            renamed into place.
     """
+    if path.exists() and not os.access(path, os.W_OK):
+        raise ViewWriteError(f"the View file {path} is read-only; the change was not saved")
     directory = path.parent if str(path.parent) else Path()
     temp_path: Path | None = None
     try:
