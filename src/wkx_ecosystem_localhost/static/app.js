@@ -1605,6 +1605,29 @@ window.wkxTables = (function () {
     "config-mutes": ["category", "target", "flags"],
   };
 
+  // The catalogue mirror's section field: every table id maps to the Section it
+  // lives in, so the per-Section Filter registers each table under its own
+  // Section (a table id is not its Section id — claude-skills lives in claude).
+  // Pinned to flags.TABLES the same way TABLE_COLUMNS is.
+  const TABLE_SECTION = {
+    "workspace": "workspace",
+    "toolchains": "toolchains",
+    "claude-plugins": "claude",
+    "claude-skills": "claude",
+    "claude-mcp": "claude",
+    "system-tools": "system",
+    "homebrew-packages": "homebrew",
+    "footprint": "footprint",
+    "editor-extensions": "editor",
+    "git-config-keys": "git-config",
+    "git-config-includes": "git-config",
+    "config-settings": "config",
+    "config-excludes": "config",
+    "config-tools": "config",
+    "config-off": "config",
+    "config-mutes": "config",
+  };
+
   // The locked columns of each table: the name column (the row's identity) and the
   // Flags rail. A locked column is shown fixed in the menu and can never be Hidden.
   const LOCKED = {
@@ -1752,7 +1775,7 @@ window.wkxTables = (function () {
         stampCols(entry);
         applyHidden(entry);
         applySort(entry);
-        if (window.wkxFilter) window.wkxFilter.register(id, table);
+        if (window.wkxFilter) window.wkxFilter.register(TABLE_SECTION[id] || id, table);
       },
     };
   }
@@ -1884,10 +1907,11 @@ window.wkxFilter = (function () {
     let shown = 0;
     let total = 0;
     reg.tables.forEach(function (table) {
-      if (!table.isConnected) {
-        reg.tables.delete(table); // a re-rendered Section left a stale table behind
-        return;
-      }
+      // Skip a detached table rather than counting it: a table is registered by
+      // equip() before its Section appends it (so it is momentarily disconnected
+      // on its first apply), and a re-render leaves its old table disconnected —
+      // either way an unconnected table is inert, never deleted here.
+      if (!table.isConnected) return;
       const tbody = table.tBodies[0];
       if (!tbody) return;
       const hiddenCols = new Set(V ? V.columnsHiddenFor(table.dataset.tableId) : []);

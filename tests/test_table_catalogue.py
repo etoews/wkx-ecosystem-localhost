@@ -41,6 +41,19 @@ def _client_table_columns() -> dict[str, list[str]]:
     return tables
 
 
+# The client's TABLE_SECTION map: each table id to the Section id it lives in.
+_SECTION_BLOCK = re.compile(r"TABLE_SECTION\s*=\s*\{(.*?)\n  \}", re.DOTALL)
+_SECTION_ENTRY = re.compile(r'"([a-z0-9-]+)"\s*:\s*"([a-z0-9-]+)"')
+
+
+def _client_table_sections() -> dict[str, str]:
+    """The table id -> Section id map the board declares in app.js."""
+    app_js = (STATIC / "app.js").read_text()
+    match = _SECTION_BLOCK.search(app_js)
+    assert match, "TABLE_SECTION map not found in app.js"
+    return dict(_SECTION_ENTRY.findall(match.group(1)))
+
+
 # ---------- the Python catalogue ----------
 
 
@@ -100,3 +113,11 @@ def test_client_column_keys_match_the_catalogue_in_order() -> None:
     client = _client_table_columns()
     for table_id, table in TABLES.items():
         assert client[table_id] == [column.key for column in table.columns], table_id
+
+
+def test_client_table_sections_match_the_catalogue() -> None:
+    # The per-Section Filter registers each table under the Section this map names,
+    # so a table id that is not its Section id (claude-skills lives in claude) still
+    # reaches the right Filter. Pin it so the client and the catalogue cannot drift.
+    client = _client_table_sections()
+    assert client == {table_id: table.section for table_id, table in TABLES.items()}
