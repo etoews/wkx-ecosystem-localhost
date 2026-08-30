@@ -6,11 +6,19 @@
 <title>WKX Ecosystem localhost</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230A141E'/%3E%3Cpath d='M10 2 L6 14' stroke='%23FFE9A3' stroke-width='2'/%3E%3C/svg%3E">
 <script>
-  // Apply a saved theme override before first paint; without one, the
-  // system setting decides via prefers-color-scheme.
+  // The board serves this page with data-theme already stamped on <html> from the
+  // View file, so the saved theme paints from the first frame with no flash. This
+  // only covers the one load before the old localStorage theme is migrated into the
+  // View: it reads that legacy key, if any, before first paint. After migration the
+  // key is gone and this is a no-op; the View is the only store.
   (function () {
-    const saved = localStorage.getItem("wkx-theme");
-    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    if (document.documentElement.dataset.theme) return;
+    try {
+      const saved = localStorage.getItem("wkx-theme");
+      if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    } catch (_err) {
+      // A storage-blocked browser simply falls back to prefers-color-scheme.
+    }
   })();
 </script>
 <link rel="stylesheet" href="/static/styles.css">

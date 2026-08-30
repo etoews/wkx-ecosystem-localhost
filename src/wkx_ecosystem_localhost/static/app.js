@@ -5,36 +5,293 @@
 // The chrome carries one colour of its own: --sky on the Section headings, the
 // board's wayfinding colour (styles.css).
 
+// ---------- the View (M12): the board's own file, read live, written on change ----------
+// Every view preference — the theme, the Hidden and Collapsed panels, and the
+// Mutes — lives in wkx-ecosystem-localhost.view.toml, the file the board owns
+// (ADR 0004). The board reads it on load through GET /api/view and writes it on
+// every change through PATCH /api/view, one preference per call; a successful
+// write is pushed to every open tab over /api/view/stream, so no tab holds a
+// stale View. This module is the one client-side home for that: it fetches the
+// View, migrates the old localStorage keys into it once, and lets each control
+// read the current value, write a change, and re-apply when any tab writes. No
+// preference lives in localStorage any more — the file is the only store.
+window.wkxView = (function () {
+  "use strict";
+
+  // The old localStorage keys, migrated once into the View and then removed. This
+  // is the only place they are named; after migration none remains.
+  const LEGACY_THEME = "wkx-theme";
+  const LEGACY_SECTIONS = "wkx-sections";
+  const LEGACY_COLLAPSED = "wkx-collapsed";
+
+  // The effective View plus its file state, mirroring the /api/view payload. It
+  // starts empty (a board at its defaults) and is replaced by the server's copy.
+  let current = {
+    theme: null,
+    sections_hidden: [],
+    sections_collapsed: [],
+    mute: [],
+    file: null,
+    found: false,
+    writable: true,
+    unknown_keys: [],
+  };
+  const listeners = [];
+
+  function notify() {
+    listeners.forEach(function (fn) {
+      fn(current);
+    });
+  }
+
+  // Replace the current View with the server's authoritative copy and wake every
+  // listener, so the theme, the Hidden menu, and the Collapsed headings re-apply.
+  function apply(view) {
+    if (view && typeof view === "object") {
+      current = view;
+      notify();
+    }
+    return current;
+  }
+
+  function theme() {
+    return current.theme;
+  }
+  function mute() {
+    return current.mute || [];
+  }
+  function isHidden(id) {
+    return (current.sections_hidden || []).indexOf(id) >= 0;
+  }
+  function isCollapsed(id) {
+    return (current.sections_collapsed || []).indexOf(id) >= 0;
+  }
+  function fileState() {
+    return {
+      file: current.file,
+      found: current.found,
+      writable: current.writable,
+      unknown_keys: current.unknown_keys || [],
+    };
+  }
+
+  // The two config-Section Flags the View state raises. view-not-saved (red) is
+  // raised when a write fails and cleared when one succeeds; view-unknown-key
+  // (amber) is raised when the file names a panel or Category the board does not
+  // know. Both badge the config Section's View-file line.
+  function raiseNotSaved() {
+    if (window.wkxFlags)
+      window.wkxFlags.add({
+        section: "config",
+        target: "view-file",
+        level: "problem",
+        category: "view-not-saved",
+        message: "not saved",
+      });
+  }
+  function clearNotSaved() {
+    if (window.wkxFlags) window.wkxFlags.clear("config", "view-file", "view-not-saved");
+  }
+  function raiseUnknownKeys() {
+    const keys = current.unknown_keys || [];
+    if (keys.length === 0 || !window.wkxFlags) return;
+    window.wkxFlags.add({
+      section: "config",
+      target: "view-file",
+      level: "attention",
+      category: "view-unknown-key",
+      message: keys.length === 1 ? "1 unknown key" : keys.length + " unknown keys",
+    });
+  }
+
+  // PATCH one preference. On success the server returns the effective View, which
+  // becomes the source of truth and clears the not-saved Flag. On failure the
+  // preference did not persist, so the board raises view-not-saved and resyncs
+  // from the server rather than keeping a value the file never took.
+  function patch(body) {
+    return fetch("/api/view", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then(function (view) {
+        apply(view);
+        clearNotSaved();
+        return view;
+      })
+      .catch(function (err) {
+        raiseNotSaved();
+        return refresh().then(function () {
+          throw err;
+        });
+      });
+  }
+
+  function setTheme(value) {
+    return patch({ field: "theme", value: value || "auto" });
+  }
+  function setHidden(id, on) {
+    return patch({ field: "sections_hidden", panel: id, on: !!on });
+  }
+  function setCollapsed(id, on) {
+    return patch({ field: "sections_collapsed", panel: id, on: !!on });
+  }
+
+  function refresh() {
+    return fetch("/api/view")
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (view) {
+        return apply(view);
+      })
+      .catch(function () {
+        return current;
+      });
+  }
+
+  // Migration: read the three old localStorage keys once, write each preference
+  // through PATCH, and delete the keys only after every write has landed. A write
+  // that the board rejects as an unknown key (an old panel id it no longer knows)
+  // is dropped rather than treated as a durable failure, so the migration still
+  // completes and the keys are cleared.
+  function readLegacy(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch (_err) {
+      return null;
+    }
+  }
+  function legacyMap(key, field, wanted) {
+    let parsed;
+    try {
+      parsed = JSON.parse(readLegacy(key) || "{}");
+    } catch (_err) {
+      parsed = {};
+    }
+    const writes = [];
+    if (parsed && typeof parsed === "object") {
+      Object.keys(parsed).forEach(function (id) {
+        if (parsed[id] === wanted) writes.push({ field: field, panel: id, on: true });
+      });
+    }
+    return writes;
+  }
+  function migrateWrite(body) {
+    return fetch("/api/view", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (response) {
+      if (response.ok) return response.json().then(apply);
+      if (response.status === 422) return current; // an old id the board no longer knows
+      throw new Error("HTTP " + response.status);
+    });
+  }
+  function clearLegacy() {
+    try {
+      localStorage.removeItem(LEGACY_THEME);
+      localStorage.removeItem(LEGACY_SECTIONS);
+      localStorage.removeItem(LEGACY_COLLAPSED);
+    } catch (_err) {
+      // A storage-blocked browser has nothing to clear.
+    }
+  }
+  function migrate() {
+    let writes = [];
+    const savedTheme = readLegacy(LEGACY_THEME);
+    if (savedTheme === "light" || savedTheme === "dark")
+      writes.push({ field: "theme", value: savedTheme });
+    // wkx-sections stored panel id -> visible; a false means the panel was Hidden.
+    writes = writes.concat(legacyMap(LEGACY_SECTIONS, "sections_hidden", false));
+    // wkx-collapsed stored panel id -> true for each Collapsed panel.
+    writes = writes.concat(legacyMap(LEGACY_COLLAPSED, "sections_collapsed", true));
+    if (writes.length === 0) return Promise.resolve();
+    // Chain the writes so the file is merged one preference at a time; delete the
+    // keys only once every write has succeeded.
+    return writes
+      .reduce(function (chain, body) {
+        return chain.then(function () {
+          return migrateWrite(body);
+        });
+      }, Promise.resolve())
+      .then(clearLegacy);
+  }
+
+  // Converge: hold /api/view/stream open and apply every view event another tab's
+  // write pushes, so no tab keeps a stale View.
+  function converge() {
+    if (typeof EventSource === "undefined") return;
+    const source = new EventSource("/api/view/stream");
+    source.addEventListener("view", function (message) {
+      try {
+        apply(JSON.parse(message.data));
+        raiseUnknownKeys();
+      } catch (_err) {
+        // Ignore a malformed frame rather than tearing down the stream.
+      }
+    });
+    // EventSource reconnects on its own if the stream drops; nothing to do here.
+  }
+
+  const ready = refresh()
+    .then(raiseUnknownKeys)
+    .then(migrate)
+    .then(converge);
+
+  return {
+    ready: ready,
+    theme: theme,
+    mute: mute,
+    isHidden: isHidden,
+    isCollapsed: isCollapsed,
+    fileState: fileState,
+    setTheme: setTheme,
+    setHidden: setHidden,
+    setCollapsed: setCollapsed,
+    onChange: function (fn) {
+      listeners.push(fn);
+    },
+  };
+})();
+
 // ---------- theme control ----------
+// The masthead toggle cycles auto -> light -> dark and writes the choice to the
+// View through wkxView; the board applies the theme by stamping data-theme on
+// <html>. The server has already stamped the saved theme as it served the page,
+// so there is no flash on load; this only keeps the button label and the
+// attribute in step as the View changes here or in another tab.
 (function () {
   "use strict";
 
-  const KEY = "wkx-theme";
   const MODES = ["auto", "light", "dark"];
   const button = document.getElementById("theme-toggle");
+  const V = window.wkxView;
+  if (!button || !V) return;
 
-  function current() {
-    const saved = localStorage.getItem(KEY);
-    return saved === "light" || saved === "dark" ? saved : "auto";
+  function currentMode() {
+    const theme = V.theme();
+    return theme === "light" || theme === "dark" ? theme : "auto";
   }
 
-  function apply(mode) {
-    if (mode === "auto") {
-      delete document.documentElement.dataset.theme;
-      localStorage.removeItem(KEY);
-    } else {
-      document.documentElement.dataset.theme = mode;
-      localStorage.setItem(KEY, mode);
-    }
+  function apply() {
+    const mode = currentMode();
+    if (mode === "auto") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = mode;
     button.textContent = "theme: " + mode;
   }
 
   button.addEventListener("click", function () {
-    const next = MODES[(MODES.indexOf(current()) + 1) % MODES.length];
-    apply(next);
+    const next = MODES[(MODES.indexOf(currentMode()) + 1) % MODES.length];
+    V.setTheme(next);
   });
 
-  button.textContent = "theme: " + current();
+  V.ready.then(apply);
+  V.onChange(apply);
 })();
 
 // ---------- shared table helpers ----------
@@ -319,20 +576,20 @@ window.wkxUI = (function () {
 
 // ---------- sections: Off (server) + Hidden (viewer) ----------
 // The masthead's second control, beside the theme toggle, and the board's boot
-// gate. On load it fetches /api/config FIRST, removes the panels the operator
-// turned Off in configuration, then applies the viewer's Hidden overrides, and
-// only then resolves `ready`, which every Section fetch waits behind — so the
-// board never fires a request for a panel it is about to remove. Off is the
-// server's word: an Off Section's route is not even registered, so it is dropped
-// outright. Hidden is the viewer's, kept in localStorage the way the theme is, as
-// overrides only (an absent key means the server default); a Hidden Section still
-// carries the `hidden` attribute rather than leaving, so it is still fetched and
-// its Flags still reach the needs-attention tally.
+// gate. On load it reads /api/config for the Off Sections and the View for the
+// Hidden panels, removes the panels the operator turned Off in configuration,
+// applies the viewer's Hidden state, and only then resolves `ready`, which every
+// Section fetch waits behind — so the board never fires a request for a panel it
+// is about to remove. Off is the server's word: an Off Section's route is not
+// even registered, so it is dropped outright. Hidden is the viewer's, kept in the
+// View file (ADR 0004) as overrides only (a panel not named there is visible); a
+// Hidden Section still carries the `hidden` attribute rather than leaving, so it
+// is still fetched and its Flags still reach the needs-attention tally.
 window.wkxSections = (function () {
   "use strict";
 
   const U = window.wkxUI;
-  const KEY = "wkx-sections";
+  const V = window.wkxView;
   // Every panel the menu governs, in board order. "summary" is needs attention:
   // it is not a Section (it can never be Off) but it can be Hidden, so it takes a
   // checkbox too. The rest are the ten Sections, each id matching the enum value.
@@ -355,39 +612,22 @@ window.wkxSections = (function () {
 
   let off = []; // the Off Section ids, learned from /api/config
   let configData = null; // the parsed /api/config body, so the config panel reuses it
-  let overrides = loadOverrides();
+  const boxes = {}; // panel id → its menu checkbox, so a View change re-checks it
 
   function panelOf(id) {
     const mount = document.getElementById(id);
     return mount ? mount.closest("section") : null;
   }
 
-  // Hidden overrides: panel id → visible boolean, holding only the panels the
-  // viewer has set away from the server default (visible). Mirrors wkx-theme,
-  // which stores nothing at all for auto.
-  function loadOverrides() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(KEY) || "{}");
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch (_err) {
-      return {};
-    }
-  }
-  function saveOverrides() {
-    try {
-      if (Object.keys(overrides).length === 0) localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, JSON.stringify(overrides));
-    } catch (_err) {
-      // A private-mode or storage-blocked browser simply forgoes persistence.
-    }
-  }
-
   function isOff(id) {
     return off.indexOf(id) >= 0;
   }
+  // Hidden is a View preference now (ADR 0004): the View holds the Hidden panel
+  // ids as overrides, so a panel not named there is visible. An Off panel is never
+  // visible, whatever the View says.
   function visible(id) {
     if (isOff(id)) return false;
-    return Object.prototype.hasOwnProperty.call(overrides, id) ? !!overrides[id] : true;
+    return V ? !V.isHidden(id) : true;
   }
 
   // Off panels are removed outright; Hidden ones keep their place but carry the
@@ -405,14 +645,11 @@ window.wkxSections = (function () {
     PANELS.forEach(applyOne);
   }
 
+  // Write the change to the View; the PATCH response (and any other tab's write)
+  // comes back through onChange, which re-applies the panels and re-checks the
+  // menu, so the file stays the single source of truth.
   function setVisible(entry, show) {
-    // Store an override only when it differs from the default (visible); showing a
-    // panel again drops the override, so the map holds overrides only, exactly as
-    // wkx-theme holds nothing for auto.
-    if (show) delete overrides[entry.id];
-    else overrides[entry.id] = false;
-    saveOverrides();
-    applyOne(entry);
+    if (V) V.setHidden(entry.id, !show);
   }
 
   function buildMenu() {
@@ -427,9 +664,19 @@ window.wkxSections = (function () {
       box.addEventListener("change", function () {
         setVisible(entry, box.checked);
       });
+      boxes[entry.id] = box;
       row.append(box, U.el("span", "disc-label", entry.label));
       if (isOff(entry.id)) row.append(U.el("span", "disc-note", "off in config"));
       menu.append(row);
+    });
+  }
+
+  // Re-check each menu box from the View, so a change made here or in another tab
+  // is reflected without rebuilding the open menu.
+  function updateMenu() {
+    PANELS.forEach(function (entry) {
+      const box = boxes[entry.id];
+      if (box && !isOff(entry.id)) box.checked = visible(entry.id);
     });
   }
 
@@ -454,11 +701,12 @@ window.wkxSections = (function () {
     });
   }
 
-  // Boot: read the effective configuration, learn the Off Sections, remove their
-  // panels and apply the Hidden overrides, then build the menu. `ready` resolves
-  // only after all of that, so the Section fetches queued behind it never race the
-  // removal. A failed or absent config just leaves every panel at its default.
-  const ready = fetch("/api/config")
+  // Boot: read the effective configuration for the Off Sections, and the View for
+  // the Hidden panels; remove the Off panels, apply the Hidden state, then build
+  // the menu. `ready` resolves only after all of that, so the Section fetches
+  // queued behind it never race the removal. A failed or absent config or View
+  // just leaves every panel at its default.
+  const configReady = fetch("/api/config")
     .then(function (response) {
       return response.ok ? response.json() : null;
     })
@@ -468,8 +716,19 @@ window.wkxSections = (function () {
     .then(function (data) {
       configData = data;
       off = (data && data.sections_off && data.sections_off.sections) || [];
+    });
+  const viewReady = V ? V.ready : Promise.resolve();
+  const ready = Promise.all([configReady, viewReady]).then(function () {
+    applyAll();
+    buildMenu();
+  });
+
+  // Converge: re-apply the panels and re-check the menu whenever the View changes,
+  // here or in another tab.
+  if (V)
+    V.onChange(function () {
       applyAll();
-      buildMenu();
+      updateMenu();
     });
 
   function whenActive(mount, run) {
@@ -525,7 +784,7 @@ window.wkxFlags = (function () {
   }
 
   // The label each Flag Category rolls up to in the summary. Its keys are the
-  // nineteen Category ids; a test cross-checks them against flags.CATEGORIES.
+  // twenty-one Category ids; a test cross-checks them against flags.CATEGORIES.
   const CATEGORY_LABEL = {
     "dirty-tree": "Dirty working trees",
     "detached-head": "Detached HEAD",
@@ -546,6 +805,8 @@ window.wkxFlags = (function () {
     "git-include-broken": "Broken git include",
     "git-config-credentials": "Credentials in git config",
     "git-no-identity": "No git identity",
+    "view-not-saved": "View not saved",
+    "view-unknown-key": "Unknown View key",
   };
   // How to resolve each anomaly — the tooltip a badge carries, so hovering tells
   // you what to do about it rather than restating what it already says.
@@ -569,6 +830,8 @@ window.wkxFlags = (function () {
     "git-include-broken": "The include points at a file that does not exist. Create it, or drop the include directive.",
     "git-config-credentials": "A credential is embedded in a config value. Move it to a credential helper and remove it from gitconfig.",
     "git-no-identity": "No global user.email is set. Set one with git config --global user.email you@example.com.",
+    "view-not-saved": "The last change could not be written to the View file. Check the file is present and writable, then try again.",
+    "view-unknown-key": "The View file names a panel or Category the board does not know; the board dropped it. Check the file for a stale name.",
   };
   const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
@@ -598,18 +861,13 @@ window.wkxFlags = (function () {
     return flag.section + ":" + flag.target;
   }
 
-  // The operator's Mute rules, read from the /api/config body the boot gate
-  // already fetched. Empty until it lands (and if it fails), so a Flag arriving
-  // early is simply not muted rather than erroring. The body is fixed after boot,
-  // so the rules are cached on the first read that finds it — place() runs once per
-  // Flag, and every Flag placement is behind the boot gate, so the cache is warm.
-  let cachedRules = null;
+  // The operator's Mute rules, read from the View (ADR 0004): Mute moved out of
+  // the configuration into the board's own file. Empty until the View lands (and
+  // if it fails), so a Flag arriving early is simply not muted rather than
+  // erroring. Flag placement is behind the boot gate, which waits on the View, so
+  // the rules are present by the time a Flag is placed.
   function muteRules() {
-    if (cachedRules) return cachedRules;
-    const data = window.wkxSections.config();
-    const rules = (data && data.mute && data.mute.rules) || [];
-    if (data) cachedRules = rules; // cache only once the config body has loaded
-    return rules;
+    return window.wkxView ? window.wkxView.mute() : [];
   }
 
   // A Flag is muted when a rule names its Category and either targets it exactly
@@ -876,12 +1134,11 @@ window.wkxFlags = (function () {
 // wrapping the label and a rotating caret, the idiom the expandable plugin row
 // uses, with `aria-expanded` and `aria-controls` naming the panel's mount.
 //
-// State is `localStorage["wkx-collapsed"]`, a map of panel id → true, overrides
-// only the way `wkx-sections` holds Hidden: collapsing writes the key, expanding
-// deletes it, an empty map removes the item, and an absent item means every panel
-// is expanded. Access sits in try/catch, so a storage-blocked browser simply
-// forgoes persistence. Collapsed and Hidden are independent, and an Off panel's
-// stale key is inert because its mount is gone.
+// State is the View's `sections_collapsed` list (ADR 0004), overrides only the
+// way Hidden is: collapsing adds the panel id, expanding removes it, and a panel
+// not in the list is expanded. The board writes each change to the View file and
+// re-applies as the View changes here or in another tab. Collapsed and Hidden are
+// independent, and an Off panel's stale id is inert because its mount is gone.
 //
 // A Collapsed panel stays on the board and is still fetched, so its Flags still
 // count (CONTEXT.md): collapse is a reading convenience, not a Mute. Hiding the
@@ -897,7 +1154,7 @@ window.wkxCollapse = (function () {
 
   const U = window.wkxUI;
   const flags = window.wkxFlags;
-  const KEY = "wkx-collapsed";
+  const V = window.wkxView;
   const PENDING = "···"; // the board's pending glyph, shown before a count lands
   // Every panel id, the Section enum values plus "summary" (Needs attention).
   const IDS = [
@@ -916,31 +1173,11 @@ window.wkxCollapse = (function () {
 
   const counts = {}; // panel id → the latest one-line count its render supplied
   const parts = {}; // panel id → its built DOM handles, once wired
-  let overrides = load();
 
-  // Overrides only: the map holds only the panels folded away from the default
-  // (expanded). Mirrors wkx-sections and wkx-theme, which store nothing for their
-  // own defaults. A malformed or blocked store reads as no overrides.
-  function load() {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(KEY) || "{}");
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch (_err) {
-      return {};
-    }
-  }
-  function save() {
-    try {
-      if (Object.keys(overrides).length === 0) localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, JSON.stringify(overrides));
-    } catch (_err) {
-      // A private-mode or storage-blocked browser simply forgoes persistence.
-    }
-  }
-
-  // An absent key means expanded; the map holds only the Collapsed panels.
+  // Collapsed is a View preference now (ADR 0004): the View holds the Collapsed
+  // panel ids as overrides, so a panel not named there is expanded.
   function collapsed(id) {
-    return overrides[id] === true;
+    return V ? V.isCollapsed(id) : false;
   }
 
   // Format a plural count from a bare noun, e.g. label(14, "repo") → "14 repos".
@@ -994,11 +1231,15 @@ window.wkxCollapse = (function () {
     }
   }
 
+  // Write the change to the View; the PATCH response (and any other tab's write)
+  // comes back through onChange, which re-applies the panel, so the file stays the
+  // single source of truth.
   function setCollapsed(id, value) {
-    if (value) overrides[id] = true;
-    else delete overrides[id]; // expanding drops the key, so the map stays overrides-only
-    save();
-    apply(id);
+    if (V) V.setCollapsed(id, value);
+  }
+
+  function applyAll() {
+    IDS.forEach(apply);
   }
 
   // Turn a panel's `signage` heading into the toggle: a button wrapping a rotating
@@ -1040,6 +1281,13 @@ window.wkxCollapse = (function () {
       apply(id);
     }
   });
+
+  // Apply the Collapsed state once the View lands, and again whenever it changes
+  // here or in another tab, so a fold made in one tab folds in the others too.
+  if (V) {
+    V.ready.then(applyAll);
+    V.onChange(applyAll);
+  }
 
   // Re-render the tally of every Collapsed panel as Flags land and clear; an
   // expanded panel carries its Flags on its tiles, so it needs no update.
@@ -2475,11 +2723,12 @@ window.wkxTokens = (function () {
     return built.wrap;
   }
 
-  // The Mute rules, the third list-shaped setting to get its own table. Each rule
-  // names a Flag Category to silence; a target narrows it to one item's exact wire
-  // value, an empty target mutes the whole Category. Muting is a view preference,
-  // so a muted Flag is dropped from the badges and the tally but stays on
-  // /api/flags — this table is where the operator sees what they silenced.
+  // The Mute rules, read from the View now (ADR 0004): Mute moved out of the
+  // configuration into the board's own file. Each rule names a Flag Category to
+  // silence; a target narrows it to one item's exact wire value, an empty target
+  // mutes the whole Category. Muting is a view preference, so a muted Flag is
+  // dropped from the badges and the tally but stays on /api/flags — this table is
+  // where the operator sees what they silenced.
   function mutesTable(rules) {
     const built = U.table([{ label: "Category" }, { label: "Target" }]);
     rules.forEach(function (rule) {
@@ -2489,6 +2738,38 @@ window.wkxTokens = (function () {
       );
     });
     return built.wrap;
+  }
+
+  // The View-file line: where the board writes its View, and whether the file is
+  // loaded, absent, or not writable. It is the host for the two View Flags
+  // (view-not-saved, view-unknown-key), so it carries a data-flag-key the Flag
+  // layer badges — the flag key is set on a <p>, never on a table element.
+  function viewFileLine(state) {
+    let parts;
+    if (!state.file) {
+      parts = ["The board writes its View to its own file; none is configured here."];
+    } else if (state.found && state.writable) {
+      parts = ["The board writes its View to ", U.el("span", "ver", state.file), "."];
+    } else if (state.found && !state.writable) {
+      parts = [
+        U.el("span", "ver", state.file),
+        " is not writable; a change cannot be saved until it is.",
+      ];
+    } else if (!state.found && state.writable) {
+      parts = [
+        "No View file yet; it appears at ",
+        U.el("span", "ver", state.file),
+        " on your first change.",
+      ];
+    } else {
+      parts = [
+        U.el("span", "ver", state.file),
+        " is absent and its directory is not writable; a change cannot be saved.",
+      ];
+    }
+    const line = U.summaryLine(parts);
+    line.dataset.flagKey = "config:view-file";
+    return line;
   }
 
   function render(data) {
@@ -2502,12 +2783,15 @@ window.wkxTokens = (function () {
     const excludeSource = (data.exclude && data.exclude.source) || "default";
     const off = (data.sections_off && data.sections_off.sections) || [];
     const offSource = (data.sections_off && data.sections_off.source) || "default";
-    const mutes = (data.mute && data.mute.rules) || [];
-    const muteSource = (data.mute && data.mute.source) || "default";
+    // Mutes and the View-file state come from the View, not the configuration.
+    const mutes = window.wkxView ? window.wkxView.mute() : [];
+    const viewState = window.wkxView
+      ? window.wkxView.fileState()
+      : { file: null, found: false, writable: false, unknown_keys: [] };
     // Customised and From-environment count the scalar settings AND every
-    // list-shaped block (system tools, Excludes, Off Sections, mutes), so a config
-    // that customises only, say, sections_off is never reported as nothing changed.
-    const blockSources = [toolsSource, excludeSource, offSource, muteSource];
+    // list-shaped block (system tools, Excludes, Off Sections), so a config that
+    // customises only, say, sections_off is never reported as nothing changed.
+    const blockSources = [toolsSource, excludeSource, offSource];
     const customised =
       values.filter(function (item) {
         return item.source !== "default";
@@ -2544,7 +2828,13 @@ window.wkxTokens = (function () {
           ])
       : U.summaryLine(["Running on computed defaults; no configuration file is in use."]);
 
-    const nodes = [summary, fileLine, U.el("p", "sub-head", "Settings"), settingsTable(values)];
+    const nodes = [
+      summary,
+      fileLine,
+      viewFileLine(viewState),
+      U.el("p", "sub-head", "Settings"),
+      settingsTable(values),
+    ];
     if (excludes.length > 0) {
       nodes.push(
         U.el("p", "sub-head", "Excludes (" + excludes.length + ") · " + excludeSource),
@@ -2563,7 +2853,7 @@ window.wkxTokens = (function () {
         ? offTable(off)
         : U.summaryLine(["No Sections are off; every Section is on the board."]),
     );
-    nodes.push(U.el("p", "sub-head", "Mutes (" + mutes.length + ") · " + muteSource));
+    nodes.push(U.el("p", "sub-head", "Mutes (" + mutes.length + ") · from the View"));
     nodes.push(
       mutes.length > 0
         ? mutesTable(mutes)
@@ -2574,7 +2864,8 @@ window.wkxTokens = (function () {
   }
 
   // The boot gate already fetched /api/config to learn the Off Sections, so this
-  // panel renders from that one body rather than fetching the same endpoint again.
+  // panel renders from that one body rather than fetching the same endpoint again;
+  // the Mutes and the View-file line come from the View wkxView already read.
   window.wkxSections.whenActive(mount, function () {
     const data = window.wkxSections.config();
     if (data) {
