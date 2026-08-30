@@ -12,11 +12,7 @@ import re
 from collections.abc import Collection
 from pathlib import Path
 
-import pytest
-from pydantic import ValidationError
-
 from wkx_ecosystem_localhost.collectors.flags import ATTENTION, CATEGORIES, PROBLEM, derive_flags
-from wkx_ecosystem_localhost.config import MuteRule, Settings
 from wkx_ecosystem_localhost.models import (
     ClaudeSection,
     DockerSection,
@@ -591,8 +587,10 @@ def _client_category_labels() -> set[str]:
     return set(_LABEL_KEY.findall(match.group(1)))
 
 
-def test_categories_registry_lists_all_nineteen() -> None:
-    assert len(CATEGORIES) == 19
+def test_categories_registry_lists_all_twenty_one() -> None:
+    # Seventeen derived, plus behind-remote and submodule-tags-behind (SSE-raised),
+    # plus view-not-saved and view-unknown-key (the config Section's View Flags).
+    assert len(CATEGORIES) == 21
 
 
 def test_registry_carries_the_two_sse_raised_categories() -> None:
@@ -639,88 +637,8 @@ def test_every_derived_category_is_registered() -> None:
 
 
 def test_client_label_map_and_registry_agree() -> None:
-    # The board rolls Flags up by CATEGORY_LABEL; the server validates a Mute
-    # against CATEGORIES. If the two drift, a real Category would show a raw id or a
-    # Mute of it would be rejected, so they must name exactly the same ids.
+    # The board rolls Flags up by CATEGORY_LABEL; the View drops a Mute naming a
+    # Category not in CATEGORIES. If the two drift, a real Category would show a raw
+    # id or a Mute of it would be dropped, so they must name exactly the same ids —
+    # including the two config-Section Flags, view-not-saved and view-unknown-key.
     assert _client_category_labels() == set(CATEGORIES)
-
-
-# ------------------------- mute rule validation -------------------------
-
-
-def test_mute_defaults_to_empty() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
-
-    assert settings.mute == []
-
-
-def test_mute_accepts_a_known_category_without_a_target() -> None:
-    settings = Settings(
-        _env_file=None, _config_file=None, mute=[MuteRule(category="brew-outdated")]
-    )
-
-    assert settings.mute[0].category == "brew-outdated"
-    assert settings.mute[0].target is None
-
-
-def test_mute_accepts_an_exact_target() -> None:
-    settings = Settings(
-        _env_file=None,
-        _config_file=None,
-        mute=[MuteRule(category="dirty-tree", target="~/dev/scratch")],
-    )
-
-    assert settings.mute[0].target == "~/dev/scratch"
-
-
-def test_mute_accepts_the_sse_raised_categories() -> None:
-    # The client raises these two, so a Mute of them must still validate.
-    settings = Settings(
-        _env_file=None,
-        _config_file=None,
-        mute=[MuteRule(category="behind-remote"), MuteRule(category="submodule-tags-behind")],
-    )
-
-    assert {rule.category for rule in settings.mute} == {"behind-remote", "submodule-tags-behind"}
-
-
-def test_mute_rejects_an_unknown_category_naming_it() -> None:
-    with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=None, mute=[MuteRule(category="brew-outdate")])
-
-    assert "brew-outdate" in str(excinfo.value)
-
-
-def test_toml_mute_is_an_inline_array_of_rules(tmp_path: Path) -> None:
-    path = tmp_path / "wkx-ecosystem-localhost.toml"
-    path.write_text(
-        'mute = [ { category = "brew-outdated" }, '
-        '{ category = "dirty-tree", target = "~/dev/scratch" } ]\n'
-    )
-
-    settings = Settings(_env_file=None, _config_file=path)
-
-    assert [(rule.category, rule.target) for rule in settings.mute] == [
-        ("brew-outdated", None),
-        ("dirty-tree", "~/dev/scratch"),
-    ]
-
-
-def test_env_mute_reads_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WKX_ECO_LOCAL_MUTE", '[{"category": "brew-outdated"}]')
-
-    settings = Settings(_env_file=None, _config_file=None)
-
-    assert settings.mute == [MuteRule(category="brew-outdated")]
-
-
-def test_mute_rejects_a_misspelt_rule_key(tmp_path: Path) -> None:
-    # A typo'd key must fail fast, not be dropped: a misspelt `targett` would leave
-    # target None and silently widen the rule from one item to the whole category.
-    path = tmp_path / "wkx-ecosystem-localhost.toml"
-    path.write_text('mute = [ { category = "dirty-tree", targett = "~/dev/scratch" } ]\n')
-
-    with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=path)
-
-    assert "targett" in str(excinfo.value)

@@ -9,11 +9,13 @@ so the cross-item drift and shadowing Flags derive here too.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import fixtures
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import MuteRule, Settings
+from wkx_ecosystem_localhost.config import Settings
 
 
 def _flag_index(flags: list[dict]) -> dict[tuple[str, str], set[str]]:
@@ -89,31 +91,34 @@ def test_flags_levels_are_the_two_levels_only(flags_client: TestClient) -> None:
     assert ("claude", "mcp:cloud-mcp") in problems
 
 
-def _muted_client(*rules: MuteRule) -> TestClient:
-    """A flags-lighting client with the given Mute rules configured.
+_MUTED_VIEW = (
+    "[[mute]]\n"
+    'category = "brew-outdated"\n\n'
+    "[[mute]]\n"
+    'category = "dirty-tree"\n'
+    'target = "~/dev/acme/web"\n'
+)
+
+
+def _muted_client(tmp_path: Path) -> TestClient:
+    """A flags-lighting client whose View file mutes a whole Category and one target.
 
     The same multi-repo, multi-Origin fake the Flag layer uses, so /api/flags can be
-    shown to still carry a muted Category and /api/config to carry the rules the
-    client will apply.
+    shown to still carry a muted Category, and /api/view to carry the rules the
+    client applies. Mute is part of the View now (ADR 0004), so it is written to a
+    View file on a tmp path, never a real one.
     """
     machine, home, roots, tools = fixtures.build_flags_workspace()
-    settings = Settings(
-        _env_file=None,
-        _config_file=None,
-        scan_roots=roots,
-        system_tools=tools,
-        mute=list(rules),
-    )
-    return TestClient(create_app(settings, machine=machine, home=home))
+    view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
+    view_file.write_text(_MUTED_VIEW)
+    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
+    return TestClient(create_app(settings, machine=machine, home=home, view_file=view_file))
 
 
-def test_muted_flags_stay_on_the_wire() -> None:
+def test_muted_flags_stay_on_the_wire(tmp_path: Path) -> None:
     # Muting is a client-side view preference; the API is the inventory, so
     # /api/flags reports every Flag even for a muted Category and target.
-    client = _muted_client(
-        MuteRule(category="brew-outdated"),
-        MuteRule(category="dirty-tree", target="~/dev/acme/web"),
-    )
+    client = _muted_client(tmp_path)
 
     categories = {f["category"] for f in client.get("/api/flags").json()["flags"]}
 
@@ -123,18 +128,15 @@ def test_muted_flags_stay_on_the_wire() -> None:
     assert "dirty-tree" in index[("workspace", "~/dev/acme/web")]
 
 
-def test_config_carries_the_mute_rules_for_the_client() -> None:
-    # The rules the client applies ride on /api/config, both a whole-category rule
-    # and a targeted one, in order, with the target left None when absent.
-    client = _muted_client(
-        MuteRule(category="brew-outdated"),
-        MuteRule(category="dirty-tree", target="~/dev/acme/web"),
-    )
+def test_view_carries_the_mute_rules_for_the_client(tmp_path: Path) -> None:
+    # The rules the client applies ride on /api/view now, not /api/config, both a
+    # whole-category rule and a targeted one, in order, with the target left None
+    # when absent.
+    client = _muted_client(tmp_path)
 
-    view = client.get("/api/config").json()
+    view = client.get("/api/view").json()
 
-    assert view["mute"]["source"] == "default"
-    assert view["mute"]["rules"] == [
+    assert view["mute"] == [
         {"category": "brew-outdated", "target": None},
         {"category": "dirty-tree", "target": "~/dev/acme/web"},
     ]
