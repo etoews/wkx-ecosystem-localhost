@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Collection, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 from wkx_ecosystem_localhost.collectors.claude import collect_claude
 from wkx_ecosystem_localhost.collectors.docker import collect_docker
@@ -88,6 +89,189 @@ CATEGORIES: frozenset[str] = frozenset(
         "view-unknown-key",
     }
 )
+
+
+# The board's tables and their columns: the catalogue a [columns_hidden], [sort],
+# or [filter] override in the View validates against (M13), the sibling of the Flag
+# CATEGORIES above. Each table has a stable kebab-case id, belongs to one Section,
+# and lists its columns as kebab-case keys; a column is either hideable or locked.
+# The name column (the row's identity) and the Flags rail are locked on every
+# table, so every row stays identifiable and its Flags visible; a table whose
+# columns are all locked still carries a (no-op) menu, for consistency. Tables that
+# share one on-screen column spec share one id here — the four toolchains subtables
+# under ``toolchains`` and the two Claude skills tables under ``claude-skills`` — so
+# their columns stay aligned. The client's TABLE_COLUMNS map in app.js must list
+# exactly these ids and keys (a test cross-checks them, the way CATEGORY_LABEL is
+# cross-checked against CATEGORIES).
+
+
+class TableColumn(NamedTuple):
+    """One column of a board table: its kebab-case key and whether it is locked.
+
+    A locked column (the name column and the Flags rail) can never be Hidden, so
+    the columns menu shows it fixed and a ``[columns_hidden]`` override that names
+    it is refused as a not-hideable key.
+    """
+
+    key: str
+    locked: bool
+
+
+class BoardTable(NamedTuple):
+    """One board table: the Section it lives in and its columns, in board order."""
+
+    section: str
+    columns: tuple[TableColumn, ...]
+
+
+def _cols(*specs: tuple[str, bool]) -> tuple[TableColumn, ...]:
+    """Build a column tuple from ``(key, locked)`` pairs."""
+    return tuple(TableColumn(key=key, locked=locked) for key, locked in specs)
+
+
+# The catalogue: table id -> its Section and columns. ``_L`` marks a locked column
+# (the identity column and the Flags rail); everything else (``_H``) is hideable.
+_L = True
+_H = False
+TABLES: dict[str, BoardTable] = {
+    "workspace": BoardTable(
+        section="workspace",
+        columns=_cols(
+            ("repo", _L),
+            ("branch", _H),
+            ("upstream", _H),
+            ("ahead", _H),
+            ("behind", _H),
+            ("working-tree", _H),
+            ("stash", _H),
+            ("roadmap", _H),
+            ("flags", _L),
+        ),
+    ),
+    "toolchains": BoardTable(
+        section="toolchains",
+        columns=_cols(
+            ("name", _L),
+            ("version", _H),
+            ("detail", _H),
+            ("state", _H),
+            ("flags", _L),
+        ),
+    ),
+    "claude-plugins": BoardTable(
+        section="claude",
+        columns=_cols(
+            ("plugin", _L),
+            ("marketplace", _H),
+            ("repo", _H),
+            ("version", _H),
+            ("state", _H),
+            ("skills", _H),
+            ("flags", _L),
+        ),
+    ),
+    "claude-skills": BoardTable(
+        section="claude",
+        columns=_cols(
+            ("skill", _L),
+            ("origin", _H),
+            ("state", _H),
+            ("description", _H),
+            ("flags", _L),
+        ),
+    ),
+    "claude-mcp": BoardTable(
+        section="claude",
+        columns=_cols(
+            ("server", _L),
+            ("origin", _H),
+            ("transport", _H),
+            ("auth", _H),
+            ("flags", _L),
+        ),
+    ),
+    "system-tools": BoardTable(
+        section="system",
+        columns=_cols(("tool", _L), ("version", _H), ("flags", _L)),
+    ),
+    "homebrew-packages": BoardTable(
+        section="homebrew",
+        columns=_cols(
+            ("package", _L),
+            ("installed", _H),
+            ("current", _H),
+            ("flags", _L),
+        ),
+    ),
+    "footprint": BoardTable(
+        section="footprint",
+        columns=_cols(
+            ("repo", _L),
+            ("venv", _H),
+            ("node-modules", _H),
+            ("total", _H),
+            ("flags", _L),
+        ),
+    ),
+    "editor-extensions": BoardTable(
+        section="editor",
+        columns=_cols(("extension", _L), ("version", _H), ("flags", _L)),
+    ),
+    "git-config-keys": BoardTable(
+        section="git-config",
+        columns=_cols(("key", _L), ("value", _H), ("origin", _H), ("flags", _L)),
+    ),
+    "git-config-includes": BoardTable(
+        section="git-config",
+        columns=_cols(
+            ("condition", _H),
+            ("path", _L),
+            ("state", _H),
+            ("flags", _L),
+        ),
+    ),
+    "config-settings": BoardTable(
+        section="config",
+        columns=_cols(("setting", _L), ("value", _H), ("source", _H), ("flags", _L)),
+    ),
+    "config-excludes": BoardTable(
+        section="config",
+        columns=_cols(("exclude-glob", _L), ("flags", _L)),
+    ),
+    "config-tools": BoardTable(
+        section="config",
+        columns=_cols(("tool", _L), ("version-probe", _H), ("flags", _L)),
+    ),
+    "config-off": BoardTable(
+        section="config",
+        columns=_cols(("section", _L), ("flags", _L)),
+    ),
+    "config-mutes": BoardTable(
+        section="config",
+        columns=_cols(("category", _L), ("target", _H), ("flags", _L)),
+    ),
+}
+
+# The Section ids a [filter] override may name: exactly the Sections that own at
+# least one table (docker is tiles-only, so nothing there is filterable).
+FILTERABLE_SECTIONS: frozenset[str] = frozenset(table.section for table in TABLES.values())
+
+# The two sort directions a [sort] override may carry.
+SORT_DIRECTIONS: frozenset[str] = frozenset({"ascending", "descending"})
+
+
+def column_keys(table_id: str) -> tuple[str, ...]:
+    """Every column key of one table, or an empty tuple when the id is unknown."""
+    table = TABLES.get(table_id)
+    return tuple(column.key for column in table.columns) if table else ()
+
+
+def hideable_keys(table_id: str) -> frozenset[str]:
+    """The column keys a ``[columns_hidden]`` override may name (the unlocked ones)."""
+    table = TABLES.get(table_id)
+    if not table:
+        return frozenset()
+    return frozenset(column.key for column in table.columns if not column.locked)
 
 
 def derive_flags(

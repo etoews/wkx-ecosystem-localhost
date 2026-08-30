@@ -25,9 +25,9 @@ import logging
 import os
 import tempfile
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import tomlkit
 from pydantic import BaseModel, ConfigDict
@@ -86,6 +86,35 @@ def _known_categories() -> frozenset[str]:
     return CATEGORIES
 
 
+def _catalogue() -> _Catalogue:
+    """The board's table catalogue, imported lazily to avoid an import cycle.
+
+    ``flags`` imports ``config``; importing the table catalogue here at module load
+    would risk the same cycle ``_known_categories`` avoids, so it is read on demand.
+    Returns the pieces the View validators and serialiser need: the table map, the
+    filterable Section ids, the two sort directions, and the two key helpers.
+    """
+    from wkx_ecosystem_localhost.collectors import flags
+
+    return _Catalogue(
+        tables=frozenset(flags.TABLES),
+        sections=flags.FILTERABLE_SECTIONS,
+        directions=flags.SORT_DIRECTIONS,
+        column_keys=flags.column_keys,
+        hideable_keys=flags.hideable_keys,
+    )
+
+
+class _Catalogue(NamedTuple):
+    """A lazy read of the table catalogue: the sets and helpers a View write needs."""
+
+    tables: frozenset[str]
+    sections: frozenset[str]
+    directions: frozenset[str]
+    column_keys: Callable[[str], tuple[str, ...]]
+    hideable_keys: Callable[[str], frozenset[str]]
+
+
 class MuteRule(BaseModel):
     """One Mute: a Flag Category to drop from the badges and the Needs attention tally.
 
@@ -105,19 +134,41 @@ class MuteRule(BaseModel):
     target: str | None = None
 
 
+class SortRule(BaseModel):
+    """One table's sort: the column key sorted on and the direction.
+
+    ``direction`` is ``ascending`` or ``descending``; the third sort state
+    (unsorted, source order) is the absence of a rule, so it is never stored. A rule
+    that names a column the table's catalogue does not know is dropped-and-warned
+    when the View is read, so the board never fails on a file it wrote itself.
+
+    ``extra="forbid"`` so a misspelt key is caught rather than silently ignored.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str
+    direction: Literal["ascending", "descending"]
+
+
 class View(BaseModel):
     """The effective View: the operator's overrides, defaults omitted.
 
     ``theme`` is ``light`` or ``dark``, or None for auto (the system preference).
     ``sections_hidden`` and ``sections_collapsed`` are panel ids (a Section value or
-    ``summary``). ``mute`` is the Mute rules. Every field holds overrides only, so
-    an empty View is a board at its defaults.
+    ``summary``). ``mute`` is the Mute rules. ``filter`` maps a Section id to its
+    Filter text; ``columns_hidden`` maps a table id to its Hidden column keys;
+    ``sort`` maps a table id to its SortRule (M13). Every field holds overrides
+    only, so an empty View is a board at its defaults.
     """
 
     theme: Literal["light", "dark"] | None = None
     sections_hidden: list[str] = []
     sections_collapsed: list[str] = []
     mute: list[MuteRule] = []
+    filter: dict[str, str] = {}
+    columns_hidden: dict[str, list[str]] = {}
+    sort: dict[str, SortRule] = {}
 
 
 class ViewState(BaseModel):
@@ -152,6 +203,9 @@ class ViewPayload(BaseModel):
     sections_hidden: list[str]
     sections_collapsed: list[str]
     mute: list[MuteRule]
+    filter: dict[str, str]
+    columns_hidden: dict[str, list[str]]
+    sort: dict[str, SortRule]
     file: str | None
     found: bool
     writable: bool
@@ -165,6 +219,9 @@ def payload_of(state: ViewState) -> ViewPayload:
         sections_hidden=state.view.sections_hidden,
         sections_collapsed=state.view.sections_collapsed,
         mute=state.view.mute,
+        filter=state.view.filter,
+        columns_hidden=state.view.columns_hidden,
+        sort=state.view.sort,
         file=state.file,
         found=state.found,
         writable=state.writable,
@@ -192,7 +249,46 @@ class SectionPreference(BaseModel):
     on: bool
 
 
-Preference = ThemePreference | SectionPreference
+class FilterPreference(BaseModel):
+    """A validated Filter change for one Section.
+
+    ``section`` is a filterable Section id (validated against the catalogue);
+    ``text`` is the Filter, or the empty string to clear it (removing the override).
+    """
+
+    section: str
+    text: str
+
+
+class ColumnHiddenPreference(BaseModel):
+    """A validated Hidden-column change for one table.
+
+    ``table`` is a table id and ``column`` a hideable (unlocked) column key of it,
+    both validated against the catalogue; ``on`` Hides the column when True and
+    shows it when False (removing the override).
+    """
+
+    table: str
+    column: str
+    on: bool
+
+
+class SortPreference(BaseModel):
+    """A validated sort change for one table.
+
+    ``table`` is a table id and ``column`` a column key of it; ``direction`` is
+    ``ascending``/``descending``, or None for the third state (unsorted, source
+    order), which removes the override.
+    """
+
+    table: str
+    column: str
+    direction: Literal["ascending", "descending"] | None
+
+
+Preference = (
+    ThemePreference | SectionPreference | FilterPreference | ColumnHiddenPreference | SortPreference
+)
 
 
 def resolve_view_file(
@@ -256,6 +352,12 @@ def parse_preference(body: object) -> Preference:
         return _section_preference("sections_hidden", body)
     if field == "sections_collapsed":
         return _section_preference("sections_collapsed", body)
+    if field == "filter":
+        return _filter_preference(body)
+    if field == "columns_hidden":
+        return _columns_hidden_preference(body)
+    if field == "sort":
+        return _sort_preference(body)
     raise InvalidPreference(f"unknown preference field: {field!r}")
 
 
@@ -270,6 +372,61 @@ def _section_preference(
     if not isinstance(on, bool):
         raise InvalidPreference("'on' must be a boolean")
     return SectionPreference(field=field, panel=panel, on=on)
+
+
+def _filter_preference(body: Mapping[Any, object]) -> FilterPreference:
+    """Validate one Filter PATCH body against the filterable Sections."""
+    section = body.get("section")
+    text = body.get("text")
+    if not isinstance(section, str) or section not in _catalogue().sections:
+        raise InvalidPreference(f"unknown filterable Section id: {section!r}")
+    if not isinstance(text, str):
+        raise InvalidPreference("'text' must be a string")
+    return FilterPreference(section=section, text=text)
+
+
+def _columns_hidden_preference(body: Mapping[Any, object]) -> ColumnHiddenPreference:
+    """Validate one Hidden-column PATCH body against the table catalogue.
+
+    The table id must be known and the column key must be a hideable (unlocked)
+    column of it; naming the name column or the Flags rail is refused, so a locked
+    column can never be written Hidden.
+    """
+    catalogue = _catalogue()
+    table = body.get("table")
+    column = body.get("column")
+    on = body.get("on")
+    if not isinstance(table, str) or table not in catalogue.tables:
+        raise InvalidPreference(f"unknown table id: {table!r}")
+    if not isinstance(column, str) or column not in catalogue.hideable_keys(table):
+        raise InvalidPreference(f"column {column!r} is not a hideable column of {table!r}")
+    if not isinstance(on, bool):
+        raise InvalidPreference("'on' must be a boolean")
+    return ColumnHiddenPreference(table=table, column=column, on=on)
+
+
+def _sort_preference(body: Mapping[Any, object]) -> SortPreference:
+    """Validate one sort PATCH body against the table catalogue.
+
+    The table id must be known and the column key a column of it (a locked column is
+    still sortable). ``direction`` is ``ascending``/``descending``, or None to clear
+    the sort (the third, source-order state).
+    """
+    catalogue = _catalogue()
+    table = body.get("table")
+    column = body.get("column")
+    direction = body.get("direction")
+    if not isinstance(table, str) or table not in catalogue.tables:
+        raise InvalidPreference(f"unknown table id: {table!r}")
+    if not isinstance(column, str) or column not in catalogue.column_keys(table):
+        raise InvalidPreference(f"unknown column key for {table!r}: {column!r}")
+    if direction is None:
+        return SortPreference(table=table, column=column, direction=None)
+    if direction == "ascending":
+        return SortPreference(table=table, column=column, direction="ascending")
+    if direction == "descending":
+        return SortPreference(table=table, column=column, direction="descending")
+    raise InvalidPreference(f"unknown sort direction: {direction!r}")
 
 
 def merge(current: View, preference: Preference) -> View:
@@ -290,6 +447,39 @@ def merge(current: View, preference: Preference) -> View:
     data = current.model_dump()
     if isinstance(preference, ThemePreference):
         data["theme"] = preference.theme
+        return View.model_validate(data)
+    if isinstance(preference, FilterPreference):
+        filters: dict[str, str] = dict(data["filter"])
+        if preference.text:
+            filters[preference.section] = preference.text
+        else:
+            filters.pop(preference.section, None)
+        data["filter"] = filters
+        return View.model_validate(data)
+    if isinstance(preference, ColumnHiddenPreference):
+        hidden: dict[str, list[str]] = {k: list(v) for k, v in data["columns_hidden"].items()}
+        keys = hidden.get(preference.table, [])
+        if preference.on:
+            if preference.column not in keys:
+                keys.append(preference.column)
+        else:
+            keys = [key for key in keys if key != preference.column]
+        if keys:
+            hidden[preference.table] = keys
+        else:
+            hidden.pop(preference.table, None)
+        data["columns_hidden"] = hidden
+        return View.model_validate(data)
+    if isinstance(preference, SortPreference):
+        sorts: dict[str, object] = dict(data["sort"])
+        if preference.direction is None:
+            sorts.pop(preference.table, None)
+        else:
+            sorts[preference.table] = {
+                "column": preference.column,
+                "direction": preference.direction,
+            }
+        data["sort"] = sorts
         return View.model_validate(data)
     panels: list[str] = list(data[preference.field])
     if preference.on:
@@ -358,11 +548,68 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
             continue
         mute.append(rule)
 
+    catalogue = _catalogue()
+
+    def _known_filter() -> dict[str, str]:
+        raw = data.get("filter")
+        kept: dict[str, str] = {}
+        for section, text in raw.items() if isinstance(raw, Mapping) else []:
+            if section in catalogue.sections and isinstance(text, str):
+                kept[str(section)] = text
+            else:
+                unknown.append(f"filter: {section!r}")
+                logger.warning("dropping unknown View filter Section: %r", section)
+        return kept
+
+    def _known_columns_hidden() -> dict[str, list[str]]:
+        raw = data.get("columns_hidden")
+        kept: dict[str, list[str]] = {}
+        for table, keys in raw.items() if isinstance(raw, Mapping) else []:
+            if table not in catalogue.tables:
+                unknown.append(f"columns_hidden: {table!r}")
+                logger.warning("dropping unknown View columns_hidden table: %r", table)
+                continue
+            hideable = catalogue.hideable_keys(str(table))
+            ordered: list[str] = []
+            for key in keys if isinstance(keys, list) else []:
+                if isinstance(key, str) and key in hideable:
+                    if key not in ordered:
+                        ordered.append(key)
+                else:
+                    unknown.append(f"columns_hidden {table!r}: {key!r}")
+                    logger.warning("dropping unknown Hidden column in %r: %r", table, key)
+            if ordered:
+                kept[str(table)] = ordered
+        return kept
+
+    def _known_sort() -> dict[str, SortRule]:
+        raw = data.get("sort")
+        kept: dict[str, SortRule] = {}
+        for table, rule in raw.items() if isinstance(raw, Mapping) else []:
+            if table not in catalogue.tables or not isinstance(rule, Mapping):
+                unknown.append(f"sort: {table!r}")
+                logger.warning("dropping unknown View sort table: %r", table)
+                continue
+            column = rule.get("column")
+            if column not in catalogue.column_keys(str(table)):
+                unknown.append(f"sort {table!r}: {column!r}")
+                logger.warning("dropping View sort on unknown column in %r: %r", table, column)
+                continue
+            try:
+                kept[str(table)] = SortRule.model_validate(dict(rule))
+            except ValueError:
+                unknown.append(f"sort rule {table!r}: {dict(rule)!r}")
+                logger.warning("dropping malformed View sort rule for %r: %r", table, dict(rule))
+        return kept
+
     view = View(
         theme=theme,
         sections_hidden=_known_panels("sections_hidden"),
         sections_collapsed=_known_panels("sections_collapsed"),
         mute=mute,
+        filter=_known_filter(),
+        columns_hidden=_known_columns_hidden(),
+        sort=_known_sort(),
     )
     return view, unknown
 
@@ -450,6 +697,24 @@ def _document(view: View) -> tomlkit.TOMLDocument:
                 table["target"] = rule.target
             rules.append(table)
         doc["mute"] = rules
+    if view.filter:
+        filter_table = tomlkit.table()
+        for section, text in view.filter.items():
+            filter_table[section] = text
+        doc["filter"] = filter_table
+    if view.columns_hidden:
+        hidden_table = tomlkit.table()
+        for table_id, keys in view.columns_hidden.items():
+            hidden_table[table_id] = keys
+        doc["columns_hidden"] = hidden_table
+    if view.sort:
+        sort_table = tomlkit.table()
+        for table_id, rule in view.sort.items():
+            entry = tomlkit.table()
+            entry["column"] = rule.column
+            entry["direction"] = rule.direction
+            sort_table[table_id] = entry
+        doc["sort"] = sort_table
     return doc
 
 

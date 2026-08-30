@@ -537,6 +537,9 @@ def create_app(
         result.sections_hidden = merged.sections_hidden
         result.sections_collapsed = merged.sections_collapsed
         result.mute = merged.mute
+        result.filter = merged.filter
+        result.columns_hidden = merged.columns_hidden
+        result.sort = merged.sort
         app.state.view_broadcaster.publish(sse.pack_event("view", result))
         return JSONResponse(result.model_dump())
 
