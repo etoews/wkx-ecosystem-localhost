@@ -15,7 +15,13 @@ from uvicorn.supervisors import ChangeReload
 
 from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings, check_environment, resolve_config_file
+from wkx_ecosystem_localhost.config import (
+    Settings,
+    check_configuration,
+    check_environment,
+    resolve_config_file,
+)
+from wkx_ecosystem_localhost.view import resolve_view_file
 
 # Deliberately not configurable: the board is loopback-only as a security
 # property. It inventories the machine, so nothing on the network may see it.
@@ -152,8 +158,10 @@ def serve(
 ) -> None:
     """Serve the board on loopback."""
     check_environment()
-    settings = Settings()
     config_file = resolve_config_file(os.environ)
+    check_configuration(config_file)
+    settings = Settings()
+    view_file = resolve_view_file(os.environ)
     bind_port = port if port is not None else settings.port
     url = f"http://{_HOST}:{bind_port}/"
     if open_browser:
@@ -179,7 +187,12 @@ def serve(
         _run_reloader(config, config_file)
     else:
         uvicorn.run(
-            create_app(settings, config_file=config_file),
+            create_app(
+                settings,
+                config_file=config_file,
+                view_file=view_file,
+                bound_port=bind_port,
+            ),
             host=_HOST,
             port=bind_port,
             log_config=None,

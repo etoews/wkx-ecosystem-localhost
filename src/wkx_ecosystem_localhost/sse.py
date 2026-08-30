@@ -24,6 +24,27 @@ def pack(event: BaseModel) -> str:
     return f"data: {event.model_dump_json()}\n\n"
 
 
+def pack_event(name: str, event: BaseModel) -> str:
+    """Frame one streamed result as a named SSE event, for a client listener.
+
+    The default message the browser dispatches on the unnamed ``message`` event is
+    fine for a single-purpose stream, but a stream that carries more than one kind
+    of update names each so the board can listen for the one it wants. The View
+    convergence stream uses this to push a ``view`` event that every open tab
+    applies (ADR 0004).
+    """
+    return f"event: {name}\ndata: {event.model_dump_json()}\n\n"
+
+
+def comment(text: str) -> str:
+    """Frame an SSE comment line, used as a keep-alive that no listener sees.
+
+    A colon-led line is ignored by the browser's ``EventSource`` but keeps the
+    connection warm and flushes the response so the stream opens promptly.
+    """
+    return f": {text}\n\n"
+
+
 def done() -> str:
     """Frame the terminal event so the client closes rather than reconnecting.
 

@@ -1,13 +1,14 @@
 """FastAPI application factory serving the board shell and the JSON API."""
 
+import asyncio
 import logging
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import TypeVar
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
@@ -34,9 +35,15 @@ from wkx_ecosystem_localhost.collectors.workspace import DiscoveryCache, collect
 from wkx_ecosystem_localhost.config import (
     ConfigView,
     Settings,
+    check_configuration,
     check_environment,
     describe,
     resolve_config_file,
+)
+from wkx_ecosystem_localhost.exceptions import (
+    InvalidPreference,
+    ViewParseError,
+    ViewWriteError,
 )
 from wkx_ecosystem_localhost.machine import Machine, RealMachine
 from wkx_ecosystem_localhost.models import (
@@ -52,6 +59,15 @@ from wkx_ecosystem_localhost.models import (
     SystemToolsSection,
     ToolchainsSection,
     WorkspaceSection,
+)
+from wkx_ecosystem_localhost.view import (
+    Preference,
+    ViewPayload,
+    apply_preference,
+    parse_preference,
+    payload_of,
+    read_view,
+    resolve_view_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,12 +94,92 @@ class _NoCacheStaticFiles(StaticFiles):
         return response
 
 
+class ViewBroadcaster:
+    """Fans a View change out to every open tab over the convergence SSE stream.
+
+    A successful write publishes the effective View here, and each tab's open
+    ``/api/view/stream`` connection receives it and applies it, so no tab holds a
+    stale View (ADR 0004). In-process only: the board is a single always-on
+    instance, so a bounded per-subscriber queue is all the coordination needed.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: set[asyncio.Queue[str]] = set()
+
+    def publish(self, frame: str) -> None:
+        """Hand one pre-framed SSE payload to every current subscriber, without blocking."""
+        for queue in list(self._subscribers):
+            queue.put_nowait(frame)
+
+    async def stream(self) -> AsyncIterator[str]:
+        """Yield SSE frames for one subscriber until its connection closes."""
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        self._subscribers.add(queue)
+        try:
+            yield sse.comment("view stream open")
+            while True:
+                yield await queue.get()
+        finally:
+            self._subscribers.discard(queue)
+
+
+def _loopback_hosts(port: int) -> frozenset[str]:
+    """The ``Host`` header values a same-origin write may carry on the bound port.
+
+    The board binds ``127.0.0.1`` on this port; a browser reaches it as
+    ``127.0.0.1``, ``localhost``, or the IPv6 loopback, always with the bound port.
+    A ``Host`` outside this set is a DNS-rebinding attempt and the write is refused.
+    """
+    return frozenset(f"{host}:{port}" for host in ("127.0.0.1", "localhost", "[::1]"))
+
+
+def write_is_allowed(
+    *,
+    content_type: str | None,
+    host: str | None,
+    origin: str | None,
+    sec_fetch_site: str | None,
+    allowed_hosts: frozenset[str],
+) -> bool:
+    """Decide whether a write request clears the loopback write guard (ADR 0004).
+
+    A write is accepted only with ``Content-Type: application/json``, a ``Host``
+    that is the bound loopback host and port, and either a same-origin ``Origin``,
+    a same-origin ``Sec-Fetch-Site``, or no ``Origin`` at all (a non-browser
+    client). Anything else — a foreign ``Origin``, a ``Host`` naming another name,
+    a form content type — is refused. The board is loopback-only, so this is
+    defence-in-depth against a page in the operator's own browser writing across
+    origins.
+
+    Args:
+        content_type: The request ``Content-Type``.
+        host: The request ``Host``.
+        origin: The request ``Origin``, or None when absent.
+        sec_fetch_site: The request ``Sec-Fetch-Site``, or None when absent.
+        allowed_hosts: The loopback host:port values a same-origin write may carry.
+
+    Returns:
+        True when the request may write, False when it must be refused.
+    """
+    if content_type is None or content_type.split(";")[0].strip() != "application/json":
+        return False
+    if host is None or host not in allowed_hosts:
+        return False
+    if origin is None:
+        return True  # a non-browser client (curl) sends no Origin
+    if origin in {f"http://{name}" for name in allowed_hosts}:
+        return True  # a same-origin browser request
+    return sec_fetch_site in ("same-origin", "none")
+
+
 def create_app(
     settings: Settings,
     *,
     machine: Machine | None = None,
     home: Path | None = None,
     config_file: Path | None = None,
+    view_file: Path | None = None,
+    bound_port: int | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -100,12 +196,24 @@ def create_app(
         config_file: The TOML the settings were read from, reported by
             ``/api/config``. Defaults to None (no file), so the suite never reads a
             real file; the entry point passes the resolved path in production.
+        view_file: The View file the board reads live and writes on change. Defaults
+            to None (no file), so the suite never touches a real file; the entry
+            point passes the resolved path, and a View test passes a tmp path.
+        bound_port: The port the board is bound on, used to build the write guard's
+            ``Host`` allow-list. Defaults to ``settings.port``.
     """
     app = FastAPI(title="WKX Ecosystem localhost")
     app.state.settings = settings
     app.state.machine = machine if machine is not None else RealMachine()
     app.state.home = home if home is not None else Path.home()
     app.state.config_file = config_file
+    app.state.view_file = view_file
+    # The Host header allow-list for the write guard: the loopback names on the bound
+    # port. A write whose Host is anything else is a DNS-rebinding attempt (ADR 0004).
+    guard_port = bound_port if bound_port is not None else settings.port
+    app.state.allowed_hosts = _loopback_hosts(guard_port)
+    # Fans a successful View write out to every open tab over the convergence stream.
+    app.state.view_broadcaster = ViewBroadcaster()
     # The footprint probe walks whole trees with ``du``, so its Section is computed
     # synchronously behind a short-lived cache rather than on every request.
     app.state.footprint_cache = TtlCache[FootprintSection](settings.footprint_cache_ttl)
@@ -372,11 +480,98 @@ def create_app(
             environ=os.environ,
         )
 
+    @app.get("/api/view")
+    def get_view() -> ViewPayload:
+        """The effective View, read live from the file on every request.
+
+        The board's own file (ADR 0004): the theme, the Hidden and Collapsed panels,
+        and the Mutes, plus whether the file is loaded, absent, or not writable, and
+        any key it named that the board does not know. A hand edit shows on the next
+        refresh with no restart, because the file is read here every time.
+        """
+        return payload_of(read_view(app.state.view_file, home=app.state.home))
+
+    @app.patch("/api/view")
+    async def patch_view(request: Request) -> Response:
+        """Merge one preference into the View file and return the effective View.
+
+        The board's first write route. It is guarded to loopback and the board's own
+        origin (``write_is_allowed``); it takes one preference per call, validates it
+        against the board's catalogue, merges it under a process-level lock, writes
+        the file atomically, and pushes the result to every open tab over the
+        convergence stream. A parse failure on disk or a write failure is refused and
+        surfaced, so the client can raise ``view-not-saved``; the board never
+        regenerates the file from memory.
+        """
+        if app.state.view_file is None:
+            return JSONResponse({"detail": "no View file is configured"}, status_code=503)
+        if not write_is_allowed(
+            content_type=request.headers.get("content-type"),
+            host=request.headers.get("host"),
+            origin=request.headers.get("origin"),
+            sec_fetch_site=request.headers.get("sec-fetch-site"),
+            allowed_hosts=app.state.allowed_hosts,
+        ):
+            return JSONResponse({"detail": "write refused"}, status_code=403)
+        try:
+            body = await request.json()
+        except ValueError:
+            return JSONResponse({"detail": "body is not valid JSON"}, status_code=400)
+        try:
+            preference: Preference = parse_preference(body)
+        except InvalidPreference as error:
+            return JSONResponse({"detail": str(error)}, status_code=422)
+        try:
+            merged = apply_preference(app.state.view_file, preference)
+        except ViewParseError as error:
+            logger.warning("refused a View write: %s", error)
+            return JSONResponse({"detail": str(error)}, status_code=409)
+        except ViewWriteError as error:
+            logger.error("a View write failed: %s", error)
+            return JSONResponse({"detail": str(error)}, status_code=500)
+        result = payload_of(read_view(app.state.view_file, home=app.state.home))
+        # Merge is the source of truth for the effective View; re-reading only adds
+        # the file metadata. Keep the just-merged fields so a concurrent hand edit
+        # cannot make the response disagree with what this write set.
+        result.theme = merged.theme
+        result.sections_hidden = merged.sections_hidden
+        result.sections_collapsed = merged.sections_collapsed
+        result.mute = merged.mute
+        app.state.view_broadcaster.publish(sse.pack_event("view", result))
+        return JSONResponse(result.model_dump())
+
+    @app.get("/api/view/stream")
+    async def view_stream() -> StreamingResponse:
+        """Push a ``view`` event to this tab whenever any tab writes the View.
+
+        The convergence stream (ADR 0004): every open board holds one of these, so a
+        write in one tab reaches all of them and none keeps a stale View. It is a
+        long-lived Server-Sent Events stream that never sends ``done``; the browser's
+        ``EventSource`` keeps it open and reconnects if it drops.
+        """
+        return StreamingResponse(
+            app.state.view_broadcaster.stream(),
+            media_type=sse.EVENT_STREAM,
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     app.mount("/static", _NoCacheStaticFiles(directory=_STATIC), name="static")
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
-        return FileResponse(_STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+    def index() -> Response:
+        """Serve the board shell, stamping the View's theme onto ``<html>``.
+
+        The theme is read from the View and written into the ``data-theme`` attribute
+        of the served HTML, so a board with a saved theme paints in it from the first
+        frame rather than flashing the system theme and then switching (ADR 0004). An
+        auto theme leaves the attribute off, so ``prefers-color-scheme`` decides.
+        """
+        theme = read_view(app.state.view_file, home=app.state.home).view.theme
+        html = (_STATIC / "index.html").read_text(encoding="utf-8")
+        if theme is not None:
+            stamped = f'<html lang="en-NZ" data-theme="{theme}">'
+            html = html.replace('<html lang="en-NZ">', stamped, 1)
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
     logger.debug("app created with %d scan root(s)", len(settings.scan_roots))
     return app
@@ -402,4 +597,6 @@ def create_app_from_env() -> FastAPI:
     configure_logging()
     check_environment()
     config_file = resolve_config_file(os.environ)
-    return create_app(Settings(), config_file=config_file)
+    check_configuration(config_file)
+    view_file = resolve_view_file(os.environ)
+    return create_app(Settings(), config_file=config_file, view_file=view_file)
