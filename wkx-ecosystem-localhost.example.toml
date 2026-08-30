@@ -18,7 +18,8 @@
 #
 # The View is a separate file. Configuration is what you set and the board reads
 # once at startup; the View is how you arrange the board (the theme, the Hidden and
-# Collapsed panels, and the Mutes). The board keeps the View in its own file,
+# Collapsed panels, each Section's Filter, each table's Hidden columns and sort, and
+# the Mutes). The board keeps the View in its own file,
 # wkx-ecosystem-localhost.view.toml, and writes it as you change the board. You do
 # not edit the View file by hand. To read it from another path, set the env-only
 # WKX_ECO_LOCAL_VIEW_FILE.

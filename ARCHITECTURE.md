@@ -28,7 +28,8 @@ flashes. Colour is reserved for the Flag layer. Neutral facts are told apart by
 weight, a muted tone, and a label, never by hue.
 
 A viewer's preferences live in the View file, not the browser. The View is the
-theme, which panels are Hidden or Collapsed, and the Mutes; the board keeps it in
+theme, which panels are Hidden or Collapsed, each Section's Filter, each table's
+Hidden columns and sort, and the Mutes; the board keeps it in
 `wkx-ecosystem-localhost.view.toml` beside the configuration, writes it as the
 viewer changes the board, and reads it live on every request (ADR 0004). One
 client module, `wkxView`, owns this: on load it reads `GET /api/view`, writes each

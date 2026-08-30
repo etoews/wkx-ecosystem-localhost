@@ -11,8 +11,13 @@ glossary; [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together.
 
 ## The board
 
-Each Section leads with a row of stat tiles and a table beneath; every table sorts
-on any column. Click a Section heading to collapse the Section to its heading. The
+Each Section leads with a row of stat tiles and a table beneath. Three controls
+shape how a table reads. A Filter keeps only the rows that hold the text and marks
+the match; click the ⌕ button on a Section heading to show it, and one Filter
+narrows every table in the Section. A columns menu above each table hides a column;
+the name column and the Flags rail stay. A header click sorts the column up, then
+down, then back to source order. The board keeps all three in the View. Click a
+Section heading to collapse the Section to its heading. The
 collapsed heading shows the Section count and its Flag tally. Click the heading
 again to expand the Section. The Section stays on the board while it is collapsed,
 so its Flags still count.
@@ -138,7 +143,8 @@ diverges from `standards/python/standards/configuration.md`, which keeps both in
 ### The View
 
 Configuration is what you set; the View is how you arrange the board. The View is
-the theme, which panels are Hidden or Collapsed, and the Mutes. The board keeps
+the theme, which panels are Hidden or Collapsed, each Section's Filter, each
+table's Hidden columns and sort, and the Mutes. The board keeps
 the View in its own file, `wkx-ecosystem-localhost.view.toml`, beside the
 configuration. This is the one file the board writes: it writes the View as you
 change the board, and reads it on every request, so a hand edit shows on the next

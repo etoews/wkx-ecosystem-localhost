@@ -468,8 +468,9 @@ window.wkxUI = (function () {
   function cycleSort(table, index, th) {
     const dir = nextDir(th.getAttribute("aria-sort"));
     applySort(table, index, th, dir);
-    if (window.wkxTables)
-      window.wkxTables.persistSort(table, dir ? { key: th.dataset.col, dir: dir } : null);
+    // Persist the clicked column even when the new state is unsorted (dir null): the
+    // write route names the column and reads a null direction as "clear this sort".
+    if (window.wkxTables) window.wkxTables.persistSort(table, th.dataset.col, dir);
   }
 
   // Apply a saved sort by column key, for wkxTables to replay the View on load. A
@@ -1757,10 +1758,11 @@ window.wkxTables = (function () {
   }
 
   // Persist a sort a header click produced. Called by wkxUI.makeSortable for any
-  // table that carries a table id. A null rule is the unsorted, source-order state.
-  function persistSort(table, rule) {
+  // table that carries a table id. A null direction clears the sort (source order);
+  // the column is still named so the write route accepts the clear.
+  function persistSort(table, column, direction) {
     if (!V || !table.dataset.tableId) return;
-    V.setSort(table.dataset.tableId, rule ? rule.key : null, rule ? rule.dir : null);
+    V.setSort(table.dataset.tableId, column, direction || null);
   }
 
   // Re-apply the Hidden columns and the sort whenever the View changes here or in
@@ -1882,6 +1884,10 @@ window.wkxFilter = (function () {
     let shown = 0;
     let total = 0;
     reg.tables.forEach(function (table) {
+      if (!table.isConnected) {
+        reg.tables.delete(table); // a re-rendered Section left a stale table behind
+        return;
+      }
       const tbody = table.tBodies[0];
       if (!tbody) return;
       const hiddenCols = new Set(V ? V.columnsHiddenFor(table.dataset.tableId) : []);
