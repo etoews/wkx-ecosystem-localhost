@@ -31,6 +31,9 @@ window.wkxView = (function () {
     sections_hidden: [],
     sections_collapsed: [],
     mute: [],
+    filter: {},
+    columns_hidden: {},
+    sort: {},
     file: null,
     found: false,
     writable: true,
@@ -65,6 +68,17 @@ window.wkxView = (function () {
   }
   function isCollapsed(id) {
     return (current.sections_collapsed || []).indexOf(id) >= 0;
+  }
+  // The three M13 table overrides, read by wkxTables and wkxFilter. Each returns a
+  // safe default (empty text, empty list, no rule) when the View names no override.
+  function filterFor(sectionId) {
+    return (current.filter || {})[sectionId] || "";
+  }
+  function columnsHiddenFor(tableId) {
+    return (current.columns_hidden || {})[tableId] || [];
+  }
+  function sortFor(tableId) {
+    return (current.sort || {})[tableId] || null;
   }
   function fileState() {
     return {
@@ -139,6 +153,15 @@ window.wkxView = (function () {
   }
   function setCollapsed(id, on) {
     return patch({ field: "sections_collapsed", panel: id, on: !!on });
+  }
+  function setFilter(sectionId, text) {
+    return patch({ field: "filter", section: sectionId, text: text || "" });
+  }
+  function setColumnHidden(tableId, column, on) {
+    return patch({ field: "columns_hidden", table: tableId, column: column, on: !!on });
+  }
+  function setSort(tableId, column, direction) {
+    return patch({ field: "sort", table: tableId, column: column, direction: direction || null });
   }
 
   function refresh() {
@@ -249,10 +272,16 @@ window.wkxView = (function () {
     mute: mute,
     isHidden: isHidden,
     isCollapsed: isCollapsed,
+    filterFor: filterFor,
+    columnsHiddenFor: columnsHiddenFor,
+    sortFor: sortFor,
     fileState: fileState,
     setTheme: setTheme,
     setHidden: setHidden,
     setCollapsed: setCollapsed,
+    setFilter: setFilter,
+    setColumnHidden: setColumnHidden,
+    setSort: setSort,
     onChange: function (fn) {
       listeners.push(fn);
     },
@@ -348,7 +377,32 @@ window.wkxUI = (function () {
 
   const NON_NUMERIC = /^(—|···|…|)$/;
 
-  function sortTable(table, index, th) {
+  // Sorting has three states (M13): a header click goes ascending, descending, then
+  // unsorted — the table back in source order. Source order is the row order at the
+  // first sort, snapshotted once so the third click can restore it exactly.
+  function ensureSnapshot(table) {
+    const tbody = table.tBodies[0];
+    if (tbody && !table.__srcOrder) table.__srcOrder = Array.prototype.slice.call(tbody.rows);
+  }
+
+  function restoreSource(table) {
+    const tbody = table.tBodies[0];
+    if (!tbody || !table.__srcOrder) return;
+    const frag = document.createDocumentFragment();
+    table.__srcOrder.forEach(function (row) {
+      if (row.parentNode === tbody) frag.appendChild(row);
+    });
+    tbody.appendChild(frag);
+  }
+
+  function clearHeads(table) {
+    Array.prototype.forEach.call(table.tHead.rows[0].cells, function (head) {
+      head.removeAttribute("aria-sort");
+      head.classList.remove("sort-asc", "sort-desc");
+    });
+  }
+
+  function reorder(table, index, dir) {
     const tbody = table.tBodies[0];
     if (!tbody) return;
     const groups = groupsOf(tbody);
@@ -362,16 +416,7 @@ window.wkxUI = (function () {
       values.every(function (v) {
         return NON_NUMERIC.test(v) || !isNaN(parseFloat(v));
       });
-
-    const dir = th.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
-    Array.prototype.forEach.call(table.tHead.rows[0].cells, function (head) {
-      head.removeAttribute("aria-sort");
-      head.classList.remove("sort-asc", "sort-desc");
-    });
-    th.setAttribute("aria-sort", dir);
-    th.classList.add(dir === "ascending" ? "sort-asc" : "sort-desc");
     const sign = dir === "ascending" ? 1 : -1;
-
     groups.sort(function (a, b) {
       const va = sortValue(a, index);
       const vb = sortValue(b, index);
@@ -389,7 +434,6 @@ window.wkxUI = (function () {
       }
       return cmp * sign;
     });
-
     const frag = document.createDocumentFragment();
     groups.forEach(function (group) {
       group.forEach(function (row) {
@@ -397,6 +441,56 @@ window.wkxUI = (function () {
       });
     });
     tbody.appendChild(frag);
+  }
+
+  // Set the table to one sort state without persisting (the View is the source when
+  // this is called from a saved rule). A null direction is the unsorted state.
+  function applySort(table, index, th, dir) {
+    ensureSnapshot(table);
+    clearHeads(table);
+    if (!dir) {
+      restoreSource(table);
+      return;
+    }
+    th.setAttribute("aria-sort", dir);
+    th.classList.add(dir === "ascending" ? "sort-asc" : "sort-desc");
+    reorder(table, index, dir);
+  }
+
+  function nextDir(current) {
+    if (current === "ascending") return "descending";
+    if (current === "descending") return null;
+    return "ascending";
+  }
+
+  // A header click (or Enter/Space) cycles the state and persists it through the
+  // View when the table carries an id, so the sort survives a reload.
+  function cycleSort(table, index, th) {
+    const dir = nextDir(th.getAttribute("aria-sort"));
+    applySort(table, index, th, dir);
+    if (window.wkxTables)
+      window.wkxTables.persistSort(table, dir ? { key: th.dataset.col, dir: dir } : null);
+  }
+
+  // Apply a saved sort by column key, for wkxTables to replay the View on load. A
+  // null key or direction is the unsorted state.
+  function applySortByKey(table, key, dir) {
+    if (!key || !dir) {
+      applySort(table, -1, null, null);
+      return;
+    }
+    const heads = table.tHead && table.tHead.rows[0];
+    if (!heads) return;
+    let index = -1;
+    let target = null;
+    Array.prototype.forEach.call(heads.cells, function (head, i) {
+      if (head.dataset.col === key) {
+        index = i;
+        target = head;
+      }
+    });
+    if (index < 0) return;
+    applySort(table, index, target, dir);
   }
 
   function makeSortable(table) {
@@ -408,12 +502,12 @@ window.wkxUI = (function () {
       th.tabIndex = 0;
       th.title = "Sort by " + (th.textContent || "column").trim();
       th.addEventListener("click", function () {
-        sortTable(table, index, th);
+        cycleSort(table, index, th);
       });
       th.addEventListener("keydown", function (event) {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          sortTable(table, index, th);
+          cycleSort(table, index, th);
         }
       });
     });
@@ -558,6 +652,7 @@ window.wkxUI = (function () {
     el: el,
     append: append,
     table: table,
+    applySortByKey: applySortByKey,
     td: td,
     token: token,
     cellFlex: cellFlex,
@@ -1468,6 +1563,452 @@ window.wkxTokens = (function () {
   return { decorate: decorate };
 })();
 
+// ---------- tables: the columns menu and the three-state sort (M13) ----------
+// Every board table reads through three controls the View persists (ADR 0004): a
+// per-Section Filter (wkxFilter, below), a per-table columns menu, and a sort that
+// clears back to source order. This module owns the last two. A render builds its
+// table with wkxTables.mount(labelCols, id), appends its rows, then calls equip():
+// mount adds the slim `columns ▾` toolbar (the board's own `.disc` checklist) above
+// the table and tags the <table> with its id; equip stamps each cell with its
+// column key, applies the View's Hidden columns and sort, and registers the table
+// with its Section's Filter. Column hiding is a class on the <table>
+// (`hide-<key>`), never a display rule on a cell, so a td/th/tr never carries a
+// display-altering class (styles.css, tests/test_static_assets.py). Tables that
+// share one column spec share one id — the four toolchains subtables and the two
+// Claude skills tables — so a change to one aligns the others through the View.
+window.wkxTables = (function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const V = window.wkxView;
+
+  // The catalogue mirror: every table id maps to its column keys, in board order.
+  // A test pins this to the Python catalogue (flags.TABLES) the way CATEGORY_LABEL
+  // is pinned to CATEGORIES, so the client and the write-side validation agree.
+  const TABLE_COLUMNS = {
+    "workspace": ["repo", "branch", "upstream", "ahead", "behind", "working-tree", "stash", "roadmap", "flags"],
+    "toolchains": ["name", "version", "detail", "state", "flags"],
+    "claude-plugins": ["plugin", "marketplace", "repo", "version", "state", "skills", "flags"],
+    "claude-skills": ["skill", "origin", "state", "description", "flags"],
+    "claude-mcp": ["server", "origin", "transport", "auth", "flags"],
+    "system-tools": ["tool", "version", "flags"],
+    "homebrew-packages": ["package", "installed", "current", "flags"],
+    "footprint": ["repo", "venv", "node-modules", "total", "flags"],
+    "editor-extensions": ["extension", "version", "flags"],
+    "git-config-keys": ["key", "value", "origin", "flags"],
+    "git-config-includes": ["condition", "path", "state", "flags"],
+    "config-settings": ["setting", "value", "source", "flags"],
+    "config-excludes": ["exclude-glob", "flags"],
+    "config-tools": ["tool", "version-probe", "flags"],
+    "config-off": ["section", "flags"],
+    "config-mutes": ["category", "target", "flags"],
+  };
+
+  // The locked columns of each table: the name column (the row's identity) and the
+  // Flags rail. A locked column is shown fixed in the menu and can never be Hidden.
+  const LOCKED = {
+    "workspace": ["repo", "flags"],
+    "toolchains": ["name", "flags"],
+    "claude-plugins": ["plugin", "flags"],
+    "claude-skills": ["skill", "flags"],
+    "claude-mcp": ["server", "flags"],
+    "system-tools": ["tool", "flags"],
+    "homebrew-packages": ["package", "flags"],
+    "footprint": ["repo", "flags"],
+    "editor-extensions": ["extension", "flags"],
+    "git-config-keys": ["key", "flags"],
+    "git-config-includes": ["path", "flags"],
+    "config-settings": ["setting", "flags"],
+    "config-excludes": ["exclude-glob", "flags"],
+    "config-tools": ["tool", "flags"],
+    "config-off": ["section", "flags"],
+    "config-mutes": ["category", "flags"],
+  };
+
+  const registry = []; // { table, id, keys, locked } for every equipped table
+
+  function hiddenSet(id) {
+    return new Set(V ? V.columnsHiddenFor(id) : []);
+  }
+
+  // Reflect the View's Hidden columns onto one table: a `hide-<key>` class on the
+  // <table> for each Hidden column, and nothing on any cell.
+  function applyHidden(entry) {
+    const hidden = hiddenSet(entry.id);
+    entry.keys.forEach(function (key) {
+      if (entry.locked.indexOf(key) >= 0) return;
+      entry.table.classList.toggle("hide-" + key, hidden.has(key));
+    });
+    if (entry.boxes) {
+      entry.keys.forEach(function (key) {
+        const box = entry.boxes[key];
+        if (box && entry.locked.indexOf(key) < 0) box.checked = !hidden.has(key);
+      });
+    }
+  }
+
+  // Reflect the View's sort onto one table, without persisting (the View is already
+  // the source). An absent rule is the unsorted, source-order state.
+  function applySort(entry) {
+    const rule = V ? V.sortFor(entry.id) : null;
+    U.applySortByKey(entry.table, rule ? rule.column : null, rule ? rule.direction : null);
+  }
+
+  // Build the slim, right-aligned `columns ▾` toolbar above a table: the board's own
+  // `.disc` checklist, one row per column, locked columns shown fixed.
+  function buildToolbar(entry) {
+    const bar = U.el("div", "table-toolbar");
+    const ctrl = U.el("div", "sections-ctrl");
+    const btn = U.el("button", "disc");
+    btn.type = "button";
+    btn.setAttribute("aria-haspopup", "true");
+    btn.setAttribute("aria-expanded", "false");
+    btn.append(document.createTextNode("columns"), U.el("span", "disc-caret", "▾"));
+    const menu = U.el("div", "disc-menu");
+    menu.hidden = true;
+    menu.setAttribute("role", "group");
+    menu.setAttribute("aria-label", "Columns");
+    entry.boxes = {};
+    const hidden = hiddenSet(entry.id);
+    const heads = entry.table.tHead && entry.table.tHead.rows[0];
+    entry.keys.forEach(function (key, index) {
+      const isLocked = entry.locked.indexOf(key) >= 0;
+      const label = heads && heads.cells[index] ? heads.cells[index].textContent.trim() : key;
+      const row = U.el("label", "disc-item" + (isLocked ? " disc-item--off" : ""));
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = isLocked ? true : !hidden.has(key);
+      box.disabled = isLocked;
+      if (!isLocked)
+        box.addEventListener("change", function () {
+          if (V) V.setColumnHidden(entry.id, key, !box.checked);
+        });
+      entry.boxes[key] = box;
+      row.append(box, U.el("span", "disc-label", label));
+      if (isLocked) row.append(U.el("span", "disc-note", "locked"));
+      menu.append(row);
+    });
+    btn.addEventListener("click", function (event) {
+      event.stopPropagation();
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", function (event) {
+      if (!menu.hidden && !ctrl.contains(event.target)) {
+        menu.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && !menu.hidden) {
+        menu.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+    ctrl.append(btn, menu);
+    bar.append(ctrl);
+    return bar;
+  }
+
+  // Stamp each header and body cell with its column key, so a `hide-<key>` class on
+  // the table can drop the column and the Filter can read a row value by column.
+  // Rows whose cell count does not match the spec (a full-width nested subtable) are
+  // left alone: they span the table and carry no per-column cells.
+  function stampCols(entry) {
+    const keys = entry.keys;
+    const head = entry.table.tHead && entry.table.tHead.rows[0];
+    if (head)
+      Array.prototype.forEach.call(head.cells, function (th, index) {
+        if (keys[index]) th.dataset.col = keys[index];
+      });
+    const tbody = entry.table.tBodies[0];
+    if (!tbody) return;
+    Array.prototype.forEach.call(tbody.rows, function (row) {
+      if (row.cells.length !== keys.length) return;
+      Array.prototype.forEach.call(row.cells, function (cell, index) {
+        cell.dataset.col = keys[index];
+      });
+    });
+  }
+
+  // Build a table wired for the columns menu and the three-state sort. Returns the
+  // block to mount (`wrap`), the tbody to append rows to, and equip() to call once
+  // the rows are in place.
+  function mount(labelCols, id) {
+    const built = U.table(labelCols);
+    const table = built.wrap.querySelector("table");
+    const keys = TABLE_COLUMNS[id] || [];
+    const entry = { table: table, id: id, keys: keys, locked: LOCKED[id] || [] };
+    table.dataset.tableId = id;
+    const block = U.el("div", "table-block");
+    block.append(buildToolbar(entry), built.wrap);
+    registry.push(entry);
+    return {
+      wrap: block,
+      tbody: built.tbody,
+      equip: function () {
+        stampCols(entry);
+        applyHidden(entry);
+        applySort(entry);
+        if (window.wkxFilter) window.wkxFilter.register(id, table);
+      },
+    };
+  }
+
+  // Persist a sort a header click produced. Called by wkxUI.makeSortable for any
+  // table that carries a table id. A null rule is the unsorted, source-order state.
+  function persistSort(table, rule) {
+    if (!V || !table.dataset.tableId) return;
+    V.setSort(table.dataset.tableId, rule ? rule.key : null, rule ? rule.dir : null);
+  }
+
+  // Re-apply the Hidden columns and the sort whenever the View changes here or in
+  // another tab, and re-check every open menu, so the tables stay in step.
+  if (V)
+    V.onChange(function () {
+      registry.forEach(function (entry) {
+        applyHidden(entry);
+        applySort(entry);
+      });
+    });
+
+  return { mount: mount, persistSort: persistSort };
+})();
+
+// ---------- filter: one Filter per Section, header-native (M13) ----------
+// Each filterable Section's `signage` heading gains a ⌕ button; a click reveals a
+// Filter input beside it, which stays visible while a Filter is set and shows an
+// "N of M" count. One Filter narrows every table in its Section: a row stays when
+// any of its visible values — the Flag badge text included — contains the Filter
+// text, regardless of letter case; a Hidden column is outside the Filter's reach.
+// The matching text is marked with the board's `--match` token wash so it stays
+// legible in both themes. A filtered-out row is hidden with the `hidden` attribute
+// (never a display-altering class on a tr), so it is still fetched and its Flags
+// still count. The Filter runs again when an SSE-raised Flag lands, and when a
+// column is Hidden or shown (the scope changed). Writes to the View are debounced
+// so typing does not write on every keystroke. There is no `/` shortcut.
+window.wkxFilter = (function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const V = window.wkxView;
+  const flags = window.wkxFlags;
+  const WRITE_DELAY = 400; // debounce, so a burst of keystrokes is one write
+
+  // Every filterable Section: the ones that own at least one table. Docker is
+  // tiles-only and the summary is the Flag rollup, so neither is here.
+  const SECTION_IDS = [
+    "workspace",
+    "toolchains",
+    "claude",
+    "homebrew",
+    "system",
+    "footprint",
+    "editor",
+    "git-config",
+    "config",
+  ];
+
+  const sections = {}; // section id -> { input, count, tables:Set, timer }
+
+  function groupsOf(tbody) {
+    const groups = [];
+    Array.prototype.forEach.call(tbody.rows, function (row) {
+      const child = row.classList.contains("subrow") || row.classList.contains("skillrow");
+      if (child && groups.length) groups[groups.length - 1].push(row);
+      else groups.push([row]);
+    });
+    return groups;
+  }
+
+  // Unwrap every match mark in a row, restoring its plain text nodes.
+  function clearMarks(row) {
+    const marks = row.querySelectorAll("mark.match");
+    Array.prototype.forEach.call(marks, function (m) {
+      m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+    });
+    if (marks.length) row.normalize();
+  }
+
+  // One row's searchable text: every visible cell's text, a Hidden column left out.
+  function rowText(row, hiddenCols) {
+    let text = "";
+    Array.prototype.forEach.call(row.cells, function (cell) {
+      const col = cell.dataset.col;
+      if (col && hiddenCols.has(col)) return;
+      text += " " + cell.textContent;
+    });
+    return text.toLowerCase();
+  }
+
+  // Wrap each first per-text-node match in one visible cell with a `.match` mark.
+  function markCell(cell, query) {
+    const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null);
+    const nodes = [];
+    let node = walker.nextNode();
+    while (node) {
+      nodes.push(node);
+      node = walker.nextNode();
+    }
+    nodes.forEach(function (textNode) {
+      const idx = textNode.nodeValue.toLowerCase().indexOf(query);
+      if (idx < 0) return;
+      const mid = textNode.splitText(idx);
+      mid.splitText(query.length);
+      const mark = U.el("mark", "match", mid.nodeValue);
+      mid.parentNode.replaceChild(mark, mid);
+    });
+  }
+
+  function markRow(row, hiddenCols, query) {
+    Array.prototype.forEach.call(row.cells, function (cell) {
+      const col = cell.dataset.col;
+      if (col && hiddenCols.has(col)) return;
+      markCell(cell, query);
+    });
+  }
+
+  // Apply a Section's Filter to every table registered under it, and update the
+  // "N of M" count. A group is its parent row plus any child rows (a submodule
+  // beneath its repo); the whole group stays or goes together so a child never
+  // outlives its parent. A nested skills subtable (a skillrow) is left to its own
+  // expand toggle when its parent stays, and hidden with its parent when it goes.
+  function apply(id) {
+    const reg = sections[id];
+    if (!reg) return;
+    const raw = reg.input.value;
+    const query = raw.trim().toLowerCase();
+    let shown = 0;
+    let total = 0;
+    reg.tables.forEach(function (table) {
+      const tbody = table.tBodies[0];
+      if (!tbody) return;
+      const hiddenCols = new Set(V ? V.columnsHiddenFor(table.dataset.tableId) : []);
+      groupsOf(tbody).forEach(function (group) {
+        total += 1;
+        group.forEach(clearMarks);
+        const match =
+          !query ||
+          group.some(function (row) {
+            return rowText(row, hiddenCols).indexOf(query) >= 0;
+          });
+        if (match) shown += 1;
+        group.forEach(function (row) {
+          if (row.classList.contains("skillrow")) {
+            if (!match) row.hidden = true; // parent gone → the nested table goes too
+            return; // otherwise the expand toggle owns its visibility
+          }
+          row.hidden = !match;
+          if (match && query) markRow(row, hiddenCols, query);
+        });
+      });
+    });
+    if (raw) {
+      reg.count.textContent = shown + " of " + total;
+      reg.count.hidden = false;
+    } else {
+      reg.count.hidden = true;
+    }
+  }
+
+  // Reveal the input (and focus it), or leave it in place while a Filter is set.
+  function reveal(id) {
+    const reg = sections[id];
+    if (!reg) return;
+    reg.input.hidden = false;
+    reg.input.focus();
+  }
+
+  // Wire one Section's signage: the ⌕ button, the input (hidden until asked for or
+  // a Filter is set), and the count. Runs after wkxCollapse has rebuilt the signage,
+  // so it appends to the heading the collapse toggle already occupies.
+  function wire(id) {
+    const panelMount = document.getElementById(id);
+    const panel = panelMount && panelMount.closest("section");
+    const signage = panel && panel.querySelector(".signage");
+    if (!signage) return null;
+
+    const find = U.el("button", "signage-find");
+    find.type = "button";
+    find.textContent = "⌕";
+    find.title = "Filter this section";
+    find.setAttribute("aria-label", "Filter this section");
+    const input = U.el("input", "signage-filter");
+    input.type = "search";
+    input.hidden = true;
+    input.setAttribute("aria-label", "Filter " + id);
+    input.placeholder = "filter…";
+    const count = U.el("span", "signage-fcount");
+    count.hidden = true;
+
+    find.addEventListener("click", function () {
+      if (input.hidden) reveal(id);
+      else if (!input.value) input.hidden = true;
+      else input.focus();
+    });
+    input.addEventListener("input", function () {
+      apply(id);
+      if (V) {
+        clearTimeout(sections[id].timer);
+        sections[id].timer = setTimeout(function () {
+          V.setFilter(id, input.value);
+        }, WRITE_DELAY);
+      }
+    });
+
+    signage.append(find, input, count);
+    sections[id] = { input: input, count: count, tables: new Set(), timer: 0 };
+    return sections[id];
+  }
+
+  // Register a table so its Section's Filter narrows it. Re-applies the current
+  // Filter so a table that renders after the Filter was set is narrowed at once.
+  function register(sectionId, table) {
+    const reg = sections[sectionId];
+    if (!reg) return;
+    reg.tables.add(table);
+    apply(sectionId);
+  }
+
+  // Adopt the View's saved Filter for a Section: fill the input, reveal it, apply.
+  function adopt(id) {
+    const reg = sections[id];
+    if (!reg || !V) return;
+    const saved = V.filterFor(id);
+    if (saved) {
+      reg.input.value = saved;
+      reg.input.hidden = false;
+    } else if (!reg.input.value) {
+      reg.input.hidden = true;
+    }
+    apply(id);
+  }
+
+  SECTION_IDS.forEach(wire);
+
+  // Adopt saved Filters once the View lands, and re-adopt whenever it changes here
+  // or in another tab (a Filter set elsewhere, or a column Hidden that changes what
+  // the Filter can reach).
+  if (V) {
+    V.ready.then(function () {
+      SECTION_IDS.forEach(adopt);
+    });
+    V.onChange(function () {
+      SECTION_IDS.forEach(adopt);
+    });
+  }
+
+  // Re-run every Section's Filter as Flags land (an SSE-raised Flag joins a row's
+  // visible text), so a row the Filter dropped can return and one it kept can leave.
+  if (flags && flags.subscribe)
+    flags.subscribe(function () {
+      SECTION_IDS.forEach(apply);
+    });
+
+  return { register: register };
+})();
+
 // ---------- workspace (with submodules nested under their repo) ----------
 (function () {
   "use strict";
@@ -1790,22 +2331,26 @@ window.wkxTokens = (function () {
       { value: subCount, label: "Submodules" },
     ]);
 
-    const built = U.table([
-      { label: "Repo" },
-      { label: "Branch" },
-      { label: "Upstream" },
-      { label: "Ahead", num: true },
-      { label: "Behind", num: true },
-      { label: "Working tree" },
-      { label: "Stash", num: true },
-      { label: "Roadmap" },
-    ]);
+    const built = window.wkxTables.mount(
+      [
+        { label: "Repo" },
+        { label: "Branch" },
+        { label: "Upstream" },
+        { label: "Ahead", num: true },
+        { label: "Behind", num: true },
+        { label: "Working tree" },
+        { label: "Stash", num: true },
+        { label: "Roadmap" },
+      ],
+      "workspace",
+    );
     workspace.repos.forEach(function (repo) {
       built.tbody.append(repoRow(repo));
       (subsByRepo.get(repo.path) || []).forEach(function (sub) {
         built.tbody.append(subRow(sub));
       });
     });
+    built.equip();
 
     mount.replaceChildren(summary, built.wrap);
     startStream("/api/workspace/fetch", fillAheadBehind);
@@ -1875,7 +2420,7 @@ window.wkxTokens = (function () {
   }
 
   function interpreterTable(python) {
-    const built = U.table(COLUMNS);
+    const built = window.wkxTables.mount(COLUMNS, "toolchains");
     python.interpreters.forEach(function (interp) {
       built.tbody.append(
         U.tr([
@@ -1887,11 +2432,12 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
   function pinTable(python) {
-    const built = U.table(COLUMNS);
+    const built = window.wkxTables.mount(COLUMNS, "toolchains");
     python.repo_pins.forEach(function (pin) {
       const matches = pin.version === python.global_pin;
       const state = U.td(U.quiet(matches ? "matches global" : "differs from global"));
@@ -1905,11 +2451,12 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
   function nodeToolTable(node) {
-    const built = U.table(COLUMNS);
+    const built = window.wkxTables.mount(COLUMNS, "toolchains");
     const roles = { node: "runtime", npm: "package manager", tsc: "compiler" };
     const rows = [
       ["node", node.node],
@@ -1936,11 +2483,12 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
   function tsTable(node) {
-    const built = U.table(COLUMNS);
+    const built = window.wkxTables.mount(COLUMNS, "toolchains");
     node.repos.forEach(function (repo) {
       const installed = repo.installed;
       const state = U.td(installed ? U.ok("installed") : U.quiet("not installed"));
@@ -1955,6 +2503,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2048,14 +2597,17 @@ window.wkxTokens = (function () {
   }
 
   function pluginTable(plugins, skillsByOrigin) {
-    const built = U.table([
-      { label: "Plugin" },
-      { label: "Marketplace" },
-      { label: "Repo" },
-      { label: "Version" },
-      { label: "State" },
-      { label: "Skills", num: true },
-    ]);
+    const built = window.wkxTables.mount(
+      [
+        { label: "Plugin" },
+        { label: "Marketplace" },
+        { label: "Repo" },
+        { label: "Version" },
+        { label: "State" },
+        { label: "Skills", num: true },
+      ],
+      "claude-plugins",
+    );
     plugins.forEach(function (plugin) {
       const skills = skillsByOrigin.get(plugin.name + "@" + plugin.marketplace) || [];
       const hasSkills = skills.length > 0;
@@ -2101,6 +2653,7 @@ window.wkxTokens = (function () {
         });
       }
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2125,7 +2678,7 @@ window.wkxTokens = (function () {
   }
 
   function skillTable(skills, originText) {
-    const built = U.table(SKILL_COLUMNS);
+    const built = window.wkxTables.mount(SKILL_COLUMNS, "claude-skills");
     skills.forEach(function (skill) {
       const state = skillStateCell(skill);
       const desc = skill.description ? U.el("div", "clamp2", skill.description) : U.dash();
@@ -2140,11 +2693,15 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
   function mcpTable(servers) {
-    const built = U.table([{ label: "Server" }, { label: "Origin" }, { label: "Transport" }, { label: "Auth" }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Server" }, { label: "Origin" }, { label: "Transport" }, { label: "Auth" }],
+      "claude-mcp",
+    );
     servers.forEach(function (server) {
       const auth = U.td(U.quiet(server.needs_auth ? "needs auth" : "ready"));
       built.tbody.append(
@@ -2157,6 +2714,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2248,13 +2806,14 @@ window.wkxTokens = (function () {
       { value: tools.length - present, label: "Missing" },
     ]);
 
-    const built = U.table([{ label: "Tool" }, { label: "Version" }]);
+    const built = window.wkxTables.mount([{ label: "Tool" }, { label: "Version" }], "system-tools");
     tools.forEach(function (tool) {
       const flags = U.flagCell("system:" + tool.name);
       const versionCell = U.td(tool.present && tool.version ? U.token("version", tool.version, "ver") : U.dash());
       if (!tool.present) versionCell.title = "Install it: brew install " + tool.name + " (or uv tool install " + tool.name + ").";
       built.tbody.append(U.tr([U.td(U.token("tool", tool.name, "t-name")), versionCell, flags]));
     });
+    built.equip();
 
     mount.replaceChildren(summary, built.wrap);
   }
@@ -2295,7 +2854,10 @@ window.wkxTokens = (function () {
   }
 
   function pkgTable(kind, packages) {
-    const built = U.table([{ label: "Package" }, { label: "Installed" }, { label: "Current" }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Package" }, { label: "Installed" }, { label: "Current" }],
+      "homebrew-packages",
+    );
     packages.forEach(function (pkg) {
       const flags = U.flagCell("homebrew:" + kind + ":" + pkg.name);
       built.tbody.append(
@@ -2307,6 +2869,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2448,12 +3011,15 @@ window.wkxTokens = (function () {
       return;
     }
 
-    const built = U.table([
-      { label: "Repo" },
-      { label: ".venv", num: true },
-      { label: "node_modules", num: true },
-      { label: "Total", num: true },
-    ]);
+    const built = window.wkxTables.mount(
+      [
+        { label: "Repo" },
+        { label: ".venv", num: true },
+        { label: "node_modules", num: true },
+        { label: "Total", num: true },
+      ],
+      "footprint",
+    );
     repos.forEach(function (repo) {
       const totalCell = U.td(U.el("span", "ver", repo.total), "num");
       totalCell.setAttribute("data-sort", String(repo.total_bytes));
@@ -2467,6 +3033,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
 
     mount.replaceChildren(summary, built.wrap);
   }
@@ -2513,7 +3080,10 @@ window.wkxTokens = (function () {
       mount.replaceChildren(summary, U.summaryLine(["VS Code is installed but reports no extensions."]));
       return;
     }
-    const built = U.table([{ label: "Extension" }, { label: "Version", num: true }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Extension" }, { label: "Version", num: true }],
+      "editor-extensions",
+    );
     extensions.forEach(function (ext) {
       built.tbody.append(
         U.tr([
@@ -2523,6 +3093,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     mount.replaceChildren(summary, built.wrap);
   }
 
@@ -2591,7 +3162,10 @@ window.wkxTokens = (function () {
 
     if (entries.length > 0) {
       nodes.push(U.el("p", "sub-head", "Config (" + entries.length + ")"));
-      const built = U.table([{ label: "Key" }, { label: "Value" }, { label: "Origin" }]);
+      const built = window.wkxTables.mount(
+        [{ label: "Key" }, { label: "Value" }, { label: "Origin" }],
+        "git-config-keys",
+      );
       entries.forEach(function (entry) {
         built.tbody.append(
           U.tr([
@@ -2602,12 +3176,16 @@ window.wkxTokens = (function () {
           ]),
         );
       });
+      built.equip();
       nodes.push(built.wrap);
     }
 
     if (includes.length > 0) {
       nodes.push(U.el("p", "sub-head", "Includes (" + includes.length + ")"));
-      const built = U.table([{ label: "Condition" }, { label: "Path" }, { label: "State" }]);
+      const built = window.wkxTables.mount(
+        [{ label: "Condition" }, { label: "Path" }, { label: "State" }],
+        "git-config-includes",
+      );
       includes.forEach(function (inc) {
         const status = inc.exists ? U.td(U.ok("found")) : U.td(U.el("span", "q", "missing"));
         built.tbody.append(
@@ -2619,6 +3197,7 @@ window.wkxTokens = (function () {
           ]),
         );
       });
+      built.equip();
       nodes.push(built.wrap);
     }
 
@@ -2667,7 +3246,10 @@ window.wkxTokens = (function () {
   }
 
   function settingsTable(values) {
-    const built = U.table([{ label: "Setting" }, { label: "Value" }, { label: "Source" }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Setting" }, { label: "Value" }, { label: "Source" }],
+      "config-settings",
+    );
     values.forEach(function (item) {
       built.tbody.append(
         U.tr([
@@ -2678,6 +3260,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2686,10 +3269,11 @@ window.wkxTokens = (function () {
   // a matching directory is pruned from discovery, so an excluded repo is absent
   // and raises no Flags (Exclude, not a mute). A path-like value, shown the wkx way.
   function excludesTable(globs) {
-    const built = U.table([{ label: "Exclude glob" }]);
+    const built = window.wkxTables.mount([{ label: "Exclude glob" }], "config-excludes");
     globs.forEach(function (glob) {
       built.tbody.append(U.tr([U.td(U.el("span", "ver", glob)), U.flagCell()]));
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2697,7 +3281,10 @@ window.wkxTokens = (function () {
   // table. Each tool name is a token of kind "tool", so it lights up with the same
   // tool wherever it appears in the system Section and beyond.
   function toolsTable(tools) {
-    const built = U.table([{ label: "Tool" }, { label: "Version probe" }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Tool" }, { label: "Version probe" }],
+      "config-tools",
+    );
     tools.forEach(function (tool) {
       const probe = (tool.version_args && tool.version_args.length ? tool.version_args : ["--version"]).join(" ");
       built.tbody.append(
@@ -2708,6 +3295,7 @@ window.wkxTokens = (function () {
         ]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2716,10 +3304,11 @@ window.wkxTokens = (function () {
   // raises no Flags; naming them here is the one place the board still accounts for
   // a Section it otherwise drops entirely.
   function offTable(sections) {
-    const built = U.table([{ label: "Section" }]);
+    const built = window.wkxTables.mount([{ label: "Section" }], "config-off");
     sections.forEach(function (name) {
       built.tbody.append(U.tr([U.td(U.el("span", "t-name", name)), U.flagCell()]));
     });
+    built.equip();
     return built.wrap;
   }
 
@@ -2730,13 +3319,17 @@ window.wkxTokens = (function () {
   // dropped from the badges and the tally but stays on /api/flags — this table is
   // where the operator sees what they silenced.
   function mutesTable(rules) {
-    const built = U.table([{ label: "Category" }, { label: "Target" }]);
+    const built = window.wkxTables.mount(
+      [{ label: "Category" }, { label: "Target" }],
+      "config-mutes",
+    );
     rules.forEach(function (rule) {
       const target = rule.target ? U.el("span", "ver", rule.target) : U.quiet("whole category");
       built.tbody.append(
         U.tr([U.td(U.el("span", "t-name", rule.category)), U.td(target), U.flagCell()]),
       );
     });
+    built.equip();
     return built.wrap;
   }
 

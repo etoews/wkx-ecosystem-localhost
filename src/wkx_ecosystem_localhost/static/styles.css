@@ -367,6 +367,88 @@ tbody td {
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--hull); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- table controls (M13) ---------- */
+/* A slim toolbar directly above every table carries the `columns ▾` menu, right-
+ * aligned so it never competes with the table's own left edge. The block groups
+ * the toolbar with the table so the two read as one unit. */
+.table-block { display: block; }
+.table-toolbar { display: flex; justify-content: flex-end; margin-bottom: .3rem; }
+/* A Hidden column is dropped by a class on the <table>, never a display rule on a
+ * cell: the table drops the whole column and reflows, so no td/th/tr ever carries
+ * a display-altering class (tests/test_static_assets.py holds this line). */
+table.hide-ahead [data-col="ahead"],
+table.hide-auth [data-col="auth"],
+table.hide-behind [data-col="behind"],
+table.hide-branch [data-col="branch"],
+table.hide-condition [data-col="condition"],
+table.hide-current [data-col="current"],
+table.hide-description [data-col="description"],
+table.hide-detail [data-col="detail"],
+table.hide-installed [data-col="installed"],
+table.hide-marketplace [data-col="marketplace"],
+table.hide-node-modules [data-col="node-modules"],
+table.hide-origin [data-col="origin"],
+table.hide-repo [data-col="repo"],
+table.hide-roadmap [data-col="roadmap"],
+table.hide-skills [data-col="skills"],
+table.hide-source [data-col="source"],
+table.hide-stash [data-col="stash"],
+table.hide-state [data-col="state"],
+table.hide-target [data-col="target"],
+table.hide-total [data-col="total"],
+table.hide-transport [data-col="transport"],
+table.hide-upstream [data-col="upstream"],
+table.hide-value [data-col="value"],
+table.hide-venv [data-col="venv"],
+table.hide-version [data-col="version"],
+table.hide-version-probe [data-col="version-probe"],
+table.hide-working-tree [data-col="working-tree"] { display: none; }
+
+/* The per-Section Filter lives in the signage heading (M13): a ⌕ button reveals
+ * an input, which stays while a Filter is set, with an "N of M" count beside it.
+ * The controls reset the heading's uppercase, spaced treatment so the typed text
+ * and the count read as plain input, not signage. */
+.signage-find {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0 .1rem;
+  font: inherit;
+  color: var(--fog);
+  cursor: pointer;
+  line-height: 1;
+}
+.signage-find:hover, .signage-find:focus-visible { color: var(--text); }
+.signage-filter {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .12rem .6rem;
+  min-width: 11rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.signage-filter:focus-visible { outline: 2px solid var(--match); outline-offset: 1px; }
+.signage-fcount {
+  color: var(--fog);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* A Filter match, marked with the board's token wash so it stays legible in both
+ * themes: --match at 26 %, the same M8 highlight strength a token hover uses. */
+mark.match {
+  background-color: color-mix(in srgb, var(--match) 26%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
 /* The flag rail: every facts table's right-most column. Right-justified so the
  * amber/red badges line up on one vertical edge down the whole board and a scroll
  * reads "what is wrong and where" from alignment alone. The rail is made by
