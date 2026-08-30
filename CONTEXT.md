@@ -3,8 +3,8 @@
 A localhost dashboard that inventories this dev machine's ecosystem: repos,
 language toolchains, the Claude environment, and system tools. It shows facts
 and lights up data-evident anomalies; it never judges the machine against a
-written ruleset, and the one thing it writes is its own View, into its own
-configuration. This glossary is the canonical
+written ruleset, and the one thing it writes is its own View, in a file of its
+own. This glossary is the canonical
 ubiquitous language for this context. Where a term has competing synonyms, the
 preferred term is defined and the rest are listed under `_Avoid_`.
 
@@ -65,11 +65,13 @@ _Avoid_: search, find, query
 **View**:
 The operator's arrangement of the board: the theme, which panels are Hidden or
 Collapsed, each Section's Filter, and each table's sort and Hidden columns. The
-View lives in the board's configuration; the board writes it there as the
-operator changes it and reads it back on load. A View changes what the board
-shows, never what it collects or reports.
-_Avoid_: preferences, settings (the rest of the configuration), layout, UI
-state
+View lives in a file of its own beside the configuration; the board writes it
+as the operator changes it and reads it back on load, and the operator does not
+need to edit it. Configuration says what the board inventories and how it runs;
+the View says how the board reads. A View changes what the board shows, never
+what it collects or reports.
+_Avoid_: preferences, settings, configuration (the operator's own file), layout,
+UI state
 
 **Exclude**:
 A glob in configuration that prunes matching directories from repo discovery,
