@@ -1,5 +1,7 @@
 # Hiding and muting are client-side view preferences; the API reports every fact
 
+_Superseded in part by [ADR 0004](0004-the-board-writes-its-view-to-a-file-of-its-own.md): from M12 the preferences below live in the View file the board writes, not in `localStorage`, and Mute is part of the View. The client-side application and the unfiltered API stand._
+
 The board is the inventory: `/api/flags` reports every open Flag and `/api/config`
 carries the operator's Mute rules. Hiding a Section (the viewer's `sections` menu)
 and Muting a Flag category are view preferences the board applies in the client. A

@@ -1,7 +1,7 @@
 # WKX Ecosystem localhost Roadmap
 
 Build order, deliverables, and a hands-on artefact at every milestone for the
-read-only localhost board that inventories this dev machine's ecosystem.
+localhost board that inventories this dev machine's ecosystem.
 
 The ubiquitous language lives in [CONTEXT.md](CONTEXT.md). The principles below
 are the cross-cutting decisions every milestone inherits.
@@ -10,9 +10,11 @@ are the cross-cutting decisions every milestone inherits.
 
 - **Inventory, not conformance.** The board shows facts. It never judges the
   machine against a written ruleset.
-- **Observer, never operator.** Loopback-bound (`127.0.0.1`), read-only, no auth.
-  Every Collector is a probe; the one write we allow is a non-interactive
-  background `git fetch` (bounded, timed out, no working-tree effect).
+- **Observer, never operator.** Loopback-bound (`127.0.0.1`), no auth. Every
+  Collector is a probe. The board writes two things and nothing else: a
+  non-interactive background `git fetch` (bounded, timed out, no working-tree
+  effect), and its own View file (M12). It never writes its configuration and
+  never changes what it inventories.
 - **Machine-neutral repo.** The live UI shows this machine's specifics, but the
   committed code and docs reference nothing machine-specific: inputs come from
   typed config with computed (never literal) defaults, example data is synthetic,
@@ -41,7 +43,8 @@ are the cross-cutting decisions every milestone inherits.
 | [M9: GitHub releases](#m9-github-releases) | M | ✅ Complete |
 | [M10: Configurable board](#m10-configurable-board) | L | ✅ Complete |
 | [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | M | ✅ Complete |
-| [M12: Table search and hideable columns](#m12-table-search-and-hideable-columns) | M | ⬜ Planned |
+| [M12: The View lives in its own file](#m12-the-view-lives-in-its-own-file) | L | ⬜ Planned |
+| [M13: Table search and hideable columns](#m13-table-search-and-hideable-columns) | M | ⬜ Planned |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
@@ -49,7 +52,9 @@ are the cross-cutting decisions every milestone inherits.
 M6 needs the collectors it flags. M7–M9 are opt-in. M10 builds on the Sections
 and Flags from M1–M6 and is otherwise independent. M11 refines the Sections, the
 Workspace table, and the Flag layer from M1–M9; it is independent of M10. M12
-refines every table; it is independent of M11 and can follow it or run beside it.
+moves every view preference out of the browser into a View file the board
+writes; it is independent of M11. M13 refines every table and depends on M12,
+because its controls persist through the View.
 
 ---
 
@@ -264,7 +269,7 @@ how the claude Section counts a disabled skill. There is no new Section and no
 new route. No refinement writes server config; the collapse choice persists in
 `localStorage`, the way the theme toggle does. The vocabulary (Collapsed) is in
 [CONTEXT.md](CONTEXT.md). Table search and hideable columns, once part of this
-milestone, are [M12](#m12-table-search-and-hideable-columns).
+milestone, are [M13](#m13-table-search-and-hideable-columns).
 
 **Deliverables**
 - [x] Collapsible Sections: each Section, and the Needs attention rollup, collapses to its `signage` heading and expands again. The whole heading line is the toggle: a button that wraps the label and a rotating caret, the idiom the expandable plugin row already uses, with `aria-expanded` and `aria-controls`. The state lives in `localStorage` (`wkx-collapsed`, a map of panel id to `true`, overrides only, the way `wkx-sections` holds Hidden). Collapse hides the body but keeps the Section on the board; this differs from M10, where the operator turns a Section Off and it disappears. A Collapsed Section is still fetched and still counts in the Needs attention tally, because collapse is a reading convenience, not a Mute. While collapsed, the heading carries a one-line count the Section's render supplies from what it already computes for its tiles, and the Section's own Flag tally (attention and problems, muted excluded); expanded, the tiles carry both. No collapse-all.
@@ -281,23 +286,63 @@ milestone, are [M12](#m12-table-search-and-hideable-columns).
 
 ---
 
-## M12: Table search and hideable columns
+## M12: The View lives in its own file
 
-Two client-side view preferences that shape how each table reads, moved out of
-M11 so that milestone stays small: search and filter a table, and hide a column.
-No Collector, no API change, no new Section. The choices that persist live in
-`localStorage`, the way the theme toggle does. The open design questions (which
-tables carry the controls, the matching semantics, whether a search persists,
-the control for columns, and whether Hidden generalises from a Section to a
-column in [CONTEXT.md](CONTEXT.md)) are settled in this milestone's own design
-session.
+Every view preference leaves the browser. The View ([CONTEXT.md](CONTEXT.md):
+the theme, which panels are Hidden or Collapsed, and the Mutes; M13 adds the
+Filters, sorts, and Hidden columns) moves into `wkx-ecosystem-localhost.view.toml`,
+a file beside the configuration that the board owns, writes on every change,
+and reads live. The configuration file is untouched: still the operator's,
+still read once at startup, still restarted on change. Configuration says what
+the board inventories and how it runs; the View says how the board reads. This
+is the board's first write route, the reason for
+[ADR 0004](docs/adr/0004-the-board-writes-its-view-to-a-file-of-its-own.md),
+and the foundation M13 persists through. No Collector and no new Section.
 
 **Deliverables**
-- [ ] Table search and filter: the board's tables get a consistent search-and-filter control, next to the click-to-sort they already carry. A search box keeps only the rows that match its text, and sort still works on the narrowed rows. This helps the long tables — Workspace, Toolchains, Footprint. The control is client-side, with no Collector and no API change.
-- [ ] Hideable columns: each table's columns can be hidden and shown again, with each choice held client-side in `localStorage`. The operator drops the columns they do not need, such as Stash or Upstream. The name column and the Flags rail always stay, so every row is identifiable and its Flags stay visible.
+- [ ] The View file: `wkx-ecosystem-localhost.view.toml` in the working directory, beside the configuration, gitignored, with a header comment that says the board writes it. `WKX_ECO_LOCAL_VIEW_FILE` overrides the path the way `WKX_ECO_LOCAL_CONFIG_FILE` does. The file holds overrides only: `theme` (`light` or `dark`; absent is `auto`), `sections_hidden` and `sections_collapsed` (panel ids, `summary` for Needs attention), and `[[mute]]` rules. A preference back at its default is removed, so a fresh board writes nothing and the file holds only what the operator changed. The board creates the file on first write and reads it on every request, so a hand edit shows on the next refresh with no restart; the reloader watches the configuration file only, as today.
+- [ ] Mute moves into the View. `mute` in the configuration file stops the board at startup with a message that names the View file. The config Section's Mutes table and the Muted tile read the View; `/api/flags` still reports every Flag. The example TOML says where `mute` went.
+- [ ] One TOML library: `tomlkit` reads the configuration and reads and writes the View. `tomllib` goes, through a subclass of the pydantic-settings TOML source that overrides only its file read, so the precedence order (argument, environment, `.env`, file, default) is unchanged.
+- [ ] Read path: `GET /api/view` returns the effective View; the boot gate fetches it beside `/api/config`. The `/` route stamps `data-theme` onto `<html>` as it serves `index.html`, so the theme never flashes. The config Section gains one line for the View file: its path, and whether it is loaded, absent, or not writable.
+- [ ] Write path: `PATCH /api/view` takes one preference per call. The server validates it against the board's own catalogue (panel ids, Categories), merges it under a process-level lock, writes the file atomically (temporary file, then rename), and returns the effective View. When the file on disk does not parse, the write is refused and the board never regenerates the file from memory. A write is accepted only with `Content-Type: application/json`, a `Host` that is the bound host and port, and either a same-origin `Origin` or `Sec-Fetch-Site`, or no `Origin` at all (a non-browser client); anything else is `403`.
+- [ ] Every open tab converges: a successful write is pushed as a `view` event on the existing SSE stream, and each tab applies it, so no tab holds a stale View.
+- [ ] Two Flags in the config Section, both data-evident: `view-not-saved` (red) when a write fails, and `view-unknown-key` (amber) when the View names a panel, Category, table, or column the board does not know. An unknown View key is dropped with a warning log, never a startup failure, because the board must not refuse to start on a file it wrote itself. The configuration keeps fail-fast.
+- [ ] Migration: on the first load after this change, `app.js` reads `wkx-theme`, `wkx-sections`, and `wkx-collapsed` once, writes them through `PATCH /api/view`, and deletes the keys only after the write succeeds. After that no `localStorage` key remains; the tests that pinned those keys now pin their absence.
+- [ ] Docs corrected: README (the board writes its View file, and only that), ARCHITECTURE.md (the View file replaces the `localStorage` key list), the example TOML, and `.gitignore`. [ADR 0004](docs/adr/0004-the-board-writes-its-view-to-a-file-of-its-own.md) and the CONTEXT.md entries for View, Filter, Hidden, Collapsed, and Mute are already in.
+- [ ] Tests over `tmp_path`, never a real file: the View round trip, overrides-only writing, the parse-failure refusal, the lock, the `403` cases, the `mute`-in-configuration startup message, the drop-and-warn path with its Flag, and the migration order. The client-side code keeps the `app.js` render smoke-clean, because the suite does not run it.
+
+**Hands-on artefact**
+- [ ] Switch the theme; `wkx-ecosystem-localhost.view.toml` appears with one line. Open the board in a second browser; it is the same theme.
+- [ ] Hide a Section, then edit the View file by hand to show it again and refresh; it is back, with no restart. Edit the configuration file; the board restarts as before.
+- [ ] Open two tabs. Hide a Section in one; the other hides it too.
+- [ ] `curl -X PATCH` with a foreign `Origin` header is refused with `403`; the same call with no `Origin` succeeds.
+- [ ] Make the View file read-only and switch the theme; the config Section raises `view-not-saved`.
+- [ ] Put `mute` back in the configuration file; the board stops at startup and says where it went.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+
+---
+
+## M13: Table search and hideable columns
+
+Three controls that shape how each table reads, on every table of the board:
+a Filter per Section, a columns menu per table, and a sort that can be cleared.
+Each choice persists through the View file from M12. The design was settled in
+a prototype and a design session: the Filter takes the header-native treatment,
+the columns menu takes the toolbar treatment, and the vocabulary (Filter, and
+Hidden widened to a column) is in [CONTEXT.md](CONTEXT.md). No Collector and no
+new Section.
+
+**Deliverables**
+- [ ] Filter: each Section's `signage` heading gains a ⌕ button; a click reveals a Filter input beside it, and the input stays visible while a Filter is set, with an "N of M" count. One Filter narrows every table in its Section. A row stays when any of its visible values, the Flag badge text included, contains the Filter text, regardless of letter case; a Hidden column is outside the Filter's reach. The matching text is marked with the M8 token wash (`--match` at 26 %), so the text stays legible in both themes. The Filter runs again when an SSE-raised Flag lands. A filtered-out row is still fetched and its Flags still count. No `/` shortcut.
+- [ ] Columns: a slim right-aligned toolbar directly above every table carries a `columns ▾` disclosure, the board's own `.disc` checklist. The name column and the Flags rail are locked and shown as such, so every row stays identifiable and its Flags visible; a table whose columns are all locked still carries the menu, for consistency. Tables that share one column spec (the four Toolchains tables, the two Claude skills tables) share one state, so their columns stay aligned. Column hiding is a class on the table, never a display rule on a cell.
+- [ ] Sort gains a third state: a header click goes ascending, descending, then unsorted (source order). The current sort persists per table.
+- [ ] A catalogue of table ids and column keys, kebab-case like Section and Category ids (`workspace`, `claude-plugins`, `git-config-keys`, `config-mutes`; `working-tree`, `node-modules`), lives in Python beside the Flag Categories; `PATCH /api/view` validates against it, and a test pins the ids in `app.js` to it the way the Categories are pinned.
+- [ ] The View file gains `[filter]` (Section id to text), `[columns_hidden]` (table id to column keys), and `[sort]` (table id to column and direction), overrides only, written through the M12 path with the Filter debounced so typing does not write on every keystroke.
 - [ ] The client-side controls keep the `app.js` render smoke-clean, because the test suite does not run it.
 
 **Hands-on artefact**
-- [ ] Type in a table's search box; only the matching rows stay, and a click on a header still sorts them.
-- [ ] Hide a column; it goes and the choice survives a reload. Show it again; it returns.
+- [ ] Type in the Workspace Filter; only the matching rows stay, the matches are marked and readable, the count reads "4 of 16", and a click on a header still sorts the narrowed rows.
+- [ ] Hide the Stash column; it goes, the View file names it, and it stays hidden after a reload. Show it again; the line leaves the file.
+- [ ] Sort by Behind, click twice more; the table is back in source order and the View file has no sort line.
+- [ ] Hide a column in one tab; the other tab hides it too.
 - [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.

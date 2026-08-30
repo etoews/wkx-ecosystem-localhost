@@ -64,8 +64,8 @@ _Avoid_: search, find, query
 
 **View**:
 The operator's arrangement of the board: the theme, which panels are Hidden or
-Collapsed, each Section's Filter, and each table's sort and Hidden columns. The
-View lives in a file of its own beside the configuration; the board writes it
+Collapsed, each Section's Filter, each table's sort and Hidden columns, and the
+Mutes. The View lives in a file of its own beside the configuration; the board writes it
 as the operator changes it and reads it back on load, and the operator does not
 need to edit it. Configuration says what the board inventories and how it runs;
 the View says how the board reads. A View changes what the board shows, never
@@ -107,8 +107,8 @@ rolls Flags up by Category, and a Mute names one.
 _Avoid_: type, kind, code, rule
 
 **Mute**:
-An operator's configured instruction to drop a Category, or one item's Flag
-within a Category, from the row badges and the Needs attention tally. A Mute
-suppresses noise; it never states what the machine should look like, so it is
-not a ruleset. The board always reports how many Flags are muted.
+The operator's instruction, part of the View, to drop a Category, or one item's
+Flag within a Category, from the row badges and the Needs attention tally. A
+Mute suppresses noise; it never states what the machine should look like, so it
+is not a ruleset. The board always reports how many Flags are muted.
 _Avoid_: ignore, suppress, silence, whitelist
