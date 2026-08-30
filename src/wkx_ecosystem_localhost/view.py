@@ -40,6 +40,7 @@ from wkx_ecosystem_localhost.exceptions import (
     ViewWriteError,
 )
 from wkx_ecosystem_localhost.models import Section
+from wkx_ecosystem_localhost.redaction import relativise
 
 logger = logging.getLogger(__name__)
 
@@ -408,8 +409,6 @@ def read_view(path: Path | None, *, home: Path | None = None) -> ViewState:
     Returns:
         The effective View, the unknown keys dropped, and the file's state.
     """
-    from wkx_ecosystem_localhost.redaction import relativise
-
     if path is None:
         return ViewState(view=View(), file=None, found=False, writable=False)
     file_display = relativise(path, home) if home is not None else str(path)
