@@ -18,18 +18,19 @@ from __future__ import annotations
 
 import logging
 import os
-import tomllib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+import tomlkit
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+from tomlkit.exceptions import TOMLKitError
 
 from wkx_ecosystem_localhost.exceptions import ConfigError
 from wkx_ecosystem_localhost.models import Section
@@ -137,29 +138,21 @@ def _default_system_tools() -> list[ToolSpec]:
     return [ToolSpec(name=name) for name in _DEFAULT_SYSTEM_TOOL_NAMES]
 
 
-class MuteRule(BaseModel):
-    """One Mute: a Flag Category to drop from the badges and the tally.
+class TomlkitConfigSettingsSource(TomlConfigSettingsSource):
+    """The pydantic-settings TOML source, reading the file with ``tomlkit``.
 
-    ``category`` names the Category to suppress and must be one of the board's known
-    Categories (``flags.CATEGORIES``); an unknown one fails fast at startup, so a
-    typo mutes nothing silently. ``target`` narrows the Mute to a single item by its
-    exact wire value — a repo's ``~``-relative path, ``formula:python@3.12``,
-    ``skill:foo`` — matched verbatim against ``Flag.target``; when it is None the
-    Mute drops the whole Category, including the two the board raises from SSE. A
-    Mute suppresses noise, it never states what the machine should look like, so it
-    is a view preference, not a ruleset (CONTEXT.md). Muting is applied client-side:
-    ``/api/config`` carries the rules and ``/api/flags`` still reports every Flag.
-
-    ``extra="forbid"`` so a misspelt key fails fast rather than being dropped: a
-    typo'd ``targett`` would otherwise leave ``target`` None and silently widen the
-    rule from one item to the whole Category, the same fail-fast posture the rest of
-    the configuration keeps.
+    The board reads and writes the View with ``tomlkit`` (``view.py``), so the
+    configuration reads with the same library rather than dragging ``tomllib``
+    along for one file. Only the file read is overridden: the precedence order
+    (argument, environment, ``.env``, file, default) is the base class's and stays
+    unchanged. ``unwrap`` turns the ``tomlkit`` document into the plain ``dict`` the
+    base class expects.
     """
 
-    model_config = ConfigDict(extra="forbid")
-
-    category: str
-    target: str | None = None
+    def _read_file(self, file_path: Path) -> dict[str, Any]:
+        """Read one TOML file with ``tomlkit`` instead of ``tomllib``."""
+        with file_path.open(encoding="utf-8") as handle:
+            return tomlkit.load(handle).unwrap()
 
 
 class Settings(BaseSettings):
@@ -222,14 +215,10 @@ class Settings(BaseSettings):
     # WKX_ECO_LOCAL_EXCLUDE (a JSON list); the built-in prunes stay built-in.
     exclude: list[str] = Field(default_factory=list)
 
-    # Muted Categories: a client-side view preference the board carries on
-    # /api/config. Each rule names a Flag Category, optionally narrowed to one item
-    # by its exact wire target; the client drops a matching Flag before it badges a
-    # row or counts in the tally, and reports how many it muted. /api/flags still
-    # reports every Flag: the API is the inventory. Set in the TOML as an inline
-    # array (mute = [ { category = "brew-outdated" } ]) or as WKX_ECO_LOCAL_MUTE (a
-    # JSON list). An unknown category fails fast against flags.CATEGORIES.
-    mute: list[MuteRule] = Field(default_factory=list)
+    # Mute is deliberately not a configuration field. From M12 it is part of the
+    # View, the board's own file (view.py, ADR 0004), so a `mute` key in the
+    # configuration is caught by check_configuration with a message that names the
+    # View file, rather than being read here.
 
     @field_validator("scan_roots", mode="after")
     @classmethod
@@ -259,32 +248,6 @@ class Settings(BaseSettings):
             )
         return sections
 
-    @field_validator("mute", mode="after")
-    @classmethod
-    def _mute_categories_are_known(cls, rules: list[MuteRule]) -> list[MuteRule]:
-        """Reject a Mute naming a Category the board never raises.
-
-        Each rule's ``category`` must be one of the board's known Flag Categories
-        (``flags.CATEGORIES``), so a typo such as ``brew-outdate`` fails fast at
-        startup — the way ``extra="forbid"`` rejects an unknown key — rather than
-        silently muting nothing. ``CATEGORIES`` is imported inside the validator
-        because ``flags`` imports this module; the local import keeps that from
-        being a circular import at load time.
-
-        Raises:
-            ValueError: If any rule names a Category not in the registry, naming each.
-        """
-        from wkx_ecosystem_localhost.collectors.flags import CATEGORIES
-
-        unknown = sorted({rule.category for rule in rules if rule.category not in CATEGORIES})
-        if unknown:
-            joined = ", ".join(unknown)
-            raise ValueError(
-                f"unknown mute category/categories: {joined}. Each must name a Flag "
-                "Category the board raises; check for a typo."
-            )
-        return rules
-
     @classmethod
     def settings_customise_sources(
         cls,
@@ -310,7 +273,7 @@ class Settings(BaseSettings):
             dotenv_settings,
         ]
         if config_file is not None:
-            sources.append(TomlConfigSettingsSource(settings_cls, toml_file=config_file))
+            sources.append(TomlkitConfigSettingsSource(settings_cls, toml_file=config_file))
         return tuple(sources)
 
 
@@ -340,6 +303,10 @@ def check_environment(environ: Mapping[str, str] | None = None) -> None:
             ``WKX_ECO_*`` variable names a field under the old prefix, naming each.
     """
     env = os.environ if environ is None else environ
+    mute_var = f"{ENV_PREFIX}MUTE"
+    if any(name.upper() == mute_var for name in env):
+        logger.error("%s is no longer read; Mute moved to the View", mute_var)
+        raise ConfigError(_mute_moved_message(f"the {mute_var} environment variable"))
     known = _known_env_names()
     unknown = sorted(
         name for name in env if name.upper().startswith(ENV_PREFIX) and name.upper() not in known
@@ -369,6 +336,50 @@ def check_environment(environ: Mapping[str, str] | None = None) -> None:
         )
 
 
+def _mute_moved_message(source: str) -> str:
+    """The startup error for ``mute`` still living in the configuration.
+
+    Names the View file so the operator knows exactly where Mute moved to (ADR
+    0004). The View file name is read lazily to avoid an import cycle: ``view``
+    imports this module.
+    """
+    from wkx_ecosystem_localhost.view import DEFAULT_VIEW_FILE
+
+    return (
+        f"mute is no longer configuration: {source} sets it, but Mute is now part of "
+        f"the View, which the board writes to {DEFAULT_VIEW_FILE}. Remove mute from "
+        "the configuration; the board manages Mutes in the View file itself."
+    )
+
+
+def check_configuration(config_file: Path | None) -> None:
+    """Fail fast when the configuration file still carries a ``mute`` key.
+
+    Mute moved into the View from M12 (ADR 0004), so a ``mute`` key left in the
+    configuration is a stale setting the board must not silently ignore. This runs
+    before ``Settings`` is built, so the operator sees a message that names the View
+    file rather than the generic ``extra="forbid"`` rejection.
+
+    Args:
+        config_file: The configuration file, or None when the file source is off.
+
+    Raises:
+        ConfigError: If the configuration file has a top-level ``mute`` key.
+    """
+    if config_file is None or not config_file.is_file():
+        return
+    try:
+        with config_file.open(encoding="utf-8") as handle:
+            data = tomlkit.load(handle)
+    except OSError, TOMLKitError:
+        # A file the board cannot read or parse is left to Settings to reject with
+        # its own message; this check only decides the one thing it is here to decide.
+        return
+    if "mute" in data:
+        logger.error("mute in %s is no longer read; Mute moved to the View", config_file)
+        raise ConfigError(_mute_moved_message(f"{config_file}"))
+
+
 class ConfigItem(BaseModel):
     """One scalar setting's effective value with where it came from.
 
@@ -386,9 +397,9 @@ class ConfigToolList(BaseModel):
     """The system-tools probe list as effective configuration, rendered as a table.
 
     ``source`` is where the whole list came from (a default list, the TOML, or the
-    environment); ``tools`` is the effective list in order. ``exclude``,
-    ``sections_off``, and ``mute`` sit beside this block, each its own typed block
-    and table, without disturbing this one.
+    environment); ``tools`` is the effective list in order. ``exclude`` and
+    ``sections_off`` sit beside this block, each its own typed block and table,
+    without disturbing this one.
     """
 
     source: Source
@@ -403,7 +414,7 @@ class ConfigExcludes(BaseModel):
     directory whose ``~``-relative path it full-matches from discovery, so an
     excluded subtree is absent from the board and raises no Flags (Exclude, not a
     Mute). Sits beside ``system_tools`` as its own typed block, the pattern
-    ``sections_off`` and ``mute`` follow.
+    ``sections_off`` follows.
     """
 
     source: Source
@@ -424,21 +435,6 @@ class ConfigSectionsOff(BaseModel):
     sections: list[Section]
 
 
-class ConfigMutes(BaseModel):
-    """The Mute rules as effective configuration, rendered as its own table.
-
-    The list-shaped setting following ``system_tools`` into its own typed block, the
-    pattern A set. ``source`` is where the list came from (an empty default, the
-    TOML, or the environment); ``rules`` is the effective Mute rules in order, each a
-    Category and an optional exact target. Muting is a client-side view preference:
-    the board lists the rules here, and the client drops the muted Flags before they
-    badge a row or count in the tally, but ``/api/flags`` still reports every Flag.
-    """
-
-    source: Source
-    rules: list[MuteRule]
-
-
 class ConfigView(BaseModel):
     """The read-only effective configuration for the config Section.
 
@@ -447,9 +443,10 @@ class ConfigView(BaseModel):
     of the TOML the values were read from, or None when the file source is off;
     ``found`` is whether that file exists. ``values`` are the scalar settings;
     ``system_tools`` is the probe list, ``exclude`` is the discovery Exclude globs,
-    ``sections_off`` is the Off Sections, and ``mute`` is the Mute rules. Each
-    list-shaped setting gets its own typed block beside ``system_tools`` so the
-    Section grows one table at a time.
+    and ``sections_off`` is the Off Sections. Each list-shaped setting gets its own
+    typed block beside ``system_tools`` so the Section grows one table at a time. The
+    Mutes are no longer here: from M12 they are part of the View, served by
+    ``/api/view`` (ADR 0004).
     """
 
     file: str | None
@@ -458,7 +455,6 @@ class ConfigView(BaseModel):
     system_tools: ConfigToolList
     exclude: ConfigExcludes
     sections_off: ConfigSectionsOff
-    mute: ConfigMutes
 
 
 # The scalar settings shown in the config Section's Settings table, in a stable
@@ -522,9 +518,9 @@ def describe(
     toml_keys: set[str] = set()
     if found and config_file is not None:
         try:
-            with config_file.open("rb") as handle:
-                toml_keys = set(tomllib.load(handle))
-        except OSError, tomllib.TOMLDecodeError:
+            with config_file.open(encoding="utf-8") as handle:
+                toml_keys = set(tomlkit.load(handle))
+        except OSError, TOMLKitError:
             # A file that cannot be read could not have built these settings; treat
             # it as contributing no keys rather than failing the view.
             toml_keys = set()
@@ -548,10 +544,6 @@ def describe(
         source=_source_of("sections_off", toml_keys, environ),
         sections=settings.sections_off,
     )
-    mutes = ConfigMutes(
-        source=_source_of("mute", toml_keys, environ),
-        rules=settings.mute,
-    )
     file_display = relativise(config_file, home) if config_file is not None else None
     return ConfigView(
         file=file_display,
@@ -560,5 +552,4 @@ def describe(
         system_tools=tools,
         exclude=excludes,
         sections_off=sections_off,
-        mute=mutes,
     )
