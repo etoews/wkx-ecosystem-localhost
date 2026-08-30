@@ -1,7 +1,9 @@
 // Board behaviour. Every Section leads with a one-line summary and lays its facts
-// out in a sortable table beneath. Colour is reserved for the M6 Flag layer:
-// sections stamp a data-flag-key host element and the flag layer badges it; neutral
-// facts are told apart by weight, a muted tone, and a label, never by hue.
+// out in a sortable table beneath. Colour on a fact is reserved for the M6 Flag
+// layer: sections stamp a data-flag-key host element and the flag layer badges it;
+// neutral facts are told apart by weight, a muted tone, and a label, never by hue.
+// The chrome carries one colour of its own: --sky on the Section headings, the
+// board's wayfinding colour (styles.css).
 
 // ---------- theme control ----------
 (function () {
