@@ -43,30 +43,26 @@ def test_styles_are_served_with_wkx_tokens(client: TestClient) -> None:
     assert "wkx-namespace" in response.text
 
 
-def test_app_js_persists_theme_choice(client: TestClient) -> None:
+def test_app_js_persists_no_preference_to_localstorage(client: TestClient) -> None:
+    # The View file is the only store now (ADR 0004): the theme, the Hidden and
+    # Collapsed panels, and the Mutes all live there, and nothing is written to
+    # localStorage. The old wkx-theme, wkx-sections, and wkx-collapsed keys survive
+    # only as the one-time migration reads and clears them, never as a live store,
+    # so no localStorage.setItem remains anywhere in the board's JavaScript.
     response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert "wkx-theme" in response.text
+    assert "localStorage.setItem" not in response.text
 
 
-def test_app_js_persists_hidden_sections(client: TestClient) -> None:
-    # The sections menu keeps its Hidden overrides in localStorage the way the theme
-    # toggle keeps its choice; this pins the key the way wkx-theme is pinned.
+def test_app_js_writes_view_preferences_through_the_api(client: TestClient) -> None:
+    # Each change is written to the View through PATCH /api/view, not localStorage;
+    # this pins the write path the way the localStorage keys were pinned before.
     response = client.get("/static/app.js")
 
     assert response.status_code == 200
-    assert "wkx-sections" in response.text
-
-
-def test_app_js_persists_collapsed_panels(client: TestClient) -> None:
-    # A Collapsed panel is a client-side view preference kept in localStorage the
-    # way the theme choice and the Hidden overrides are; this pins the key the way
-    # wkx-theme and wkx-sections are pinned.
-    response = client.get("/static/app.js")
-
-    assert response.status_code == 200
-    assert "wkx-collapsed" in response.text
+    assert "/api/view" in response.text
+    assert 'method: "PATCH"' in response.text
 
 
 def test_index_carries_the_sections_menu(client: TestClient) -> None:
