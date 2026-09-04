@@ -102,8 +102,12 @@ a { color: var(--add); }
   padding: 1.5rem clamp(1.25rem, 2.5vw, 4rem) 4rem;
 }
 
-/* ---------- masthead ---------- */
+/* ---------- masthead ----------
+ * A stacking context above the board, so the masthead's own drop-downs (theme,
+ * sections) always paint over a table's sticky header rather than under it. */
 .masthead {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: baseline;
   gap: .7rem;
@@ -117,13 +121,14 @@ a { color: var(--add); }
   letter-spacing: -.01em;
 }
 .masthead h1 .dim { color: var(--fog); font-weight: 400; }
+/* localhost is a plain label, not a pill: a pill signals something to act on (the
+ * theme, sections, and columns controls), and this only names the host the board
+ * reads. So it drops the pill's outline and reads as quiet mono text beside the
+ * title. */
 .masthead .tag {
   font-family: var(--mono);
   font-size: .72rem;
   color: var(--fog);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .1rem .6rem;
 }
 .masthead .controls { margin-left: auto; display: inline-flex; align-items: center; gap: .5rem; }
 
@@ -220,6 +225,9 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: .9rem 1rem 1.05rem;
+  /* A needs-attention Category links to its Section's panel; leave a little room
+   * above the panel when the jump lands so its heading is not flush to the edge. */
+  scroll-margin-top: 1rem;
 }
 .panel--wide { grid-column: 1 / -1; }
 /* The Section heading carries --sky, the board's one wayfinding colour, at
@@ -228,7 +236,9 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
  * (#7CB7FF on #112132 at night, #0A4F9E on #E9F1F7 by day), where --fog sat at
  * 4.4:1 by day. Only the word is sky: the caret, and the collapsed count and
  * tally (.signage-info), stay fog, so blue means "a Section starts here" and
- * nothing else. The sub-headings between a Section's tables stay fog too. */
+ * nothing else. The sub-headings between a Section's tables stay fog too. The one
+ * sanctioned echo is a needs-attention Category link on hover (.cat-link): it
+ * points at where a Section starts, so it wears the same wayfinding blue. */
 .signage {
   font-family: var(--mono);
   font-size: .78rem;
@@ -319,7 +329,9 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
 .sec-summary code { font-family: var(--mono); font-size: .95em; }
 .sec-count { color: var(--text); font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-/* A sub-heading between the several tables of one Section (toolchains, claude). */
+/* A heading for a Section slot that renders no table — an empty list's "none
+ * configured" line (config Excludes/Off/Mutes, claude My skills/MCP). A table of
+ * its own carries its title on the table head (.table-title) instead. */
 .sub-head {
   font-family: var(--mono);
   font-size: .58rem;
@@ -330,14 +342,25 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
 }
 .sub-head:first-child { margin-top: 0; }
 
-/* ---------- tables ---------- */
+/* ---------- tables ----------
+ * The wrap frames the table but is NOT a scroll container: an overflow other than
+ * visible would trap the sticky header inside the wrap, so the header could never
+ * reach the top of the screen. The table lays out at full width and its cells wrap,
+ * so it fits its panel without a horizontal scrollbar; a narrow viewport restores
+ * one below (the sole place the wrap scrolls). */
 .tbl-wrap {
-  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
 table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .76rem; }
+/* The header row sticks to the top of the screen as its table scrolls past, so the
+ * column labels stay with the rows. Its opaque --hull ground covers the rows that
+ * slide under it; the columns menu (a higher stacking context on .table-head) still
+ * opens over it. Top corners are rounded to nest inside the wrap's frame. */
 thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   text-align: left;
   font-size: .57rem;
   letter-spacing: .08em;
@@ -349,6 +372,8 @@ thead th {
   white-space: nowrap;
   background: var(--hull);
 }
+thead th:first-child { border-top-left-radius: 6px; }
+thead th:last-child { border-top-right-radius: 6px; }
 /* Every column sorts on click (or Enter/Space): a neutral caret signals the
  * affordance; the active column shows the direction and reads it to a11y via
  * aria-sort. */
@@ -369,11 +394,35 @@ tbody tr:hover td { background: var(--hull); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---------- table controls (M13) ---------- */
-/* A slim toolbar directly above every table carries the `columns ▾` menu, right-
- * aligned so it never competes with the table's own left edge. The block groups
- * the toolbar with the table so the two read as one unit. */
+/* Every table opens with a header line: its title on the left and the `columns ▾`
+ * menu on the right, on one line. The title takes the quiet mono-caps treatment the
+ * sub-headings used, so a table names itself where its columns are chosen. The head
+ * is a stacking context above the table body, so the columns menu opens over the
+ * sticky header rather than under it. The block groups the head with the table so
+ * the two read as one unit; the head wraps the toolbar below the title only when the
+ * panel is too narrow to seat both. */
 .table-block { display: block; }
-.table-toolbar { display: flex; justify-content: flex-end; margin-bottom: .3rem; }
+.table-head {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6rem .9rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 .4rem;
+}
+.table-head:first-child { margin-top: 0; }
+.table-title {
+  font-family: var(--mono);
+  font-size: .58rem;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--fog);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.table-toolbar { display: flex; flex: none; }
 /* A Hidden column is dropped by a class on the <table>, never a display rule on a
  * cell: the table drops the whole column and reflows, so no td/th/tr ever carries
  * a display-altering class (tests/test_static_assets.py holds this line). */
@@ -382,6 +431,7 @@ table.hide-auth [data-col="auth"],
 table.hide-behind [data-col="behind"],
 table.hide-branch [data-col="branch"],
 table.hide-condition [data-col="condition"],
+table.hide-count [data-col="count"],
 table.hide-current [data-col="current"],
 table.hide-description [data-col="description"],
 table.hide-detail [data-col="detail"],
@@ -401,46 +451,45 @@ table.hide-transport [data-col="transport"],
 table.hide-upstream [data-col="upstream"],
 table.hide-value [data-col="value"],
 table.hide-venv [data-col="venv"],
+table.hide-wants [data-col="wants"],
 table.hide-version [data-col="version"],
 table.hide-version-probe [data-col="version-probe"],
 table.hide-working-tree [data-col="working-tree"] { display: none; }
 
-/* The per-Section Filter lives in the signage heading (M13): a ⌕ button reveals
- * an input, which stays while a Filter is set, with an "N of M" count beside it.
- * The controls reset the heading's uppercase, spaced treatment so the typed text
- * and the count read as plain input, not signage. */
-.signage-find {
-  appearance: none;
-  -webkit-appearance: none;
-  background: none;
-  border: 0;
-  margin: 0;
-  padding: 0 .1rem;
-  font: inherit;
-  color: var(--fog);
-  cursor: pointer;
-  line-height: 1;
-}
-.signage-find:hover, .signage-find:focus-visible { color: var(--text); }
+/* The per-Section Filter is a pill on the right of the signage heading (M13): a
+ * search input in the same pill idiom as the theme, sections, and columns controls,
+ * with a "filter…" placeholder and an "N of M" count beside it once set. It resets
+ * the heading's uppercase, spaced treatment so the typed text reads as plain input,
+ * not signage, and steps aside while the Section is collapsed. */
 .signage-filter {
+  margin-left: auto;
   font-family: var(--mono);
   font-size: .72rem;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: .12rem .6rem;
-  min-width: 11rem;
+  padding: .18rem .7rem;
+  /* Match the columns pill's width: same font, padding, and border-box, so sizing
+   * the box to the columns pill's 5.25rem makes the two pills the same width. The
+   * "filter…" placeholder fits, and a longer typed value scrolls within the pill. */
+  width: 5.25rem;
   text-transform: none;
   letter-spacing: normal;
 }
-.signage-filter:focus-visible { outline: 2px solid var(--match); outline-offset: 1px; }
+.signage-filter::placeholder { color: var(--fog); }
+.signage-filter:hover { border-color: var(--fog); }
+.signage-filter:focus-visible { outline: 2px solid var(--match); outline-offset: 1px; border-color: var(--fog); }
 .signage-fcount {
   color: var(--fog);
   font-variant-numeric: tabular-nums;
   text-transform: none;
   letter-spacing: normal;
 }
+/* A collapsed Section has nothing to filter, so its heading drops the pill and count
+ * and gives the row back to the collapsed count and tally. */
+.panel--collapsed .signage-filter,
+.panel--collapsed .signage-fcount { display: none; }
 
 /* A Filter match, marked with the board's token wash so it stays legible in both
  * themes: --match at 26 %, the same M8 highlight strength a token hover uses. */
@@ -585,7 +634,7 @@ tr.expandable.open .exp-caret { transform: rotate(90deg); }
  * sharing My skills' columns and indented so it reads as nested. */
 tr.skillrow td { background: var(--deep); padding: .5rem .7rem .7rem; }
 tr.skillrow:hover td { background: var(--deep); }
-tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
+tr.skillrow .table-block { margin-left: 1.1rem; }
 
 /* a value settling in over SSE (ahead/behind, submodule latest) fades on arrival. */
 .filled { animation: fade-in .3s ease-out; }
@@ -618,6 +667,21 @@ tr.skillrow .tbl-wrap { margin-left: 1.1rem; }
 .tile--muted .n { color: var(--fog); }
 /* a tile that hosts a flag (the docker daemon) stacks the badge under its label */
 .tile .flag { margin-top: .4rem; }
+
+/* The Category cell is a link to the Section that wants attention. It keeps the
+ * row-identity weight of a name and signals the link with a quiet underline, then
+ * takes the wayfinding blue on hover or focus — it points at where a Section
+ * starts. No arrow: the jump stays inside the board. */
+.cat-link {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: .18em;
+  overflow-wrap: anywhere;
+}
+.cat-link:hover,
+.cat-link:focus-visible { color: var(--sky); text-decoration-color: currentColor; }
 
 .cat-bar-cell { display: flex; align-items: center; gap: .5rem; min-width: 140px; }
 .cat-count { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 1.6ch; text-align: right; }
@@ -708,4 +772,10 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
-@media (max-width: 640px) { .tiles { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .tiles { grid-template-columns: 1fr; }
+  /* On a narrow screen a wide table can outrun its panel; let the wrap scroll it
+   * sideways. This makes the wrap a scroll box, so its header sticks within the
+   * wrap rather than to the screen — the accepted trade at phone widths. */
+  .tbl-wrap { overflow-x: auto; }
+}

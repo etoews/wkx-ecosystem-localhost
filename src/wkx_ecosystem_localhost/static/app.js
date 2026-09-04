@@ -1015,6 +1015,95 @@ window.wkxFlags = (function () {
     return value;
   }
 
+  // ---------- the By category columns menu (M13, client-side) ----------
+  // The rollup rides the same header line as every Section table — a title on the
+  // left, a `columns ▾` menu on the right — but it is not a catalogue table: it is
+  // derived and re-derived on every Flag, so it keeps its column choice here, in the
+  // session, rather than in the View. Category (the identity and its link) and Flags
+  // (the rail) are the locked columns; Count and What wants attention hide and show.
+  const SUMMARY_COLS = [
+    { key: "category", label: "Category", locked: true },
+    { key: "count", label: "Count", locked: false },
+    { key: "wants", label: "What wants attention", locked: false },
+    { key: "flags", label: "Flags", locked: true },
+  ];
+  const summaryHidden = new Set();
+
+  // Stamp each header and body cell with its column key, so the menu can drop a
+  // column with a class on the table (the same hide-<key> mechanism the Section
+  // tables use), never a display rule on a cell.
+  function stampSummaryCols(table) {
+    const rows = [table.tHead.rows[0]].concat(Array.prototype.slice.call(table.tBodies[0].rows));
+    rows.forEach(function (row) {
+      Array.prototype.forEach.call(row.cells, function (cell, i) {
+        if (SUMMARY_COLS[i]) cell.dataset.col = SUMMARY_COLS[i].key;
+      });
+    });
+  }
+  function applySummaryHidden(table) {
+    SUMMARY_COLS.forEach(function (c) {
+      if (!c.locked) table.classList.toggle("hide-" + c.key, summaryHidden.has(c.key));
+    });
+  }
+  // Build the `columns ▾` menu for the rollup, in the board's own `.disc` idiom so it
+  // is indistinguishable from a Section table's. Locked columns show fixed.
+  function summaryColumnsMenu(table) {
+    const bar = el("div", "table-toolbar");
+    const ctrl = el("div", "sections-ctrl");
+    const btn = el("button", "disc");
+    btn.type = "button";
+    btn.setAttribute("aria-haspopup", "true");
+    btn.setAttribute("aria-expanded", "false");
+    btn.append(document.createTextNode("columns"), el("span", "disc-caret", "▾"));
+    const menu = el("div", "disc-menu");
+    menu.hidden = true;
+    menu.setAttribute("role", "group");
+    menu.setAttribute("aria-label", "Columns");
+    SUMMARY_COLS.forEach(function (c) {
+      const row = el("label", "disc-item" + (c.locked ? " disc-item--off" : ""));
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = c.locked ? true : !summaryHidden.has(c.key);
+      box.disabled = c.locked;
+      if (!c.locked)
+        box.addEventListener("change", function () {
+          if (box.checked) summaryHidden.delete(c.key);
+          else summaryHidden.add(c.key);
+          applySummaryHidden(table);
+        });
+      row.append(box, el("span", "disc-label", c.label));
+      if (c.locked) row.append(el("span", "disc-note", "locked"));
+      menu.append(row);
+    });
+    btn.addEventListener("click", function (event) {
+      event.stopPropagation();
+      const open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    ctrl.append(btn, menu);
+    bar.append(ctrl);
+    return bar;
+  }
+  // Close the rollup's menu on an outside click or Escape. The menu is rebuilt on
+  // every render, so these listeners are added once and find the current menu live —
+  // adding them per render would leak a listener on every Flag.
+  function closeSummaryMenu() {
+    const menu = summaryMount && summaryMount.querySelector(".table-toolbar .disc-menu");
+    const btn = summaryMount && summaryMount.querySelector(".table-toolbar .disc");
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+  }
+  document.addEventListener("click", function (event) {
+    const ctrl = summaryMount && summaryMount.querySelector(".table-toolbar .sections-ctrl");
+    if (ctrl && !ctrl.contains(event.target)) closeSummaryMenu();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeSummaryMenu();
+  });
+
   function renderSummary() {
     if (!summaryMount) return;
     const flags = Array.from(registry.values());
@@ -1066,7 +1155,10 @@ window.wkxFlags = (function () {
     flags.forEach(function (flag) {
       const label = CATEGORY_LABEL[flag.category] || flag.category;
       if (!groups.has(label)) {
-        groups.set(label, { label: label, level: "attention", count: 0, targets: [] });
+        // Carry the Section the Category belongs to, so its row links there. A
+        // Category is section-specific, so the first Flag's section names the whole
+        // group; it equals the Section's panel-mount id, which is the link target.
+        groups.set(label, { label: label, level: "attention", count: 0, targets: [], section: flag.section });
         order.push(label);
       }
       const group = groups.get(label);
@@ -1112,16 +1204,36 @@ window.wkxFlags = (function () {
         cat.targets.slice(0, 5).join(", ") +
         (cat.targets.length > 5 ? ", +" + (cat.targets.length - 5) + " more" : "");
 
+      // The Category is a link straight to the Section that wants attention: a
+      // within-app jump to that panel, so no external-link arrow. cat.section names
+      // the Section (see the group above); its panel carries id="panel-<section>",
+      // so the link lands on the whole panel — heading in view, and still reachable
+      // when the Section is collapsed (its body hidden, its panel not).
+      const catLink = el("a", "cat-link", cat.label);
+      catLink.href = "#panel-" + cat.section;
+      catLink.title = "Go to the " + cat.section + " section";
+
       built.tbody.append(
         U.tr([
-          U.td(el("span", "t-name", cat.label)),
+          U.td(catLink),
           countCell,
           U.td(shown, "q"),
           U.td(U.level(cat.level, cat.level), "flags-col"),
         ]),
       );
     });
-    summaryMount.replaceChildren(tiles, built.wrap);
+
+    // The rollup rides the same header line as every Section table: its title on the
+    // left and a `columns ▾` menu on the right. The menu is client-side (see above),
+    // so its column choice is kept in the session and re-applied on each render.
+    const tableEl = built.wrap.querySelector("table");
+    stampSummaryCols(tableEl);
+    const block = el("div", "table-block");
+    const head = el("div", "table-head");
+    head.append(el("p", "table-title", "By category"), summaryColumnsMenu(tableEl));
+    block.append(head, built.wrap);
+    applySummaryHidden(tableEl);
+    summaryMount.replaceChildren(tiles, block);
   }
 
   function decorate() {
@@ -1568,9 +1680,10 @@ window.wkxTokens = (function () {
 // Every board table reads through three controls the View persists (ADR 0004): a
 // per-Section Filter (wkxFilter, below), a per-table columns menu, and a sort that
 // clears back to source order. This module owns the last two. A render builds its
-// table with wkxTables.mount(labelCols, id), appends its rows, then calls equip():
-// mount adds the slim `columns ▾` toolbar (the board's own `.disc` checklist) above
-// the table and tags the <table> with its id; equip stamps each cell with its
+// table with wkxTables.mount(labelCols, id, title), appends its rows, then calls
+// equip(): mount adds a header line — the table's title on the left and the
+// `columns ▾` menu (the board's own `.disc` checklist) on the right, on one line —
+// above the table and tags the <table> with its id; equip stamps each cell with its
 // column key, applies the View's Hidden columns and sort, and registers the table
 // with its Section's Filter. Column hiding is a class on the <table>
 // (`hide-<key>`), never a display rule on a cell, so a td/th/tr never carries a
@@ -1756,17 +1869,27 @@ window.wkxTables = (function () {
     });
   }
 
+  // The header line above a table: its title on the left and the `columns ▾` menu
+  // on the right, on one line (the toolbar wraps below the title only when the panel
+  // is too narrow to hold both). Every board table carries a title, so the head is
+  // always built.
+  function buildHead(entry, title) {
+    const head = U.el("div", "table-head");
+    head.append(U.el("p", "table-title", title), buildToolbar(entry));
+    return head;
+  }
+
   // Build a table wired for the columns menu and the three-state sort. Returns the
   // block to mount (`wrap`), the tbody to append rows to, and equip() to call once
-  // the rows are in place.
-  function mount(labelCols, id) {
+  // the rows are in place. Every table takes a title, shown on the header line.
+  function mount(labelCols, id, title) {
     const built = U.table(labelCols);
     const table = built.wrap.querySelector("table");
     const keys = TABLE_COLUMNS[id] || [];
     const entry = { table: table, id: id, keys: keys, locked: LOCKED[id] || [] };
     table.dataset.tableId = id;
     const block = U.el("div", "table-block");
-    block.append(buildToolbar(entry), built.wrap);
+    block.append(buildHead(entry, title), built.wrap);
     registry.push(entry);
     return {
       wrap: block,
@@ -1802,9 +1925,10 @@ window.wkxTables = (function () {
 })();
 
 // ---------- filter: one Filter per Section, header-native (M13) ----------
-// Each filterable Section's `signage` heading gains a ⌕ button; a click reveals a
-// Filter input beside it, which stays visible while a Filter is set and shows an
-// "N of M" count. One Filter narrows every table in its Section: a row stays when
+// Each filterable Section's `signage` heading carries a filter pill on the right: a
+// search input in the board's pill idiom with a "filter…" placeholder, and an
+// "N of M" count beside it once a Filter is set. One Filter narrows every table in
+// its Section: a row stays when
 // any of its visible values — the Flag badge text included — contains the Filter
 // text, regardless of letter case; a Hidden column is outside the Filter's reach.
 // The matching text is marked with the board's `--match` token wash so it stays
@@ -1942,41 +2066,24 @@ window.wkxFilter = (function () {
     }
   }
 
-  // Reveal the input (and focus it), or leave it in place while a Filter is set.
-  function reveal(id) {
-    const reg = sections[id];
-    if (!reg) return;
-    reg.input.hidden = false;
-    reg.input.focus();
-  }
-
-  // Wire one Section's signage: the ⌕ button, the input (hidden until asked for or
-  // a Filter is set), and the count. Runs after wkxCollapse has rebuilt the signage,
-  // so it appends to the heading the collapse toggle already occupies.
+  // Wire one Section's signage: the filter pill (a search input always in place) and
+  // its count. Runs after wkxCollapse has rebuilt the signage, so it appends to the
+  // heading the collapse toggle already occupies; the pill sits on the right and
+  // steps aside while the Section is collapsed (CSS), since a folded table has
+  // nothing to filter.
   function wire(id) {
     const panelMount = document.getElementById(id);
     const panel = panelMount && panelMount.closest("section");
     const signage = panel && panel.querySelector(".signage");
     if (!signage) return null;
 
-    const find = U.el("button", "signage-find");
-    find.type = "button";
-    find.textContent = "⌕";
-    find.title = "Filter this section";
-    find.setAttribute("aria-label", "Filter this section");
     const input = U.el("input", "signage-filter");
     input.type = "search";
-    input.hidden = true;
     input.setAttribute("aria-label", "Filter " + id);
     input.placeholder = "filter…";
     const count = U.el("span", "signage-fcount");
     count.hidden = true;
 
-    find.addEventListener("click", function () {
-      if (input.hidden) reveal(id);
-      else if (!input.value) input.hidden = true;
-      else input.focus();
-    });
     input.addEventListener("input", function () {
       apply(id);
       if (V) {
@@ -1987,7 +2094,7 @@ window.wkxFilter = (function () {
       }
     });
 
-    signage.append(find, input, count);
+    signage.append(input, count);
     sections[id] = { input: input, count: count, tables: new Set(), timer: 0 };
     return sections[id];
   }
@@ -2001,17 +2108,12 @@ window.wkxFilter = (function () {
     apply(sectionId);
   }
 
-  // Adopt the View's saved Filter for a Section: fill the input, reveal it, apply.
+  // Adopt the View's saved Filter for a Section: fill the pill and apply. The pill
+  // is always in place, so there is nothing to reveal or hide here.
   function adopt(id) {
     const reg = sections[id];
     if (!reg || !V) return;
-    const saved = V.filterFor(id);
-    if (saved) {
-      reg.input.value = saved;
-      reg.input.hidden = false;
-    } else if (!reg.input.value) {
-      reg.input.hidden = true;
-    }
+    reg.input.value = V.filterFor(id) || "";
     apply(id);
   }
 
@@ -2373,6 +2475,7 @@ window.wkxFilter = (function () {
         { label: "Roadmap" },
       ],
       "workspace",
+      "Repositories",
     );
     workspace.repos.forEach(function (repo) {
       built.tbody.append(repoRow(repo));
@@ -2439,9 +2542,6 @@ window.wkxFilter = (function () {
   function note(message) {
     mount.replaceChildren(U.summaryLine([message]));
   }
-  function subHead(text) {
-    return U.el("p", "sub-head", text);
-  }
   function nameCell(text, kind) {
     return U.td(U.token(kind, text, "t-name"));
   }
@@ -2450,7 +2550,7 @@ window.wkxFilter = (function () {
   }
 
   function interpreterTable(python) {
-    const built = window.wkxTables.mount(COLUMNS, "toolchains");
+    const built = window.wkxTables.mount(COLUMNS, "toolchains", "Python · interpreters (uv-managed)");
     python.interpreters.forEach(function (interp) {
       built.tbody.append(
         U.tr([
@@ -2467,7 +2567,11 @@ window.wkxFilter = (function () {
   }
 
   function pinTable(python) {
-    const built = window.wkxTables.mount(COLUMNS, "toolchains");
+    const built = window.wkxTables.mount(
+      COLUMNS,
+      "toolchains",
+      "Python · per-repo pins (global " + (python.global_pin || "unset") + ")",
+    );
     python.repo_pins.forEach(function (pin) {
       const matches = pin.version === python.global_pin;
       const state = U.td(U.quiet(matches ? "matches global" : "differs from global"));
@@ -2486,7 +2590,7 @@ window.wkxFilter = (function () {
   }
 
   function nodeToolTable(node) {
-    const built = window.wkxTables.mount(COLUMNS, "toolchains");
+    const built = window.wkxTables.mount(COLUMNS, "toolchains", "Node · global tools");
     const roles = { node: "runtime", npm: "package manager", tsc: "compiler" };
     const rows = [
       ["node", node.node],
@@ -2518,7 +2622,11 @@ window.wkxFilter = (function () {
   }
 
   function tsTable(node) {
-    const built = window.wkxTables.mount(COLUMNS, "toolchains");
+    const built = window.wkxTables.mount(
+      COLUMNS,
+      "toolchains",
+      "TypeScript · per repo (declared vs installed)",
+    );
     node.repos.forEach(function (repo) {
       const installed = repo.installed;
       const state = U.td(installed ? U.ok("installed") : U.quiet("not installed"));
@@ -2550,15 +2658,14 @@ window.wkxFilter = (function () {
         { value: 3 + node.package_managers.length, label: "Node tools" },
         { value: node.repos.length, label: "TS repos" },
       ]),
-      subHead("Python · interpreters (uv-managed)"),
       interpreterTable(py),
     ];
     if (py.repo_pins.length > 0) {
-      nodes.push(subHead("Python · per-repo pins (global " + (py.global_pin || "unset") + ")"), pinTable(py));
+      nodes.push(pinTable(py));
     }
-    nodes.push(subHead("Node · global tools"), nodeToolTable(node));
+    nodes.push(nodeToolTable(node));
     if (node.repos.length > 0) {
-      nodes.push(subHead("TypeScript · per repo (declared vs installed)"), tsTable(node));
+      nodes.push(tsTable(node));
     }
     mount.replaceChildren.apply(mount, nodes);
   }
@@ -2613,9 +2720,13 @@ window.wkxFilter = (function () {
   // plugin row is expanded. It shares My skills' columns and is the only place a
   // plugin's skills appear. Origin repeats the plugin so the column matches.
   function pluginSkillsRow(skills, pluginName) {
-    const inner = skillTable(skills, function () {
-      return pluginName;
-    });
+    const inner = skillTable(
+      skills,
+      function () {
+        return pluginName;
+      },
+      pluginName + " · skills",
+    );
     inner.classList.add("subtable");
     const cell = U.el("td");
     cell.colSpan = 7;
@@ -2637,6 +2748,7 @@ window.wkxFilter = (function () {
         { label: "Skills", num: true },
       ],
       "claude-plugins",
+      "Plugins (" + plugins.length + ") — expand a row for the skills it ships",
     );
     plugins.forEach(function (plugin) {
       const skills = skillsByOrigin.get(plugin.name + "@" + plugin.marketplace) || [];
@@ -2707,8 +2819,8 @@ window.wkxFilter = (function () {
     return cell;
   }
 
-  function skillTable(skills, originText) {
-    const built = window.wkxTables.mount(SKILL_COLUMNS, "claude-skills");
+  function skillTable(skills, originText, title) {
+    const built = window.wkxTables.mount(SKILL_COLUMNS, "claude-skills", title);
     skills.forEach(function (skill) {
       const state = skillStateCell(skill);
       const desc = skill.description ? U.el("div", "clamp2", skill.description) : U.dash();
@@ -2731,6 +2843,7 @@ window.wkxFilter = (function () {
     const built = window.wkxTables.mount(
       [{ label: "Server" }, { label: "Origin" }, { label: "Transport" }, { label: "Auth" }],
       "claude-mcp",
+      "MCP servers (" + servers.length + ")",
     );
     servers.forEach(function (server) {
       const auth = U.td(U.quiet(server.needs_auth ? "needs auth" : "ready"));
@@ -2775,19 +2888,29 @@ window.wkxFilter = (function () {
         { value: oss, label: "OSS skills" },
         { value: servers.length, label: "MCP servers" },
       ]),
-      subHead("Plugins (" + plugins.length + ") — expand a row for the skills it ships"),
       pluginTable(plugins, skillsByOrigin),
-      subHead("My skills (" + mine.length + ", under ~/.claude/skills)"),
     ];
-    nodes.push(
-      mine.length > 0
-        ? skillTable(mine, function (s) {
+    if (mine.length > 0) {
+      nodes.push(
+        skillTable(
+          mine,
+          function (s) {
             return s.origin;
-          })
-        : U.summaryLine(["No standalone user or project skills."]),
-    );
-    nodes.push(subHead("MCP servers (" + servers.length + ")"));
-    nodes.push(servers.length > 0 ? mcpTable(servers) : U.summaryLine(["No MCP servers configured."]));
+          },
+          "My skills (" + mine.length + ", under ~/.claude/skills)",
+        ),
+      );
+    } else {
+      nodes.push(
+        subHead("My skills (0, under ~/.claude/skills)"),
+        U.summaryLine(["No standalone user or project skills."]),
+      );
+    }
+    if (servers.length > 0) {
+      nodes.push(mcpTable(servers));
+    } else {
+      nodes.push(subHead("MCP servers (0)"), U.summaryLine(["No MCP servers configured."]));
+    }
 
     mount.replaceChildren.apply(mount, nodes);
   }
@@ -2836,7 +2959,11 @@ window.wkxFilter = (function () {
       { value: tools.length - present, label: "Missing" },
     ]);
 
-    const built = window.wkxTables.mount([{ label: "Tool" }, { label: "Version" }], "system-tools");
+    const built = window.wkxTables.mount(
+      [{ label: "Tool" }, { label: "Version" }],
+      "system-tools",
+      "Developer tools",
+    );
     tools.forEach(function (tool) {
       const flags = U.flagCell("system:" + tool.name);
       const versionCell = U.td(tool.present && tool.version ? U.token("version", tool.version, "ver") : U.dash());
@@ -2883,10 +3010,11 @@ window.wkxFilter = (function () {
     return span;
   }
 
-  function pkgTable(kind, packages) {
+  function pkgTable(kind, packages, title) {
     const built = window.wkxTables.mount(
       [{ label: "Package" }, { label: "Installed" }, { label: "Current" }],
       "homebrew-packages",
+      title,
     );
     packages.forEach(function (pkg) {
       const flags = U.flagCell("homebrew:" + kind + ":" + pkg.name);
@@ -2925,10 +3053,10 @@ window.wkxFilter = (function () {
     ]);
     const nodes = [summary];
     if (formulae.length > 0) {
-      nodes.push(U.el("p", "sub-head", "Formulae (" + formulae.length + ")"), pkgTable("formula", formulae));
+      nodes.push(pkgTable("formula", formulae, "Formulae (" + formulae.length + ")"));
     }
     if (casks.length > 0) {
-      nodes.push(U.el("p", "sub-head", "Casks (" + casks.length + ")"), pkgTable("cask", casks));
+      nodes.push(pkgTable("cask", casks, "Casks (" + casks.length + ")"));
     }
     mount.replaceChildren.apply(mount, nodes);
   }
@@ -3049,6 +3177,7 @@ window.wkxFilter = (function () {
         { label: "Total", num: true },
       ],
       "footprint",
+      "Regenerable by repo",
     );
     repos.forEach(function (repo) {
       const totalCell = U.td(U.el("span", "ver", repo.total), "num");
@@ -3113,6 +3242,7 @@ window.wkxFilter = (function () {
     const built = window.wkxTables.mount(
       [{ label: "Extension" }, { label: "Version", num: true }],
       "editor-extensions",
+      "Extensions",
     );
     extensions.forEach(function (ext) {
       built.tbody.append(
@@ -3191,10 +3321,10 @@ window.wkxFilter = (function () {
     const nodes = [summary];
 
     if (entries.length > 0) {
-      nodes.push(U.el("p", "sub-head", "Config (" + entries.length + ")"));
       const built = window.wkxTables.mount(
         [{ label: "Key" }, { label: "Value" }, { label: "Origin" }],
         "git-config-keys",
+        "Config (" + entries.length + ")",
       );
       entries.forEach(function (entry) {
         built.tbody.append(
@@ -3211,10 +3341,10 @@ window.wkxFilter = (function () {
     }
 
     if (includes.length > 0) {
-      nodes.push(U.el("p", "sub-head", "Includes (" + includes.length + ")"));
       const built = window.wkxTables.mount(
         [{ label: "Condition" }, { label: "Path" }, { label: "State" }],
         "git-config-includes",
+        "Includes (" + includes.length + ")",
       );
       includes.forEach(function (inc) {
         const status = inc.exists ? U.td(U.ok("found")) : U.td(U.el("span", "q", "missing"));
@@ -3275,10 +3405,11 @@ window.wkxFilter = (function () {
     return U.td(span);
   }
 
-  function settingsTable(values) {
+  function settingsTable(values, title) {
     const built = window.wkxTables.mount(
       [{ label: "Setting" }, { label: "Value" }, { label: "Source" }],
       "config-settings",
+      title,
     );
     values.forEach(function (item) {
       built.tbody.append(
@@ -3298,8 +3429,8 @@ window.wkxFilter = (function () {
   // reach the board at all. Each glob is the ~-relative pattern the operator wrote;
   // a matching directory is pruned from discovery, so an excluded repo is absent
   // and raises no Flags (Exclude, not a mute). A path-like value, shown the wkx way.
-  function excludesTable(globs) {
-    const built = window.wkxTables.mount([{ label: "Exclude glob" }], "config-excludes");
+  function excludesTable(globs, title) {
+    const built = window.wkxTables.mount([{ label: "Exclude glob" }], "config-excludes", title);
     globs.forEach(function (glob) {
       built.tbody.append(U.tr([U.td(U.el("span", "ver", glob)), U.flagCell()]));
     });
@@ -3310,10 +3441,11 @@ window.wkxFilter = (function () {
   // The system-tools probe list, the first list-shaped setting to get its own
   // table. Each tool name is a token of kind "tool", so it lights up with the same
   // tool wherever it appears in the system Section and beyond.
-  function toolsTable(tools) {
+  function toolsTable(tools, title) {
     const built = window.wkxTables.mount(
       [{ label: "Tool" }, { label: "Version probe" }],
       "config-tools",
+      title,
     );
     tools.forEach(function (tool) {
       const probe = (tool.version_args && tool.version_args.length ? tool.version_args : ["--version"]).join(" ");
@@ -3333,8 +3465,8 @@ window.wkxFilter = (function () {
   // a Section the operator switched off, so its panel and route are gone and it
   // raises no Flags; naming them here is the one place the board still accounts for
   // a Section it otherwise drops entirely.
-  function offTable(sections) {
-    const built = window.wkxTables.mount([{ label: "Section" }], "config-off");
+  function offTable(sections, title) {
+    const built = window.wkxTables.mount([{ label: "Section" }], "config-off", title);
     sections.forEach(function (name) {
       built.tbody.append(U.tr([U.td(U.el("span", "t-name", name)), U.flagCell()]));
     });
@@ -3348,10 +3480,11 @@ window.wkxFilter = (function () {
   // mutes the whole Category. Muting is a view preference, so a muted Flag is
   // dropped from the badges and the tally but stays on /api/flags — this table is
   // where the operator sees what they silenced.
-  function mutesTable(rules) {
+  function mutesTable(rules, title) {
     const built = window.wkxTables.mount(
       [{ label: "Category" }, { label: "Target" }],
       "config-mutes",
+      title,
     );
     rules.forEach(function (rule) {
       const target = rule.target ? U.el("span", "ver", rule.target) : U.quiet("whole category");
@@ -3455,33 +3588,33 @@ window.wkxFilter = (function () {
       summary,
       fileLine,
       viewFileLine(viewState),
-      U.el("p", "sub-head", "Settings"),
-      settingsTable(values),
+      settingsTable(values, "Settings"),
     ];
     if (excludes.length > 0) {
-      nodes.push(
-        U.el("p", "sub-head", "Excludes (" + excludes.length + ") · " + excludeSource),
-        excludesTable(excludes),
-      );
+      nodes.push(excludesTable(excludes, "Excludes (" + excludes.length + ") · " + excludeSource));
     } else {
       nodes.push(
         U.el("p", "sub-head", "Excludes · " + excludeSource),
         U.summaryLine(["No discovery Excludes are configured; every repository under the scan roots is shown."]),
       );
     }
-    nodes.push(U.el("p", "sub-head", "System tools (" + tools.length + ") · " + toolsSource), toolsTable(tools));
-    nodes.push(U.el("p", "sub-head", "Off Sections (" + off.length + ") · " + offSource));
-    nodes.push(
-      off.length > 0
-        ? offTable(off)
-        : U.summaryLine(["No Sections are off; every Section is on the board."]),
-    );
-    nodes.push(U.el("p", "sub-head", "Mutes (" + mutes.length + ") · from the View"));
-    nodes.push(
-      mutes.length > 0
-        ? mutesTable(mutes)
-        : U.summaryLine(["No Flags are muted; every Flag badges its row and counts in the tally."]),
-    );
+    nodes.push(toolsTable(tools, "System tools (" + tools.length + ") · " + toolsSource));
+    if (off.length > 0) {
+      nodes.push(offTable(off, "Off Sections (" + off.length + ") · " + offSource));
+    } else {
+      nodes.push(
+        U.el("p", "sub-head", "Off Sections (0) · " + offSource),
+        U.summaryLine(["No Sections are off; every Section is on the board."]),
+      );
+    }
+    if (mutes.length > 0) {
+      nodes.push(mutesTable(mutes, "Mutes (" + mutes.length + ") · from the View"));
+    } else {
+      nodes.push(
+        U.el("p", "sub-head", "Mutes (0) · from the View"),
+        U.summaryLine(["No Flags are muted; every Flag badges its row and counts in the tally."]),
+      );
+    }
 
     mount.replaceChildren.apply(mount, nodes);
   }
