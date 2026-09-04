@@ -12,17 +12,10 @@
 // every change through PATCH /api/view, one preference per call; a successful
 // write is pushed to every open tab over /api/view/stream, so no tab holds a
 // stale View. This module is the one client-side home for that: it fetches the
-// View, migrates the old localStorage keys into it once, and lets each control
-// read the current value, write a change, and re-apply when any tab writes. No
-// preference lives in localStorage any more — the file is the only store.
+// View, and lets each control read the current value, write a change, and
+// re-apply when any tab writes. The file is the only store.
 window.wkxView = (function () {
   "use strict";
-
-  // The old localStorage keys, migrated once into the View and then removed. This
-  // is the only place they are named; after migration none remains.
-  const LEGACY_THEME = "wkx-theme";
-  const LEGACY_SECTIONS = "wkx-sections";
-  const LEGACY_COLLAPSED = "wkx-collapsed";
 
   // The effective View plus its file state, mirroring the /api/view payload. It
   // starts empty (a board at its defaults) and is replaced by the server's copy.
@@ -177,74 +170,6 @@ window.wkxView = (function () {
       });
   }
 
-  // Migration: read the three old localStorage keys once, write each preference
-  // through PATCH, and delete the keys only after every write has landed. A write
-  // that the board rejects as an unknown key (an old panel id it no longer knows)
-  // is dropped rather than treated as a durable failure, so the migration still
-  // completes and the keys are cleared.
-  function readLegacy(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch (_err) {
-      return null;
-    }
-  }
-  function legacyMap(key, field, wanted) {
-    let parsed;
-    try {
-      parsed = JSON.parse(readLegacy(key) || "{}");
-    } catch (_err) {
-      parsed = {};
-    }
-    const writes = [];
-    if (parsed && typeof parsed === "object") {
-      Object.keys(parsed).forEach(function (id) {
-        if (parsed[id] === wanted) writes.push({ field: field, panel: id, on: true });
-      });
-    }
-    return writes;
-  }
-  function migrateWrite(body) {
-    return fetch("/api/view", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(function (response) {
-      if (response.ok) return response.json().then(apply);
-      if (response.status === 422) return current; // an old id the board no longer knows
-      throw new Error("HTTP " + response.status);
-    });
-  }
-  function clearLegacy() {
-    try {
-      localStorage.removeItem(LEGACY_THEME);
-      localStorage.removeItem(LEGACY_SECTIONS);
-      localStorage.removeItem(LEGACY_COLLAPSED);
-    } catch (_err) {
-      // A storage-blocked browser has nothing to clear.
-    }
-  }
-  function migrate() {
-    let writes = [];
-    const savedTheme = readLegacy(LEGACY_THEME);
-    if (savedTheme === "light" || savedTheme === "dark")
-      writes.push({ field: "theme", value: savedTheme });
-    // wkx-sections stored panel id -> visible; a false means the panel was Hidden.
-    writes = writes.concat(legacyMap(LEGACY_SECTIONS, "sections_hidden", false));
-    // wkx-collapsed stored panel id -> true for each Collapsed panel.
-    writes = writes.concat(legacyMap(LEGACY_COLLAPSED, "sections_collapsed", true));
-    if (writes.length === 0) return Promise.resolve();
-    // Chain the writes so the file is merged one preference at a time; delete the
-    // keys only once every write has succeeded.
-    return writes
-      .reduce(function (chain, body) {
-        return chain.then(function () {
-          return migrateWrite(body);
-        });
-      }, Promise.resolve())
-      .then(clearLegacy);
-  }
-
   // Converge: hold /api/view/stream open and apply every view event another tab's
   // write pushes, so no tab keeps a stale View.
   function converge() {
@@ -261,10 +186,7 @@ window.wkxView = (function () {
     // EventSource reconnects on its own if the stream drops; nothing to do here.
   }
 
-  const ready = refresh()
-    .then(raiseUnknownKeys)
-    .then(migrate)
-    .then(converge);
+  const ready = refresh().then(raiseUnknownKeys).then(converge);
 
   return {
     ready: ready,
@@ -957,8 +879,8 @@ window.wkxFlags = (function () {
     return flag.section + ":" + flag.target;
   }
 
-  // The operator's Mute rules, read from the View (ADR 0004): Mute moved out of
-  // the configuration into the board's own file. Empty until the View lands (and
+  // The operator's Mute rules, read from the View (ADR 0004): the Mute rules are
+  // part of the View, the board's own file. Empty until the View lands (and
   // if it fails), so a Flag arriving early is simply not muted rather than
   // erroring. Flag placement is behind the boot gate, which waits on the View, so
   // the rules are present by the time a Flag is placed.
@@ -3474,8 +3396,8 @@ window.wkxFilter = (function () {
     return built.wrap;
   }
 
-  // The Mute rules, read from the View now (ADR 0004): Mute moved out of the
-  // configuration into the board's own file. Each rule names a Flag Category to
+  // The Mute rules, read from the View (ADR 0004): the Mute rules are part of the
+  // View, the board's own file. Each rule names a Flag Category to
   // silence; a target narrows it to one item's exact wire value, an empty target
   // mutes the whole Category. Muting is a view preference, so a muted Flag is
   // dropped from the badges and the tally but stays on /api/flags — this table is

@@ -36,9 +36,8 @@ client module, `wkxView`, owns this: on load it reads `GET /api/view`, writes ea
 change through `PATCH /api/view` one preference at a time, and holds
 `/api/view/stream` open so a write in one tab converges in every other. The file
 holds overrides only, so a fresh board writes nothing and deleting the file resets
-the board to its defaults. On the first load after this change `wkxView` migrates
-the old `localStorage` keys (`wkx-theme`, `wkx-sections`, `wkx-collapsed`) into the
-View and deletes them, so no `localStorage` key remains.
+the board to its defaults. The View file is the only store; the board keeps no
+`localStorage` key.
 
 ## The service
 

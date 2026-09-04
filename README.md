@@ -155,11 +155,9 @@ writes nothing. Delete the file to reset the board to its defaults. To read it
 from another path, set the environment variable `WKX_ECO_LOCAL_VIEW_FILE`, the way
 `WKX_ECO_LOCAL_CONFIG_FILE` sets the configuration path.
 
-Mute is part of the View now, not the configuration. A `mute` key left in the
-configuration file stops the board at startup with a message that names the View
-file. The board never refuses to start on the View file itself: a name it does not
-know is dropped with a warning and raised as a Flag in the config Section, so the
-board always starts on a file it wrote.
+The board never refuses to start on the View file: a name it does not know is
+dropped with a warning and raised as a Flag in the config Section, so the board
+always starts on a file it wrote.
 
 ### Development
 

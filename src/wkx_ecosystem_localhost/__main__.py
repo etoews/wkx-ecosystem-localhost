@@ -17,7 +17,6 @@ from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.config import (
     Settings,
-    check_configuration,
     check_environment,
     resolve_config_file,
 )
@@ -159,7 +158,6 @@ def serve(
     """Serve the board on loopback."""
     check_environment()
     config_file = resolve_config_file(os.environ)
-    check_configuration(config_file)
     settings = Settings()
     view_file = resolve_view_file(os.environ)
     bind_port = port if port is not None else settings.port

@@ -42,11 +42,6 @@ logger = logging.getLogger(__name__)
 # never collides with the wider wkx-* environment.
 ENV_PREFIX = "WKX_ECO_LOCAL_"
 
-# The prefix these variables used before the WKX_ECO_LOCAL_ rename. A leftover
-# variable under it that names a real field (e.g. WKX_ECO_PORT) is caught at
-# startup instead of silently reverting the field to its default.
-LEGACY_ENV_PREFIX = "WKX_ECO_"
-
 # Env-only override for the configuration file path. Deliberately not a Settings
 # field: it names the file the fields are read from, so it cannot itself be read
 # from that file, and it is exempt from the unknown-variable scan.
@@ -215,10 +210,9 @@ class Settings(BaseSettings):
     # WKX_ECO_LOCAL_EXCLUDE (a JSON list); the built-in prunes stay built-in.
     exclude: list[str] = Field(default_factory=list)
 
-    # Mute is deliberately not a configuration field. From M12 it is part of the
-    # View, the board's own file (view.py, ADR 0004), so a `mute` key in the
-    # configuration is caught by check_configuration with a message that names the
-    # View file, rather than being read here.
+    # Mute is deliberately not a configuration field: it is part of the View, the
+    # board's own file (view.py, ADR 0004). A stray `mute` key in the configuration
+    # is rejected by extra="forbid" like any other unknown key.
 
     @field_validator("scan_roots", mode="after")
     @classmethod
@@ -280,7 +274,7 @@ class Settings(BaseSettings):
 def _known_env_names() -> set[str]:
     """The full set of ``WKX_ECO_LOCAL_*`` variable names the board understands."""
     # VIEW_FILE_ENV lives in view.py; import it lazily to keep config free of a
-    # view import at module load, the way _mute_moved_message does for the path.
+    # view import at module load.
     from wkx_ecosystem_localhost.view import VIEW_FILE_ENV
 
     names = {f"{ENV_PREFIX}{field.upper()}" for field in Settings.model_fields}
@@ -290,28 +284,20 @@ def _known_env_names() -> set[str]:
 
 
 def check_environment(environ: Mapping[str, str] | None = None) -> None:
-    """Fail fast on a stray ``WKX_ECO_LOCAL_*`` variable, or a leftover ``WKX_ECO_*``.
+    """Fail fast on a stray ``WKX_ECO_LOCAL_*`` variable.
 
     ``pydantic-settings`` reads declared fields only, so a misspelt variable such as
-    ``WKX_ECO_LOCAL_PROT`` is silently ignored, and a variable still under the old
-    ``WKX_ECO_`` prefix (from before the rename) is ignored the same way. This scan
-    closes both gaps: it names every ``WKX_ECO_LOCAL_*`` variable that matches no
-    field, and every leftover ``WKX_ECO_*`` variable whose name is a field under the
-    old prefix, and refuses to start — the fail-fast posture ``extra="forbid"`` gives
-    the TOML.
+    ``WKX_ECO_LOCAL_PROT`` is silently ignored. This scan closes that gap: it names
+    every ``WKX_ECO_LOCAL_*`` variable that matches no field and refuses to start —
+    the fail-fast posture ``extra="forbid"`` gives the TOML.
 
     Args:
         environ: The environment to scan. Defaults to the process environment.
 
     Raises:
-        ConfigError: If a ``WKX_ECO_LOCAL_*`` variable matches no field, or a
-            ``WKX_ECO_*`` variable names a field under the old prefix, naming each.
+        ConfigError: If a ``WKX_ECO_LOCAL_*`` variable matches no field, naming each.
     """
     env = os.environ if environ is None else environ
-    mute_var = f"{ENV_PREFIX}MUTE"
-    if any(name.upper() == mute_var for name in env):
-        logger.error("%s is no longer read; Mute moved to the View", mute_var)
-        raise ConfigError(_mute_moved_message(f"the {mute_var} environment variable"))
     known = _known_env_names()
     unknown = sorted(
         name for name in env if name.upper().startswith(ENV_PREFIX) and name.upper() not in known
@@ -323,66 +309,6 @@ def check_environment(environ: Mapping[str, str] | None = None) -> None:
             f"unknown {ENV_PREFIX} environment variable(s): {joined}. "
             "Each must match a configuration field; check for a typo."
         )
-
-    field_names = {field.upper() for field in Settings.model_fields}
-    legacy = sorted(
-        name
-        for name in env
-        if name.upper().startswith(LEGACY_ENV_PREFIX)
-        and not name.upper().startswith(ENV_PREFIX)
-        and name.upper().removeprefix(LEGACY_ENV_PREFIX) in field_names
-    )
-    if legacy:
-        joined = ", ".join(legacy)
-        logger.error("legacy %s environment variable(s): %s", LEGACY_ENV_PREFIX, joined)
-        raise ConfigError(
-            f"{joined} use the old {LEGACY_ENV_PREFIX} prefix; the board now reads "
-            f"{ENV_PREFIX}* — rename, for example, {LEGACY_ENV_PREFIX}PORT to {ENV_PREFIX}PORT."
-        )
-
-
-def _mute_moved_message(source: str) -> str:
-    """The startup error for ``mute`` still living in the configuration.
-
-    Names the View file so the operator knows exactly where Mute moved to (ADR
-    0004). The View file name is read lazily to avoid an import cycle: ``view``
-    imports this module.
-    """
-    from wkx_ecosystem_localhost.view import DEFAULT_VIEW_FILE
-
-    return (
-        f"mute is no longer configuration: {source} sets it, but Mute is now part of "
-        f"the View, which the board writes to {DEFAULT_VIEW_FILE}. Remove mute from "
-        "the configuration; the board manages Mutes in the View file itself."
-    )
-
-
-def check_configuration(config_file: Path | None) -> None:
-    """Fail fast when the configuration file still carries a ``mute`` key.
-
-    Mute moved into the View from M12 (ADR 0004), so a ``mute`` key left in the
-    configuration is a stale setting the board must not silently ignore. This runs
-    before ``Settings`` is built, so the operator sees a message that names the View
-    file rather than the generic ``extra="forbid"`` rejection.
-
-    Args:
-        config_file: The configuration file, or None when the file source is off.
-
-    Raises:
-        ConfigError: If the configuration file has a top-level ``mute`` key.
-    """
-    if config_file is None or not config_file.is_file():
-        return
-    try:
-        with config_file.open(encoding="utf-8") as handle:
-            data = tomlkit.load(handle)
-    except OSError, TOMLKitError:
-        # A file the board cannot read or parse is left to Settings to reject with
-        # its own message; this check only decides the one thing it is here to decide.
-        return
-    if "mute" in data:
-        logger.error("mute in %s is no longer read; Mute moved to the View", config_file)
-        raise ConfigError(_mute_moved_message(f"{config_file}"))
 
 
 class ConfigItem(BaseModel):

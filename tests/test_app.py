@@ -44,15 +44,11 @@ def test_styles_are_served_with_wkx_tokens(client: TestClient) -> None:
 
 
 def test_app_js_persists_no_preference_to_localstorage(client: TestClient) -> None:
-    # The View file is the only store now (ADR 0004): the theme, the Hidden and
-    # Collapsed panels, and the Mutes all live there, and nothing is written to
-    # localStorage. The old wkx-theme, wkx-sections, and wkx-collapsed keys survive
-    # only as the one-time migration reads and clears them, never as a live store,
-    # so no localStorage.setItem remains anywhere in the board's JavaScript.
-    response = client.get("/static/app.js")
-
-    assert response.status_code == 200
-    assert "localStorage.setItem" not in response.text
+    # The View file is the only store (ADR 0004): the theme, the Hidden and
+    # Collapsed panels, and the Mutes all live there, and localStorage is not used
+    # at all — neither the board's JavaScript nor the served shell names it.
+    assert "localStorage" not in client.get("/static/app.js").text
+    assert "localStorage" not in client.get("/").text
 
 
 def test_app_js_writes_view_preferences_through_the_api(client: TestClient) -> None:
