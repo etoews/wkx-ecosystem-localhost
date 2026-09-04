@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -19,7 +20,7 @@ HOME = Path("/home/someone")
 
 def _client(*, config_file: Path | None, **settings_kwargs: object) -> TestClient:
     settings = Settings(_env_file=None, _config_file=config_file, **settings_kwargs)
-    return TestClient(create_app(settings, home=HOME, config_file=config_file))
+    return loopback_client(create_app(settings, home=HOME, config_file=config_file))
 
 
 def test_config_reports_defaults_when_no_file() -> None:
@@ -93,7 +94,7 @@ def test_config_relativises_the_file_path(tmp_path: Path) -> None:
     path = HOME / "wkx-ecosystem-localhost.toml"
     # No real file at HOME; the route still reports the ~-relative path it would read.
     settings = Settings(_env_file=None, _config_file=None)
-    client = TestClient(create_app(settings, home=HOME, config_file=path))
+    client = loopback_client(create_app(settings, home=HOME, config_file=path))
 
     body = client.get("/api/config").json()
 

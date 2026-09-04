@@ -35,6 +35,32 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"ok": True}
 
 
+# ---------- the Host guard (DNS-rebinding defence, ADR 0001) ----------
+
+
+def test_a_data_route_refuses_a_foreign_host(client: TestClient) -> None:
+    # A DNS-rebound page reaches the board same-origin under its own name; every
+    # read route refuses a Host that is not a bound loopback name, so the page
+    # cannot read the inventory.
+    response = client.get("/api/config", headers={"host": "attacker.example:8787"})
+
+    assert response.status_code == 403
+
+
+def test_the_shell_refuses_a_foreign_host(client: TestClient) -> None:
+    response = client.get("/", headers={"host": "attacker.example:8787"})
+
+    assert response.status_code == 403
+
+
+def test_a_loopback_host_is_allowed(client: TestClient) -> None:
+    # The board reaches itself as localhost as well as 127.0.0.1, always on the
+    # bound port; both clear the guard.
+    response = client.get("/api/config", headers={"host": "localhost:8787"})
+
+    assert response.status_code == 200
+
+
 def test_styles_are_served_with_wkx_tokens(client: TestClient) -> None:
     response = client.get("/static/styles.css")
 

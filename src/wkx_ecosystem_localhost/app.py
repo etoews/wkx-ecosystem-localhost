@@ -10,8 +10,9 @@ from typing import TypeVar
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
 from starlette.responses import Response
-from starlette.types import Scope
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from wkx_ecosystem_localhost import sse
 from wkx_ecosystem_localhost._logging import configure as configure_logging
@@ -132,6 +133,35 @@ def _loopback_hosts(port: int) -> frozenset[str]:
     return frozenset(f"{host}:{port}" for host in ("127.0.0.1", "localhost", "[::1]"))
 
 
+class HostGuardMiddleware:
+    """Refuse any request whose ``Host`` is not a bound loopback name (ADR 0001).
+
+    The board's whole security posture is loopback-only: it inventories the machine
+    and serves repo paths, the git config chain with the operator's email, and the
+    installed extensions and MCP names, all unauthenticated because nothing off the
+    machine can reach ``127.0.0.1``. DNS rebinding breaks that assumption — a hostile
+    page whose name resolves to ``127.0.0.1`` would read every route same-origin — so
+    every route, read included, is refused unless its ``Host`` is a bound loopback
+    name and port. A pure ASGI middleware so it passes streaming responses (the SSE
+    streams) straight through when the request is allowed.
+    """
+
+    def __init__(self, app: ASGIApp, allowed_hosts: frozenset[str]) -> None:
+        self.app = app
+        self.allowed_hosts = allowed_hosts
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Refuse a foreign-``Host`` HTTP request with 403; pass everything else on."""
+        if scope["type"] == "http":
+            host = Headers(scope=scope).get("host")
+            if host is None or host not in self.allowed_hosts:
+                logger.warning("refused a request with a foreign Host: %r", host)
+                response = JSONResponse({"detail": "host not allowed"}, status_code=403)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 def write_is_allowed(
     *,
     content_type: str | None,
@@ -207,10 +237,12 @@ def create_app(
     app.state.home = home if home is not None else Path.home()
     app.state.config_file = config_file
     app.state.view_file = view_file
-    # The Host header allow-list for the write guard: the loopback names on the bound
-    # port. A write whose Host is anything else is a DNS-rebinding attempt (ADR 0004).
+    # The Host header allow-list: the loopback names on the bound port. Any other
+    # Host is a DNS-rebinding attempt (ADR 0001) and is refused on every route by
+    # HostGuardMiddleware; the write guard checks the same set for PATCH.
     guard_port = bound_port if bound_port is not None else settings.port
     app.state.allowed_hosts = _loopback_hosts(guard_port)
+    app.add_middleware(HostGuardMiddleware, allowed_hosts=app.state.allowed_hosts)
     # Fans a successful View write out to every open tab over the convergence stream.
     app.state.view_broadcaster = ViewBroadcaster()
     # The footprint probe walks whole trees with ``du``, so its Section is computed

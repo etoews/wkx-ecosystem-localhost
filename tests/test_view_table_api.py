@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -22,7 +23,7 @@ HOST = "127.0.0.1:8787"
 def _client(tmp_path: Path) -> TestClient:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
-    return TestClient(create_app(settings, home=HOME, view_file=view_file))
+    return loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
 
 def _patch(client: TestClient, body: dict) -> object:

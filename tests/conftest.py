@@ -11,6 +11,7 @@ from pathlib import Path
 
 import fixtures
 import pytest
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -20,7 +21,7 @@ from wkx_ecosystem_localhost.config import Settings
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
-    return TestClient(create_app(settings))
+    return loopback_client(create_app(settings))
 
 
 @pytest.fixture
@@ -33,7 +34,7 @@ def workspace_client() -> TestClient:
     """
     machine, home, roots = fixtures.build_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def submodule_client() -> TestClient:
     """
     machine, home, roots = fixtures.build_submodule_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -62,7 +63,7 @@ def toolchains_client() -> TestClient:
     """
     machine, home, roots = fixtures.build_toolchains_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -79,7 +80,7 @@ def system_client() -> TestClient:
     settings = Settings(
         _env_file=None, _config_file=None, scan_roots=[fixtures.DEV], system_tools=tools
     )
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -94,7 +95,7 @@ def claude_client() -> TestClient:
     """
     machine, home = fixtures.build_claude_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -107,7 +108,7 @@ def homebrew_client() -> TestClient:
     """
     machine = fixtures.build_homebrew_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -120,7 +121,7 @@ def homebrew_absent_client() -> TestClient:
     """
     machine = fixtures.build_homebrew_absent()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -133,7 +134,7 @@ def docker_client() -> TestClient:
     """
     machine = fixtures.build_docker_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -146,7 +147,7 @@ def docker_down_client() -> TestClient:
     """
     machine = fixtures.build_docker_down()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -159,7 +160,7 @@ def editor_client() -> TestClient:
     """
     machine = fixtures.build_editor_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -172,7 +173,7 @@ def editor_absent_client() -> TestClient:
     """
     machine = fixtures.build_editor_absent()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=fixtures.HOME))
+    return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
 @pytest.fixture
@@ -186,7 +187,7 @@ def footprint_client() -> TestClient:
     """
     machine, home, roots = fixtures.build_footprint_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -201,7 +202,7 @@ def git_config_client() -> TestClient:
     """
     machine, home = fixtures.build_git_config_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -215,7 +216,7 @@ def flags_client() -> TestClient:
     """
     machine, home, roots, tools = fixtures.build_flags_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 @pytest.fixture
@@ -228,4 +229,4 @@ def fetch_client() -> TestClient:
     """
     machine, home, roots = fixtures.build_fetch_workspace()
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))

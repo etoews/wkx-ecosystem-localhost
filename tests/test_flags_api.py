@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import fixtures
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -112,7 +113,7 @@ def _muted_client(tmp_path: Path) -> TestClient:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text(_MUTED_VIEW)
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
-    return TestClient(create_app(settings, machine=machine, home=home, view_file=view_file))
+    return loopback_client(create_app(settings, machine=machine, home=home, view_file=view_file))
 
 
 def test_muted_flags_stay_on_the_wire(tmp_path: Path) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -25,7 +26,7 @@ ORIGIN = "http://127.0.0.1:8787"
 def _client(tmp_path: Path) -> TestClient:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
-    return TestClient(create_app(settings, home=HOME, view_file=view_file))
+    return loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
 
 def _patch(client: TestClient, body: dict, **headers: str) -> object:
@@ -58,7 +59,7 @@ def test_get_view_surfaces_an_unknown_key(tmp_path: Path) -> None:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text('sections_hidden = ["docker", "nope"]\n')
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
-    client = TestClient(create_app(settings, home=HOME, view_file=view_file))
+    client = loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
     body = client.get("/api/view").json()
 
@@ -154,7 +155,7 @@ def test_a_corrupt_file_refuses_the_write(tmp_path: Path) -> None:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text("this = is = not valid toml\n")
     settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
-    client = TestClient(create_app(settings, home=HOME, view_file=view_file))
+    client = loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
     response = _patch(client, {"field": "theme", "value": "dark"})
 

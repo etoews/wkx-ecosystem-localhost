@@ -54,7 +54,10 @@ count of skills you set to `off`, not the skills of a disabled plugin.
 
 ## Security posture
 
-- Binds to `127.0.0.1` only; no auth, because loopback plus read-only.
+- Binds to `127.0.0.1` only, with no auth. Loopback is the boundary, so every
+  route — reads included — refuses a request whose `Host` is not a bound loopback
+  name and port with `403`, which shuts out a DNS-rebinding page that would
+  otherwise reach the board same-origin under its own name.
 - Every collector is a probe. The board writes two things and nothing else: a
   non-interactive background `git fetch`, bounded and timed out, which never
   touches a working tree; and its own View file (see below). It never writes its

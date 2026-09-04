@@ -17,8 +17,8 @@ from pathlib import Path
 
 import fixtures
 import pytest
+from clients import loopback_client
 from fakes import FakeMachine
-from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.collectors.workspace import DiscoveryCache
@@ -202,7 +202,7 @@ def test_one_board_load_walks_the_scan_roots_once() -> None:
     inner, home, roots, tools = fixtures.build_flags_workspace()
     machine = _CountingMachine(inner)
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
-    client = TestClient(create_app(settings, machine=machine, home=home))
+    client = loopback_client(create_app(settings, machine=machine, home=home))
 
     client.get("/api/workspace")
     after_workspace = _under_roots(machine, roots)
@@ -221,12 +221,12 @@ def test_a_fresh_app_starts_with_a_cold_cache() -> None:
     machine = _CountingMachine(inner)
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
 
-    first = TestClient(create_app(settings, machine=machine, home=home))
+    first = loopback_client(create_app(settings, machine=machine, home=home))
     first.get("/api/workspace")
     after_first_app = _under_roots(machine, roots)
     assert after_first_app > 0
 
-    second = TestClient(create_app(settings, machine=machine, home=home))
+    second = loopback_client(create_app(settings, machine=machine, home=home))
     second.get("/api/workspace")
 
     # The second app builds its own DiscoveryCache, so it walks cold rather than

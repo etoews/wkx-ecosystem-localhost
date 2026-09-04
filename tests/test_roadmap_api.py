@@ -9,6 +9,7 @@ checkout's roadmap belongs upstream. Only the machine seam is faked.
 from __future__ import annotations
 
 import fixtures
+from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
@@ -28,7 +29,7 @@ def _client_with_web_roadmap() -> TestClient:
     machine, home, roots = fixtures.build_workspace()
     machine.files[fixtures.WEB / ROADMAP_FILENAME] = ROADMAP_TEXT
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 def test_repo_roadmap_rides_the_workspace_payload() -> None:
@@ -47,7 +48,7 @@ def test_a_submodule_row_carries_no_roadmap() -> None:
     machine, home, roots = fixtures.build_submodule_workspace()
     machine.files[fixtures.APP / ROADMAP_FILENAME] = ROADMAP_TEXT
     settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
-    client = TestClient(create_app(settings, machine=machine, home=home))
+    client = loopback_client(create_app(settings, machine=machine, home=home))
 
     repos = _repos_by_name(client)
     submodules = client.get("/api/submodules").json()["submodules"]

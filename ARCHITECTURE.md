@@ -158,7 +158,10 @@ identity, a token, or a username.
 
 ## Security posture
 
-- Binds to `127.0.0.1` only, with no auth, because loopback plus read-only.
+- Binds to `127.0.0.1` only, with no auth. Loopback is the boundary: a
+  `HostGuardMiddleware` refuses every request — reads included — whose `Host` is
+  not a bound loopback name and port with `403`, so a DNS-rebinding page cannot
+  reach the board same-origin under its own name.
 - Every Collector is a probe with a fixed argv and a timeout. The board writes two
   things: the background `git fetch` described above, and its own View file.
 - The View file is the one write route. A write is accepted only from loopback and

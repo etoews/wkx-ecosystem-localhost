@@ -13,6 +13,7 @@ from pathlib import Path
 
 import fixtures
 import pytest
+from clients import loopback_client
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -124,7 +125,7 @@ def _off_client(*sections: Section) -> TestClient:
         system_tools=tools,
         sections_off=list(sections),
     )
-    return TestClient(create_app(settings, machine=machine, home=home))
+    return loopback_client(create_app(settings, machine=machine, home=home))
 
 
 def test_off_section_route_is_not_registered() -> None:
