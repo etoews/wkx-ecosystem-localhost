@@ -137,6 +137,17 @@ launchctl kickstart -k gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
 launchctl bootout gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
 ```
 
+The agent writes its standard output and its standard error to one log file.
+The default path is `~/Library/Logs/wkx-ecosystem-localhost.log`. The installer
+sets a different path when you give it `LOG_PATH` or `--log`, and the rendered
+plist keeps the path in use in its `StandardOutPath`. Follow the log with:
+
+```sh
+tail -f ~/Library/Logs/wkx-ecosystem-localhost.log
+```
+
+Read this log first when the board does not answer or the agent restarts.
+
 The reloader watches the package source and the configuration file
 (`wkx-ecosystem-localhost.toml`). It picks up a Python code change and a
 configuration edit, and reads the new configuration on the restart. It does not
