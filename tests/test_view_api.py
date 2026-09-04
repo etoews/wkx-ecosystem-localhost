@@ -8,13 +8,20 @@ file on disk does not parse.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import pytest
 from clients import loopback_client
 from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.config import Settings
+
+# A permission bit does not stop root, so the unreadable-file tests skip there.
+_skip_as_root = pytest.mark.skipif(
+    getattr(os, "geteuid", lambda: 1)() == 0, reason="a permission bit does not stop root"
+)
 
 HOME = Path("/home/someone")
 # The board binds 127.0.0.1 on the default port, so a same-origin write carries
@@ -169,3 +176,53 @@ def test_view_has_a_write_route_but_config_does_not(tmp_path: Path) -> None:
 
     # /api/view accepts PATCH; /api/config never does.
     assert client.patch("/api/config").status_code == 405
+
+
+# ---------- an unreadable View file must not take the shell down (finding 5) ----------
+
+
+def _unreadable_client(tmp_path: Path) -> tuple[TestClient, Path]:
+    view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
+    view_file.write_text('theme = "dark"\n')
+    view_file.chmod(0o000)
+    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    return loopback_client(create_app(settings, home=HOME, view_file=view_file)), view_file
+
+
+@_skip_as_root
+def test_the_shell_still_serves_over_an_unreadable_view_file(tmp_path: Path) -> None:
+    client, view_file = _unreadable_client(tmp_path)
+    try:
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert "WKX" in response.text
+        # The saved theme cannot be read, so the shell serves unthemed rather than 500.
+        assert 'data-theme="dark"' not in response.text
+    finally:
+        view_file.chmod(0o644)
+
+
+@_skip_as_root
+def test_get_view_reports_an_unreadable_file(tmp_path: Path) -> None:
+    client, view_file = _unreadable_client(tmp_path)
+    try:
+        body = client.get("/api/view").json()
+
+        assert body["found"] is True
+        assert body["readable"] is False
+        assert body["writable"] is False
+        assert body["theme"] is None
+    finally:
+        view_file.chmod(0o644)
+
+
+@_skip_as_root
+def test_a_patch_onto_an_unreadable_file_is_not_saved(tmp_path: Path) -> None:
+    client, view_file = _unreadable_client(tmp_path)
+    try:
+        response = _patch(client, {"field": "theme", "value": "light"})
+
+        assert response.status_code == 500
+    finally:
+        view_file.chmod(0o644)

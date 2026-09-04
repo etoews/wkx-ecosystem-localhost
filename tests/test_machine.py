@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from wkx_ecosystem_localhost.machine import (
+    CANNOT_EXECUTE_RETURNCODE,
     NOT_FOUND_RETURNCODE,
     TIMEOUT_RETURNCODE,
     RealMachine,
@@ -43,6 +44,39 @@ def test_run_reports_a_missing_program_instead_of_raising() -> None:
     assert result.returncode == NOT_FOUND_RETURNCODE
 
 
+def test_run_reports_a_cwd_that_is_a_file_instead_of_raising(tmp_path: Path) -> None:
+    # A stale .gitmodules path can name a file as a submodule directory. Running with
+    # a file as cwd must be a fact about the probe, never a 500.
+    a_file = tmp_path / "a-file"
+    a_file.write_text("not a directory", encoding="utf-8")
+
+    result = RealMachine().run(["git", "status"], cwd=a_file, timeout=5)
+
+    assert not result.ok
+    assert result.returncode == NOT_FOUND_RETURNCODE
+    assert "probe directory missing" in result.stderr
+
+
+def test_run_reports_a_missing_cwd_instead_of_raising(tmp_path: Path) -> None:
+    result = RealMachine().run(["git", "status"], cwd=tmp_path / "gone", timeout=5)
+
+    assert not result.ok
+    assert "probe directory missing" in result.stderr
+
+
+def test_run_reports_a_non_executable_program_instead_of_raising(tmp_path: Path) -> None:
+    # A configured tool whose file is present but has no execute bit raises
+    # PermissionError from the spawn; it must degrade one row, not the board.
+    tool = tmp_path / "not-executable"
+    tool.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    tool.chmod(0o644)  # readable, not executable
+
+    result = RealMachine().run([str(tool)], timeout=5)
+
+    assert result.returncode == CANNOT_EXECUTE_RETURNCODE
+    assert not result.ok
+
+
 def test_read_file_returns_the_text_of_a_present_file(tmp_path: Path) -> None:
     present = tmp_path / "present.txt"
     present.write_text("contents", encoding="utf-8")
@@ -68,6 +102,22 @@ def test_read_file_returns_none_for_a_file_over_the_byte_cap(tmp_path: Path) -> 
 
     # A file larger than the cap is absent, never a truncated read.
     assert RealMachine().read_file(over, max_bytes=4) is None
+
+
+def test_read_file_returns_none_for_non_utf8_unbounded(tmp_path: Path) -> None:
+    # One latin-1 byte in an include file, .gitmodules, SKILL.md, or package.json
+    # must read as unreadable (None), never raise UnicodeDecodeError through the seam.
+    latin1 = tmp_path / "latin1.txt"
+    latin1.write_bytes(b"caf\xe9")
+
+    assert RealMachine().read_file(latin1) is None
+
+
+def test_read_file_returns_none_for_non_utf8_within_the_cap(tmp_path: Path) -> None:
+    latin1 = tmp_path / "latin1.txt"
+    latin1.write_bytes(b"caf\xe9")
+
+    assert RealMachine().read_file(latin1, max_bytes=100) is None
 
 
 def test_list_dir_reports_children_and_their_kind(tmp_path: Path) -> None:

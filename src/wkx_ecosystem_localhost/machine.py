@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 # Conventional shell exit codes reused so a Collector can tell a real non-zero
 # result from an environment failure without a bespoke error channel.
 TIMEOUT_RETURNCODE = 124
+# The program was found but could not be executed (a non-executable file, or any
+# other OSError from the spawn), the shell's 126.
+CANNOT_EXECUTE_RETURNCODE = 126
 NOT_FOUND_RETURNCODE = 127
 
 
@@ -98,11 +101,18 @@ class RealMachine:
             timeout: Hard wall-clock limit in seconds.
 
         Returns:
-            The command's return code and captured output. A timeout or a missing
-            program is reported as a non-zero ``CommandResult``, not raised, so a
-            single bad probe degrades one row rather than the whole board.
+            The command's return code and captured output. A timeout, a missing
+            working directory, a missing program, or any other spawn failure is
+            reported as a non-zero ``CommandResult``, not raised, so a single bad
+            probe degrades one row rather than the whole board.
         """
         env = os.environ | {"GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"}
+        # Check the working directory first, so a stale .gitmodules path (a cwd that
+        # is missing or is a file) is named as what it is, not misreported as a
+        # missing program the way a FileNotFoundError from the spawn would be.
+        if cwd is not None and not cwd.is_dir():
+            logger.warning("probe directory missing: %s", cwd)
+            return CommandResult(NOT_FOUND_RETURNCODE, "", f"probe directory missing: {cwd}")
         try:
             # argv is always a fixed list; shell=False (the default) so nothing is
             # shell-interpolated and a hostile path or filename cannot inject.
@@ -121,24 +131,30 @@ class RealMachine:
         except FileNotFoundError:
             logger.warning("probe program not found: %s", argv[0])
             return CommandResult(NOT_FOUND_RETURNCODE, "", "program not found")
+        except OSError as error:
+            # A non-executable tool (PermissionError) or any other spawn failure is a
+            # fact about this one probe, never an exception the board serves as a 500.
+            detail = error.strerror or str(error)
+            logger.warning("probe could not run %s: %s", argv[0], detail)
+            return CommandResult(CANNOT_EXECUTE_RETURNCODE, "", detail)
         return CommandResult(completed.returncode, completed.stdout, completed.stderr)
 
     def read_file(self, path: Path, max_bytes: int | None = None) -> str | None:
         """Return the UTF-8 text of ``path``, or None if it cannot be read.
 
-        With ``max_bytes`` set, at most that many bytes plus one are read: a file
-        larger than the cap returns None (never a truncated read), and a file
-        within it is decoded whole. A non-UTF-8 payload is treated as unreadable
-        (None). The default (None) reads the whole file, unchanged from before.
+        Bytes are read and decoded under one guard in both branches, so a non-UTF-8
+        payload (a single latin-1 byte in a ``.gitmodules``, ``SKILL.md``, or
+        ``package.json`` under the scan roots) is treated as unreadable (None),
+        never raised. With ``max_bytes`` set, at most that many bytes plus one are
+        read: a file larger than the cap returns None (never a truncated read). The
+        default (None) reads the whole file.
         """
         try:
-            if max_bytes is None:
-                return path.read_text(encoding="utf-8")
             with path.open("rb") as handle:
-                data = handle.read(max_bytes + 1)
+                data = handle.read() if max_bytes is None else handle.read(max_bytes + 1)
         except OSError:
             return None
-        if len(data) > max_bytes:
+        if max_bytes is not None and len(data) > max_bytes:
             return None
         try:
             return data.decode("utf-8")

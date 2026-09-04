@@ -9,6 +9,7 @@ does not parse.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from pathlib import Path
 
@@ -17,6 +18,7 @@ import pytest
 from wkx_ecosystem_localhost.exceptions import (
     InvalidPreference,
     ViewParseError,
+    ViewReadError,
     ViewWriteError,
 )
 from wkx_ecosystem_localhost.view import (
@@ -34,6 +36,12 @@ from wkx_ecosystem_localhost.view import (
 )
 
 HOME = Path("/home/someone")
+
+# A permission bit does not stop root, so the unreadable-file tests are meaningless
+# there and skip. os.geteuid is absent on non-POSIX; default to non-root.
+_skip_as_root = pytest.mark.skipif(
+    getattr(os, "geteuid", lambda: 1)() == 0, reason="a permission bit does not stop root"
+)
 
 
 def _view_file(tmp_path: Path) -> Path:
@@ -294,6 +302,60 @@ def test_a_corrupt_file_reads_as_empty_without_raising(tmp_path: Path) -> None:
 
     assert state.view == View()
     assert state.found is True
+
+
+# ---------- the unreadable file (a permission bit) ----------
+
+
+@_skip_as_root
+def test_an_unreadable_file_reads_as_defaults_without_raising(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # One permission bit on a file the board owns must not take the shell down: the
+    # read returns the board's defaults and reports the file present but unreadable
+    # and not writable, so the config Section can say so instead of a 500.
+    path = _view_file(tmp_path)
+    path.write_text('theme = "dark"\n')
+    path.chmod(0o000)
+    try:
+        with caplog.at_level(logging.WARNING):
+            state = read_view(path, home=HOME)
+
+        assert state.view == View()
+        assert state.found is True
+        assert state.readable is False
+        assert state.writable is False
+        assert any("cannot be read" in record.getMessage() for record in caplog.records)
+    finally:
+        path.chmod(0o644)
+
+
+@_skip_as_root
+def test_a_write_onto_an_unreadable_file_is_refused(tmp_path: Path) -> None:
+    # The current file cannot be read to merge onto, so the write is refused as
+    # not-saved rather than raising an OSError through the seam.
+    path = _view_file(tmp_path)
+    path.write_text('theme = "dark"\n')
+    path.chmod(0o000)
+    try:
+        with pytest.raises(ViewWriteError):
+            apply_preference(path, ThemePreference(theme="light"))
+    finally:
+        path.chmod(0o644)
+
+
+@_skip_as_root
+def test_parse_file_distinguishes_unreadable_from_unparseable(tmp_path: Path) -> None:
+    from wkx_ecosystem_localhost.view import _parse_file
+
+    path = _view_file(tmp_path)
+    path.write_text('theme = "dark"\n')
+    path.chmod(0o000)
+    try:
+        with pytest.raises(ViewReadError):
+            _parse_file(path)
+    finally:
+        path.chmod(0o644)
 
 
 # ---------- the write lock ----------

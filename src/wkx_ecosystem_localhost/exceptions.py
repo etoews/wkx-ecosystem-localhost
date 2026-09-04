@@ -13,6 +13,16 @@ class ViewError(WkxEcosystemError):
     """Base class for the board's View-file failures (read, merge, write)."""
 
 
+class ViewReadError(ViewError):
+    """Raised when the View file exists but cannot be read (a permission bit).
+
+    Distinct from a parse failure: the bytes never reached the board. Reading
+    catches this into a ``readable: False`` state so the shell still serves; a
+    write catches it as a failure to save, because the current file cannot be read
+    to merge onto.
+    """
+
+
 class ViewParseError(ViewError):
     """Raised when the View file on disk does not parse, so a write is refused.
 

@@ -37,6 +37,7 @@ from wkx_ecosystem_localhost.config import _UNSET, ENV_PREFIX, _Unset
 from wkx_ecosystem_localhost.exceptions import (
     InvalidPreference,
     ViewParseError,
+    ViewReadError,
     ViewWriteError,
 )
 from wkx_ecosystem_localhost.models import Section
@@ -180,6 +181,8 @@ class ViewState(BaseModel):
     ``view-unknown-key``. ``file`` is the ``~``-relative path, or None when no View
     file is configured; ``found`` is whether it exists; ``writable`` is whether the
     board could write it (the file, or its directory when the file is absent).
+    ``readable`` is whether the file's bytes could be read; a permission bit makes it
+    False and the board serves its defaults rather than 500.
     """
 
     view: View
@@ -187,6 +190,7 @@ class ViewState(BaseModel):
     file: str | None = None
     found: bool = False
     writable: bool = False
+    readable: bool = True
 
 
 class ViewPayload(BaseModel):
@@ -209,6 +213,7 @@ class ViewPayload(BaseModel):
     file: str | None
     found: bool
     writable: bool
+    readable: bool
     unknown_keys: list[str]
 
 
@@ -225,6 +230,7 @@ def payload_of(state: ViewState) -> ViewPayload:
         file=state.file,
         found=state.found,
         writable=state.writable,
+        readable=state.readable,
         unknown_keys=state.unknown_keys,
     )
 
@@ -615,7 +621,7 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
 
 
 def _parse_file(path: Path) -> dict[str, object]:
-    """Parse the View file, raising ``ViewParseError`` on a syntax error.
+    """Parse the View file, distinguishing an unreadable file from an unparseable one.
 
     Args:
         path: The existing View file.
@@ -624,11 +630,17 @@ def _parse_file(path: Path) -> dict[str, object]:
         The parsed TOML as a plain mapping.
 
     Raises:
-        ViewParseError: If the file does not parse as TOML.
+        ViewReadError: If the file cannot be read (a permission bit).
+        ViewParseError: If the file is read but does not parse as TOML.
     """
     try:
-        with path.open(encoding="utf-8") as handle:
-            return tomlkit.load(handle).unwrap()
+        raw = path.read_bytes()
+    except OSError as error:
+        raise ViewReadError(f"the View file {path} cannot be read: {error}") from error
+    try:
+        # UnicodeDecodeError is a ValueError, so a non-UTF-8 file reads as a parse
+        # failure (a corrupt file the operator must see), not an unreadable one.
+        return tomlkit.loads(raw.decode("utf-8")).unwrap()
     except (TOMLKitError, ValueError) as error:
         raise ViewParseError(f"the View file {path} does not parse: {error}") from error
 
@@ -646,8 +658,10 @@ def read_view(path: Path | None, *, home: Path | None = None) -> ViewState:
 
     Called on every request, so a hand edit shows on the next refresh. A missing or
     opted-out file is a board at its defaults, not an error. A file that does not
-    parse is logged and read as empty, so the board still loads; the write path is
-    where a parse failure refuses the write (``apply_preference``).
+    parse, or that cannot be read at all (a permission bit), is logged and read as
+    empty so the board still loads — an unreadable file also reads ``readable:
+    False``; the write path is where a parse or read failure refuses the write
+    (``apply_preference``).
 
     Args:
         path: The View file, or None when the View file is opted out.
@@ -663,6 +677,9 @@ def read_view(path: Path | None, *, home: Path | None = None) -> ViewState:
         return ViewState(view=View(), file=file_display, found=False, writable=_writable(path))
     try:
         data = _parse_file(path)
+    except ViewReadError:
+        logger.warning("View file %s cannot be read; serving the board's defaults", path)
+        return ViewState(view=View(), file=file_display, found=True, writable=False, readable=False)
     except ViewParseError:
         logger.warning("View file %s does not parse; reading it as empty", path)
         return ViewState(view=View(), file=file_display, found=True, writable=_writable(path))
@@ -776,11 +793,19 @@ def apply_preference(path: Path, preference: Preference) -> View:
 
     Raises:
         ViewParseError: If the file on disk does not parse (the write is refused).
-        ViewWriteError: If the merged View cannot be written.
+        ViewWriteError: If the file cannot be read to merge onto, or the merged View
+            cannot be written.
     """
     with _WRITE_LOCK:
         if path.is_file():
-            current, _unknown = _view_from_data(_parse_file(path))
+            try:
+                current, _unknown = _view_from_data(_parse_file(path))
+            except ViewReadError as error:
+                # The current file cannot be read, so the merge cannot be built onto
+                # it. Refuse the write rather than overwriting an unreadable file.
+                raise ViewWriteError(
+                    f"the View file {path} cannot be read; the change was not saved"
+                ) from error
         else:
             current = View()
         merged = merge(current, preference)
