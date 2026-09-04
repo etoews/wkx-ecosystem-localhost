@@ -58,6 +58,12 @@ DEFAULT_VIEW_FILE = Path("wkx-ecosystem-localhost.view.toml")
 # is never written to the file.
 THEMES: frozenset[str] = frozenset({"light", "dark"})
 
+# The longest Filter text the board stores. A Filter is a substring match re-read
+# from the file on every request and write, so it is bounded; a few hundred
+# characters is far more than any real search and keeps one oversized override from
+# slowing every page.
+MAX_FILTER_LENGTH = 200
+
 # Every panel the View may name: the ten Sections plus ``summary`` (Needs
 # attention). ``summary`` is not a Section (it can never be Off) but it can be
 # Hidden or Collapsed, so it is a valid panel id here.
@@ -381,13 +387,23 @@ def _section_preference(
 
 
 def _filter_preference(body: Mapping[Any, object]) -> FilterPreference:
-    """Validate one Filter PATCH body against the filterable Sections."""
+    """Validate one Filter PATCH body against the filterable Sections.
+
+    The text is trimmed, so a whitespace-only Filter clears the override rather than
+    persisting as an invisible one; control characters are refused; and the length is
+    capped (``MAX_FILTER_LENGTH``) so one oversized override cannot slow every page.
+    """
     section = body.get("section")
     text = body.get("text")
     if not isinstance(section, str) or section not in _catalogue().sections:
         raise InvalidPreference(f"unknown filterable Section id: {section!r}")
     if not isinstance(text, str):
         raise InvalidPreference("'text' must be a string")
+    text = text.strip()
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in text):
+        raise InvalidPreference("filter text must not contain control characters")
+    if len(text) > MAX_FILTER_LENGTH:
+        raise InvalidPreference(f"filter text is too long (max {MAX_FILTER_LENGTH} characters)")
     return FilterPreference(section=section, text=text)
 
 
@@ -742,18 +758,24 @@ def _write_atomic(path: Path, view: View) -> None:
     atomic on the same filesystem. A failure at any step raises ``ViewWriteError``
     and leaves any existing file untouched. A read-only existing file is refused
     up front: the rename would otherwise replace it through the writable
-    directory, defeating the operator who protected it.
+    directory, defeating the operator who protected it. A missing parent directory
+    is refused too, rather than created: ``read_view`` already reported such a path
+    ``writable: false`` (a typo in ``WKX_ECO_LOCAL_VIEW_FILE``), so the board must
+    not silently create directories the operator never asked for.
 
     Raises:
-        ViewWriteError: If the file is read-only, cannot be written, or cannot be
-            renamed into place.
+        ViewWriteError: If the file is read-only, its directory is missing, it
+            cannot be written, or it cannot be renamed into place.
     """
     if path.exists() and not os.access(path, os.W_OK):
         raise ViewWriteError(f"the View file {path} is read-only; the change was not saved")
     directory = path.parent if str(path.parent) else Path()
+    if not directory.is_dir():
+        raise ViewWriteError(
+            f"the View file's directory {directory} does not exist; the change was not saved"
+        )
     temp_path: Path | None = None
     try:
-        directory.mkdir(parents=True, exist_ok=True)
         handle_fd, temp_name = tempfile.mkstemp(
             dir=directory, prefix=f".{path.name}.", suffix=".tmp"
         )

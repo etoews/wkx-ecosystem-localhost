@@ -24,6 +24,7 @@ from wkx_ecosystem_localhost.exceptions import (
 from wkx_ecosystem_localhost.view import (
     DEFAULT_VIEW_FILE,
     VIEW_FILE_ENV,
+    FilterPreference,
     MuteRule,
     SectionPreference,
     ThemePreference,
@@ -213,6 +214,38 @@ def test_parse_rejects_a_non_boolean_on() -> None:
         parse_preference({"field": "sections_hidden", "panel": "docker", "on": "yes"})
 
 
+def test_parse_filter_trims_the_text() -> None:
+    pref = parse_preference({"field": "filter", "section": "workspace", "text": "  wkx  "})
+
+    assert isinstance(pref, FilterPreference)
+    assert pref.text == "wkx"
+
+
+def test_parse_a_whitespace_only_filter_clears_it(tmp_path: Path) -> None:
+    # A blank Filter must not persist as an invisible override: trimmed to empty, it
+    # clears the Section's Filter rather than storing "   ".
+    path = _view_file(tmp_path)
+    apply_preference(
+        path, parse_preference({"field": "filter", "section": "workspace", "text": "x"})
+    )
+
+    apply_preference(
+        path, parse_preference({"field": "filter", "section": "workspace", "text": "   "})
+    )
+
+    assert read_view(path, home=HOME).view.filter == {}
+
+
+def test_parse_rejects_a_filter_over_the_length_cap() -> None:
+    with pytest.raises(InvalidPreference):
+        parse_preference({"field": "filter", "section": "workspace", "text": "x" * 201})
+
+
+def test_parse_rejects_a_filter_with_control_characters() -> None:
+    with pytest.raises(InvalidPreference):
+        parse_preference({"field": "filter", "section": "workspace", "text": "a\x00b"})
+
+
 # ---------- the parse-failure refusal ----------
 
 
@@ -235,6 +268,19 @@ def test_a_write_error_surfaces_as_view_write_error(tmp_path: Path) -> None:
 
     with pytest.raises(ViewWriteError):
         apply_preference(path, ThemePreference(theme="dark"))
+
+
+def test_a_write_to_a_missing_directory_is_refused_and_creates_nothing(tmp_path: Path) -> None:
+    # A typo in WKX_ECO_LOCAL_VIEW_FILE names a file under a directory that does not
+    # exist. read_view already reports it not writable, so the write must be refused,
+    # never silently create the directory the operator never asked for.
+    path = tmp_path / "no" / "such" / "dir" / "wkx-ecosystem-localhost.view.toml"
+    assert read_view(path, home=HOME).writable is False
+
+    with pytest.raises(ViewWriteError):
+        apply_preference(path, ThemePreference(theme="dark"))
+
+    assert not path.parent.exists()
 
 
 def test_a_read_only_view_file_refuses_the_write(tmp_path: Path) -> None:

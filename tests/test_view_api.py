@@ -178,6 +178,17 @@ def test_view_has_a_write_route_but_config_does_not(tmp_path: Path) -> None:
     assert client.patch("/api/config").status_code == 405
 
 
+def test_an_oversized_patch_body_is_refused(tmp_path: Path) -> None:
+    # The file is re-parsed on every request and write, so an oversized body is
+    # refused up front rather than read, parsed, and (for a Filter) stored.
+    client = _client(tmp_path)
+    huge = {"field": "filter", "section": "workspace", "text": "x" * (64 * 1024 + 1)}
+
+    response = _patch(client, huge)
+
+    assert response.status_code == 413
+
+
 # ---------- an unreadable View file must not take the shell down (finding 5) ----------
 
 

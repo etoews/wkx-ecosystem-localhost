@@ -1,6 +1,7 @@
 """FastAPI application factory serving the board shell and the JSON API."""
 
 import asyncio
+import json
 import logging
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -73,6 +74,11 @@ from wkx_ecosystem_localhost.view import (
 logger = logging.getLogger(__name__)
 
 _STATIC = Path(__file__).parent / "static"
+
+# The largest PATCH body the write route accepts. One preference is a small JSON
+# object; the file is re-parsed on every request and write, so an oversized body is
+# refused up front rather than read, parsed, and (for a Filter) stored.
+_MAX_PATCH_BODY_BYTES = 64 * 1024
 
 _Route = TypeVar("_Route", bound=Callable[..., object])
 
@@ -544,8 +550,11 @@ def create_app(
             allowed_hosts=app.state.allowed_hosts,
         ):
             return JSONResponse({"detail": "write refused"}, status_code=403)
+        raw = await request.body()
+        if len(raw) > _MAX_PATCH_BODY_BYTES:
+            return JSONResponse({"detail": "the request body is too large"}, status_code=413)
         try:
-            body = await request.json()
+            body = json.loads(raw)
         except ValueError:
             return JSONResponse({"detail": "body is not valid JSON"}, status_code=400)
         try:
