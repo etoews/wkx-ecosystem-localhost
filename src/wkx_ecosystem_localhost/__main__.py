@@ -16,6 +16,7 @@ from uvicorn.supervisors import ChangeReload
 from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.config import (
+    ENV_PREFIX,
     Settings,
     check_environment,
     resolve_config_file,
@@ -167,6 +168,16 @@ def serve(
         threading.Timer(0.7, webbrowser.open, args=(url,)).start()
     typer.echo(f"Serving the board at {url}")
     if reload:
+        # The reloader binds the socket once here and re-imports create_app_from_env
+        # in a fresh worker on each change; the worker gets no arguments, so its only
+        # channel to this bound port is the environment. Export it as the port
+        # setting the worker reads, so the worker's write-guard Host allow-list is
+        # built for the port actually bound — not settings.port. Without this, a
+        # non-default --port (the always-on install renders exactly this command)
+        # leaves the guard on the default port, and with the Host guard on every
+        # route the whole board is refused. Pinning it here also holds the guard to
+        # the bound socket even if the config file's port is edited mid-session.
+        os.environ[f"{ENV_PREFIX}PORT"] = str(bind_port)
         # The reloader re-imports the app in a subprocess on each change, so it
         # needs an import-string factory (not a built instance). Only the package
         # source is watched for code changes; the configuration file is watched

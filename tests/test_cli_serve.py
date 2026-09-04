@@ -26,6 +26,22 @@ Call = tuple[tuple[Any, ...], dict[str, Any]]
 
 
 @pytest.fixture(autouse=True)
+def restore_environ() -> Iterator[None]:
+    """Restore the process environment around each test.
+
+    ``serve`` exports the bound port into ``os.environ`` for the reloader worker, a
+    direct mutation monkeypatch cannot undo. Snapshot and restore so that export
+    never leaks the bound port into another module's fixtures.
+    """
+    saved = os.environ.copy()
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+@pytest.fixture(autouse=True)
 def preserve_root_logging() -> Iterator[None]:
     """Restore root logging around each test.
 
@@ -113,6 +129,35 @@ def test_serve_reload_hands_the_config_file_to_the_reloader(
     # The config file is not in reload_dirs; it is polled by _ConfigAwareReload, so a
     # TOML save restarts the instance without widening the directory watch.
     assert config_file == Path("wkx-ecosystem-localhost.toml")
+
+
+def test_serve_reload_binds_the_requested_port(reloader_calls: list[ReloaderCall]) -> None:
+    result = runner.invoke(cli.app, ["serve", "--reload", "--port", "9123"])
+
+    assert result.exit_code == 0
+    (config, _config_file) = reloader_calls[0]
+    assert config.port == 9123
+
+
+def test_serve_reload_exports_the_bound_port_for_the_worker_guard(
+    reloader_calls: list[ReloaderCall], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The reloader worker re-imports create_app_from_env with no arguments, so its
+    # only channel to --port is the environment. serve exports the bound port there,
+    # so the worker binds it AND builds the write guard's Host allow-list for it;
+    # otherwise every browser request to a non-default --port is refused (the
+    # always-on install renders exactly `serve --reload --port N`). delenv here so
+    # monkeypatch removes whatever serve set, keeping the export out of later tests.
+    port_env = f"{cli.ENV_PREFIX}PORT"
+    monkeypatch.delenv(port_env, raising=False)
+
+    result = runner.invoke(cli.app, ["serve", "--reload", "--port", "9123"])
+
+    assert result.exit_code == 0
+    assert os.environ[port_env] == "9123"
+    # The factory the worker imports now builds its guard for the bound port.
+    guard_app = create_app_from_env()
+    assert "127.0.0.1:9123" in guard_app.state.allowed_hosts
 
 
 def test_serve_rejects_an_unknown_env_variable(
