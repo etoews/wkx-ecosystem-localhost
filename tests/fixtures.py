@@ -240,8 +240,10 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
             (WIDGETS, DESCRIBE_ARGV): _ok("1.2.0\n"),
             (KIT, DESCRIBE_ARGV): _ok("v3.1.0\n"),
             (GONE, DESCRIBE_ARGV): _ok("0.4.0\n"),
-            (None, ls_remote_tags_argv(WIDGETS_URL)): _ok(LS_REMOTE_WIDGETS),
-            (None, ls_remote_tags_argv(KIT_URL)): _ok(LS_REMOTE_KIT),
+            # ls-remote runs with cwd=the parent repo (APP), so a relative or
+            # local-path url resolves against it, never the server's cwd (finding 4).
+            (APP, ls_remote_tags_argv(WIDGETS_URL)): _ok(LS_REMOTE_WIDGETS),
+            (APP, ls_remote_tags_argv(KIT_URL)): _ok(LS_REMOTE_KIT),
             # widgets is on GitHub, so the release lookup runs and lands 1.3.0,
             # which differs from the tag-based latest 2.0.0. kit and the
             # unreachable submodule are non-GitHub, so no lookup is registered.

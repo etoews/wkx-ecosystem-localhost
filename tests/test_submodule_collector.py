@@ -15,6 +15,7 @@ from wkx_ecosystem_localhost.collectors.submodules import (
     SubmoduleSpec,
     collect_submodules,
     discover_submodules,
+    is_safe_remote_url,
     ls_remote_tags_argv,
     probe_submodule,
     releases_latest_argv,
@@ -45,7 +46,9 @@ def _release_machine(spec: SubmoduleSpec, redirect: CommandResult) -> FakeMachin
     assert release_url is not None
     return FakeMachine(
         commands={
-            (None, ls_remote_tags_argv(spec.url)): _ok(fixtures.LS_REMOTE_WIDGETS),
+            # ls-remote runs with cwd=the parent repo (finding 4); the release curl
+            # is a network call and runs with no cwd.
+            (spec.repo_path, ls_remote_tags_argv(spec.url)): _ok(fixtures.LS_REMOTE_WIDGETS),
             (None, releases_latest_argv(release_url)): redirect,
         }
     )
@@ -206,7 +209,9 @@ def test_probe_does_not_look_up_a_release_for_a_non_github_submodule() -> None:
     # Only the tag listing is registered; no release curl exists for kit. If the
     # probe tried one it would 127, but a non-GitHub remote never reaches the seam.
     machine = FakeMachine(
-        commands={(None, ls_remote_tags_argv(fixtures.KIT_URL)): _ok(fixtures.LS_REMOTE_KIT)}
+        commands={
+            (spec.repo_path, ls_remote_tags_argv(fixtures.KIT_URL)): _ok(fixtures.LS_REMOTE_KIT)
+        }
     )
 
     outcome = probe_submodule(machine, spec)
@@ -237,3 +242,59 @@ def test_stream_carries_the_differing_release_and_leaves_the_others_none() -> No
     # neither carries a release.
     assert by_path["~/dev/acme/app/tools/kit"].github_release is None
     assert by_path["~/dev/acme/api/vendor/remote-gone"].github_release is None
+
+
+# ---------- argument-injection defence through .gitmodules (finding 4) ----------
+
+
+def test_ls_remote_argv_ends_options_before_the_url() -> None:
+    # A "--" separator sits immediately before the url, so a url beginning with "-"
+    # is a repository argument git rejects, never an option it acts on.
+    argv = ls_remote_tags_argv("--upload-pack=touch pwned")
+
+    assert argv[-2:] == ("--", "--upload-pack=touch pwned")
+
+
+def test_a_dash_leading_url_is_unsafe() -> None:
+    assert is_safe_remote_url("https://example.com/acme/kit.git") is True
+    assert is_safe_remote_url("--upload-pack=touch pwned") is False
+    assert is_safe_remote_url("-oProxyCommand=cmd") is False
+
+
+def test_probe_refuses_a_dash_leading_url_without_running_git() -> None:
+    # A hostile .gitmodules url that git would read as an option must never reach the
+    # seam: the probe refuses it and reports the row unknown.
+    spec = SubmoduleSpec(
+        repo_path=fixtures.APP,
+        name="libs/evil",
+        rel_path="libs/evil",
+        url="--upload-pack=touch pwned",
+        pinned=None,
+    )
+    # Register a matching command so a leaked run would look "successful"; the probe
+    # must not consult it.
+    machine = FakeMachine(
+        commands={(spec.repo_path, ls_remote_tags_argv(spec.url)): _ok("x\trefs/tags/9.9.9\n")}
+    )
+
+    outcome = probe_submodule(machine, spec)
+
+    assert outcome.unknown is True
+    assert outcome.latest is None
+
+
+def test_probe_lists_tags_in_the_parent_repo_cwd() -> None:
+    # ls-remote must run with cwd=the parent repo, so a listing registered only for
+    # the server's cwd (None) is never matched: the probe lands unknown.
+    spec = _github_spec()
+    wrong_cwd = FakeMachine(
+        commands={(None, ls_remote_tags_argv(spec.url)): _ok(fixtures.LS_REMOTE_WIDGETS)}
+    )
+
+    assert probe_submodule(wrong_cwd, spec).unknown is True
+
+    right_cwd = FakeMachine(
+        commands={(spec.repo_path, ls_remote_tags_argv(spec.url)): _ok(fixtures.LS_REMOTE_WIDGETS)}
+    )
+
+    assert probe_submodule(right_cwd, spec).latest == "2.0.0"

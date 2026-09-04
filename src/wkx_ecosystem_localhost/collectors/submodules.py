@@ -77,9 +77,25 @@ _TAG_REF_PREFIX = "refs/tags/"
 _PEELED_SUFFIX = "^{}"
 
 
+def is_safe_remote_url(url: str) -> bool:
+    """Whether a ``.gitmodules`` url is safe to hand to git as a positional argument.
+
+    A url beginning with ``-`` would be parsed as a git option (for example
+    ``--upload-pack=<cmd>``, which runs a command), so a third-party repo cloned
+    under a scan root could control git's option parsing on the operator's machine.
+    Such a url is refused; the ``--`` separator in :func:`ls_remote_tags_argv` is the
+    structural backstop, and this makes the refusal explicit and loggable.
+    """
+    return not url.startswith("-")
+
+
 def ls_remote_tags_argv(url: str) -> tuple[str, ...]:
-    """Build the fixed ``git ls-remote --tags <url>`` argv for a submodule url."""
-    return (*_LS_REMOTE_TAGS, url)
+    """Build the fixed ``git ls-remote --tags -- <url>`` argv for a submodule url.
+
+    The ``--`` ends option parsing, so a url beginning with ``-`` is a repository
+    argument git rejects, never an option it acts on (argument-injection defence).
+    """
+    return (*_LS_REMOTE_TAGS, "--", url)
 
 
 def releases_latest_argv(release_url: str) -> tuple[str, ...]:
@@ -87,8 +103,9 @@ def releases_latest_argv(release_url: str) -> tuple[str, ...]:
 
     ``release_url`` is the credential-free ``.../releases/latest`` URL from
     :func:`releases_latest_url`, so no secret can ride into the outbound request.
+    The ``--`` ends option parsing so the url can never be read as a curl option.
     """
-    return (*_CURL_RELEASE, release_url)
+    return (*_CURL_RELEASE, "--", release_url)
 
 
 @dataclass(frozen=True)
@@ -286,7 +303,12 @@ def probe_submodule(
         The submodule's latest release, tags-behind count, and any differing GitHub
         release, or an unknown outcome when the remote could not be listed.
     """
-    result = machine.run(ls_remote_tags_argv(spec.url), timeout=timeout)
+    if not is_safe_remote_url(spec.url):
+        logger.warning("refused an unsafe submodule url for %s (starts with '-')", spec.name)
+        return ProbeOutcome(latest=None, behind=None, unknown=True)
+    # cwd is the parent repo, so a relative or local-path url resolves against it,
+    # never the server's working directory, and the probe stays inside the repo.
+    result = machine.run(ls_remote_tags_argv(spec.url), timeout=timeout, cwd=spec.repo_path)
     if not result.ok:
         logger.info("submodule tag listing could not complete for %s", spec.name)
         return ProbeOutcome(latest=None, behind=None, unknown=True)
