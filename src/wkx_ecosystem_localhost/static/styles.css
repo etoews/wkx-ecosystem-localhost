@@ -334,11 +334,14 @@ button.disc[aria-expanded="true"] .disc-caret { transform: rotate(180deg); }
  * its own carries its title on the table head (.table-title) instead. */
 .sub-head {
   font-family: var(--mono);
-  font-size: .58rem;
+  /* Twin of .table-title: a Section's non-table slot names itself at the body
+   * text's size (.76rem) and in bold, so populated and empty slots read alike. */
+  font-size: .76rem;
+  font-weight: 700;
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--fog);
-  margin: 1rem 0 .4rem;
+  margin: 1.5rem 0 .5rem;
 }
 .sub-head:first-child { margin-top: 0; }
 
@@ -362,7 +365,9 @@ thead th {
   top: 0;
   z-index: 2;
   text-align: left;
-  font-size: .57rem;
+  /* Column labels read at the body text's size (.76rem), told apart from a fact
+   * by their weight, uppercase, and tracking — not by being smaller. */
+  font-size: .76rem;
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--fog);
@@ -402,6 +407,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
  * the two read as one unit; the head wraps the toolbar below the title only when the
  * panel is too narrow to seat both. */
 .table-block { display: block; }
+/* Space between two stacked tables in one Section rides the block, NOT the head:
+ * .table-head is always its .table-block's first child, so a margin-top on the
+ * head is zeroed/collapsed away and the tables read crushed together. Putting the
+ * gap on the second of two adjacent blocks separates stacked tables reliably and
+ * leaves the first table's spacing (below the tiles or summary) untouched. */
+.table-block + .table-block { margin-top: 1.5rem; }
 .table-head {
   position: relative;
   z-index: 5;
@@ -410,12 +421,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: .6rem .9rem;
   flex-wrap: wrap;
-  margin: 1rem 0 .4rem;
+  /* Space below the title/`columns ▾` row so it is not crushed against its own
+   * column-header row. The space ABOVE it rides .table-block + .table-block. */
+  margin: 0 0 .85rem;
 }
-.table-head:first-child { margin-top: 0; }
 .table-title {
   font-family: var(--mono);
-  font-size: .58rem;
+  /* The title reads at the body text's size (.76rem) and in bold, so a table
+   * names itself at the same scale as the facts beneath it. */
+  font-size: .76rem;
+  font-weight: 700;
   letter-spacing: .09em;
   text-transform: uppercase;
   color: var(--fog);
