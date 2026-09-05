@@ -97,6 +97,27 @@ def test_patch_hides_a_section(tmp_path: Path) -> None:
     assert client.get("/api/view").json()["sections_hidden"] == ["docker"]
 
 
+def test_patch_mutes_and_unmutes_a_flag(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+
+    added = _patch(
+        client, {"field": "mute", "category": "brew-outdated", "target": "formula:git", "on": True}
+    )
+    assert added.status_code == 200
+    assert added.json()["mute"] == [{"category": "brew-outdated", "target": "formula:git"}]
+
+    _patch(
+        client, {"field": "mute", "category": "brew-outdated", "target": "formula:git", "on": False}
+    )
+    assert client.get("/api/view").json()["mute"] == []
+
+
+def test_patch_rejects_an_unknown_mute_category(tmp_path: Path) -> None:
+    response = _patch(_client(tmp_path), {"field": "mute", "category": "brew-outdate", "on": True})
+
+    assert response.status_code == 422
+
+
 # ---------- the write guard ----------
 
 

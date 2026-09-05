@@ -153,6 +153,12 @@ configuration. This is the one file the board writes: it writes the View as you
 change the board, and reads it on every request, so a hand edit shows on the next
 refresh with no restart. You do not need to edit the file.
 
+To Mute a Flag, hover its badge and select **mute**: the Flag drops from the
+badges and the Needs attention tally, and the Muted tile counts it. The
+configuration Section's Mutes editor lists every Mute with an **unmute** control,
+and adds a Mute for a whole Category a single badge cannot reach. A muted Flag is
+suppressed noise, not a resolved one: `GET /api/flags` still reports it.
+
 The View file holds only what you change from the defaults, so a fresh board
 writes nothing. Delete the file to reset the board to its defaults. To read it
 from another path, set the environment variable `WKX_ECO_LOCAL_VIEW_FILE`, the way

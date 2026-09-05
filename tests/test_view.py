@@ -25,6 +25,7 @@ from wkx_ecosystem_localhost.view import (
     DEFAULT_VIEW_FILE,
     VIEW_FILE_ENV,
     FilterPreference,
+    MutePreference,
     MuteRule,
     SectionPreference,
     ThemePreference,
@@ -250,6 +251,93 @@ def test_parse_rejects_a_filter_over_the_length_cap() -> None:
 def test_parse_rejects_a_filter_with_control_characters() -> None:
     with pytest.raises(InvalidPreference):
         parse_preference({"field": "filter", "section": "workspace", "text": "a\x00b"})
+
+
+# ---------- the Mute write path ----------
+
+
+def test_parse_a_mute_targets_one_item() -> None:
+    pref = parse_preference(
+        {"field": "mute", "category": "brew-outdated", "target": "formula:git", "on": True}
+    )
+
+    assert pref == MutePreference(category="brew-outdated", target="formula:git", on=True)
+
+
+def test_parse_a_mute_without_a_target_is_the_whole_category() -> None:
+    pref = parse_preference({"field": "mute", "category": "brew-outdated", "on": True})
+
+    assert pref == MutePreference(category="brew-outdated", target=None, on=True)
+
+
+def test_parse_a_mute_with_an_empty_target_is_the_whole_category() -> None:
+    pref = parse_preference(
+        {"field": "mute", "category": "brew-outdated", "target": "", "on": True}
+    )
+
+    assert pref == MutePreference(category="brew-outdated", target=None, on=True)
+
+
+def test_parse_rejects_an_unknown_mute_category() -> None:
+    with pytest.raises(InvalidPreference):
+        parse_preference({"field": "mute", "category": "brew-outdate", "on": True})
+
+
+def test_parse_rejects_a_mute_without_a_boolean_on() -> None:
+    with pytest.raises(InvalidPreference):
+        parse_preference({"field": "mute", "category": "brew-outdated"})
+
+
+def test_parse_rejects_a_mute_with_a_non_string_target() -> None:
+    with pytest.raises(InvalidPreference):
+        parse_preference({"field": "mute", "category": "brew-outdated", "target": 5, "on": True})
+
+
+def test_a_mute_round_trips_through_the_file(tmp_path: Path) -> None:
+    path = _view_file(tmp_path)
+
+    apply_preference(path, MutePreference(category="brew-outdated", target="formula:git", on=True))
+
+    assert read_view(path, home=HOME).view.mute == [
+        MuteRule(category="brew-outdated", target="formula:git")
+    ]
+
+
+def test_muting_then_unmuting_leaves_no_rule(tmp_path: Path) -> None:
+    path = _view_file(tmp_path)
+    apply_preference(path, MutePreference(category="brew-outdated", target="formula:git", on=True))
+
+    apply_preference(path, MutePreference(category="brew-outdated", target="formula:git", on=False))
+
+    assert read_view(path, home=HOME).view.mute == []
+
+
+def test_merge_never_duplicates_a_mute() -> None:
+    view = View(mute=[MuteRule(category="brew-outdated", target="formula:git")])
+
+    merged = merge(view, MutePreference(category="brew-outdated", target="formula:git", on=True))
+
+    assert merged.mute == [MuteRule(category="brew-outdated", target="formula:git")]
+
+
+def test_a_whole_category_mute_is_distinct_from_a_targeted_one(tmp_path: Path) -> None:
+    path = _view_file(tmp_path)
+    apply_preference(path, MutePreference(category="brew-outdated", target=None, on=True))
+
+    apply_preference(path, MutePreference(category="brew-outdated", target="formula:git", on=True))
+
+    assert read_view(path, home=HOME).view.mute == [
+        MuteRule(category="brew-outdated", target=None),
+        MuteRule(category="brew-outdated", target="formula:git"),
+    ]
+
+
+def test_unmuting_a_rule_that_is_not_set_is_a_noop() -> None:
+    view = View(mute=[MuteRule(category="brew-outdated", target="formula:git")])
+
+    merged = merge(view, MutePreference(category="python-pin-drift", target=None, on=False))
+
+    assert merged.mute == [MuteRule(category="brew-outdated", target="formula:git")]
 
 
 # ---------- the parse-failure refusal ----------

@@ -248,10 +248,10 @@ TABLES: dict[str, BoardTable] = {
         section="config",
         columns=_cols(("section", _L), ("flags", _L)),
     ),
-    "config-mutes": BoardTable(
-        section="config",
-        columns=_cols(("category", _L), ("target", _H), ("flags", _L)),
-    ),
+    # The Mutes table is not in this catalogue: it is a bespoke editor (an add form,
+    # and a right-justified Unmute action in place of the flag rail), not a sortable,
+    # column-hideable catalogue table (every catalogue table locks a flag rail, which
+    # the Mutes editor deliberately does not carry).
 }
 
 # The Section ids a [filter] override may name: exactly the Sections that own at

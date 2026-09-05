@@ -310,8 +310,28 @@ class SortPreference(BaseModel):
     direction: Literal["ascending", "descending"] | None
 
 
+class MutePreference(BaseModel):
+    """A validated Mute change: add or remove one Mute rule.
+
+    ``category`` is a Flag Category (validated against the registry at parse
+    time); ``target`` narrows the Mute to one item's exact wire value, or is None
+    for the whole Category; ``on`` adds the rule when True and removes it when
+    False (bringing the Flag back to the badges and the tally). A Mute is part of
+    the View (ADR 0003, ADR 0004): this is its write path.
+    """
+
+    category: str
+    target: str | None = None
+    on: bool
+
+
 Preference = (
-    ThemePreference | SectionPreference | FilterPreference | ColumnHiddenPreference | SortPreference
+    ThemePreference
+    | SectionPreference
+    | FilterPreference
+    | ColumnHiddenPreference
+    | SortPreference
+    | MutePreference
 )
 
 
@@ -332,10 +352,12 @@ def parse_preference(body: object) -> Preference:
     """Validate one PATCH body against the board's catalogue and return it typed.
 
     One preference per call. The body is ``{"field": "theme", "value": ...}`` with
-    the value ``light``, ``dark``, or ``auto``; or ``{"field": "sections_hidden" |
-    "sections_collapsed", "panel": <id>, "on": <bool>}``. The panel is checked
-    against ``PANEL_IDS`` and the theme against ``THEMES`` here, so an unknown one
-    is refused before it can reach the file.
+    the value ``light``, ``dark``, or ``auto``; ``{"field": "sections_hidden" |
+    "sections_collapsed", "panel": <id>, "on": <bool>}``; or ``{"field": "mute",
+    "category": <id>, "target": <str|null>, "on": <bool>}``. The panel is checked
+    against ``PANEL_IDS``, the theme against ``THEMES``, and the Mute Category
+    against the Flag registry here, so an unknown one is refused before it can
+    reach the file.
 
     Args:
         body: The decoded JSON body of the PATCH request.
@@ -369,6 +391,8 @@ def parse_preference(body: object) -> Preference:
         return _columns_hidden_preference(body)
     if field == "sort":
         return _sort_preference(body)
+    if field == "mute":
+        return _mute_preference(body)
     raise InvalidPreference(f"unknown preference field: {field!r}")
 
 
@@ -450,6 +474,27 @@ def _sort_preference(body: Mapping[Any, object]) -> SortPreference:
     raise InvalidPreference(f"unknown sort direction: {direction!r}")
 
 
+def _mute_preference(body: Mapping[Any, object]) -> MutePreference:
+    """Validate one Mute PATCH body against the Flag Category registry.
+
+    The Category must be one the board knows, so a stale or misspelt name is
+    refused before it reaches the file. ``target`` is the item's exact wire value
+    or None/absent for the whole Category; an empty string is treated as None. A
+    Mute set here is the operator's own preference, so unlike a hand edit (which is
+    dropped-and-warned when read) an unknown Category on the write path is refused.
+    """
+    category = body.get("category")
+    target = body.get("target")
+    on = body.get("on")
+    if not isinstance(category, str) or category not in _known_categories():
+        raise InvalidPreference(f"unknown Flag Category: {category!r}")
+    if target is not None and not isinstance(target, str):
+        raise InvalidPreference("'target' must be a string or omitted")
+    if not isinstance(on, bool):
+        raise InvalidPreference("'on' must be a boolean")
+    return MutePreference(category=category, target=target or None, on=on)
+
+
 def merge(current: View, preference: Preference) -> View:
     """Apply one preference to the current View, returning the new View.
 
@@ -501,6 +546,22 @@ def merge(current: View, preference: Preference) -> View:
                 "direction": preference.direction,
             }
         data["sort"] = sorts
+        return View.model_validate(data)
+    if isinstance(preference, MutePreference):
+        rules: list[dict[str, object]] = [dict(rule) for rule in data["mute"]]
+
+        def _same(rule: dict[str, object]) -> bool:
+            return (
+                rule.get("category") == preference.category
+                and rule.get("target") == preference.target
+            )
+
+        if preference.on:
+            if not any(_same(rule) for rule in rules):
+                rules.append({"category": preference.category, "target": preference.target})
+        else:
+            rules = [rule for rule in rules if not _same(rule)]
+        data["mute"] = rules
         return View.model_validate(data)
     panels: list[str] = list(data[preference.field])
     if preference.on:

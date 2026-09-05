@@ -727,6 +727,78 @@ tr.skillrow .table-block { margin-left: 1.1rem; }
 .flag--problem::before,
 .lvl--problem::before { border-radius: 1px; }
 
+/* ---------- Mute a Flag from its badge ----------
+ * A mute action that lives inside the badge, silent until the badge is hovered or
+ * this button focused, so a clean rail scan stays quiet. No new hue: it wears the
+ * flag's own level colour, with a seam in currentColor where the fact ends and the
+ * action begins, strengthening as you approach it. Reads "quiet this", never
+ * "close". The reveal and the quieting fade are stilled by the reduced-motion rule
+ * below; the badge fades before it leaves the rail (the one deliberate motion). */
+.flag-mute {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid currentColor;
+  margin-left: .34rem;
+  padding: 0 0 0 .34rem;
+  cursor: pointer;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width .14s ease, opacity .14s ease;
+}
+.flag:hover .flag-mute,
+.flag:focus-within .flag-mute { max-width: 4rem; opacity: .72; }
+.flag-mute:hover,
+.flag-mute:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: .18em; }
+.flag--leaving { opacity: 0; transition: opacity .18s ease; }
+
+/* ---------- the Mute editor (config Section) ----------
+ * The add-mute form on the Mutes table head and the Unmute action per rule, both
+ * in the board's own control idiom — mono pills, transparent grounds, colour
+ * reserved for the Flag layer. The Unmute column rides the flag rail's right edge,
+ * so the action settles where every other table's badges do. */
+.mute-form { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.mute-lead, .mute-arrow { font-family: var(--mono); font-size: .72rem; color: var(--fog); }
+.mute-select {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--text);
+  background: var(--deep);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+  cursor: pointer;
+}
+.mute-select:hover { border-color: var(--fog); }
+button.mute-add {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .18rem .7rem;
+  cursor: pointer;
+}
+button.mute-add:hover:not(:disabled) { color: var(--text); border-color: var(--fog); }
+button.mute-add:disabled { opacity: .5; cursor: default; }
+/* Unmuting restores a Flag — a management action, not a deletion — so it stays
+ * quiet and brightens to full text on approach, never a warning hue. */
+.unmute-btn {
+  font-family: var(--mono);
+  font-size: .72rem;
+  color: var(--fog);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.unmute-btn:hover,
+.unmute-btn:focus-visible { color: var(--text); text-decoration: underline; text-underline-offset: .18em; }
+
 /* ---------- token highlight (M8) ----------
  * The board's one interactive accent, and the sole use of --match. Hover or
  * keyboard-focus a repo name, a tool name, or a version and every cell holding

@@ -190,6 +190,11 @@ window.wkxView = (function () {
   function setSort(tableId, column, direction) {
     return patch({ field: "sort", table: tableId, column: column, direction: direction || null });
   }
+  // Add (on) or remove (off) one Mute rule (ADR 0004). A falsy target is the
+  // whole Category; a target narrows the Mute to one item's exact wire value.
+  function setMute(category, target, on) {
+    return patch({ field: "mute", category: category, target: target || null, on: !!on });
+  }
 
   function refresh() {
     return fetch("/api/view")
@@ -238,6 +243,7 @@ window.wkxView = (function () {
     setFilter: setFilter,
     setColumnHidden: setColumnHidden,
     setSort: setSort,
+    setMute: setMute,
     onChange: function (fn) {
       listeners.push(fn);
     },
@@ -889,6 +895,17 @@ window.wkxFlags = (function () {
   };
   const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
+  // The board's own View-file self-diagnostics: these are never mutable from the UI,
+  // because silencing "your View will not save" (or "does not parse", or "names an
+  // unknown key") would hide the very failure the operator must act on. They stay in
+  // the server's Category registry so a hand edit is still validated, but no badge
+  // offers a mute for them and the config editor never lists them.
+  const UNMUTABLE = {
+    "view-not-saved": true,
+    "view-not-parsed": true,
+    "view-unknown-key": true,
+  };
+
   // The live Flags the board shows, and the muted ones it counts but hides. A
   // Flag is in exactly one of the two, decided by place() the moment it arrives.
   const registry = new Map();
@@ -964,7 +981,52 @@ window.wkxFlags = (function () {
     // The tooltip is a fix, not a restatement; a11y still hears the level + fact.
     node.title = RESOLUTION[flag.category] || flag.message;
     node.setAttribute("aria-label", lvl + ": " + flag.message);
+    if (window.wkxView && !UNMUTABLE[flag.category]) node.append(muteButton(flag));
     return node;
+  }
+
+  // The Mute action that rides inside a Flag badge (ADR 0004): silent until
+  // the badge is hovered or this button focused, so a clean rail scan stays quiet.
+  // It writes one Mute rule for this Flag's Category and exact target; the View
+  // change comes back through wkxView.onChange, which re-evaluates every Flag, so
+  // the badge leaves the rail without a reload. The badge fades first — one
+  // deliberate motion — unless reduced motion is preferred. The board's own
+  // View-file self-diagnostics (UNMUTABLE) get no button; badge() gates that.
+  function muteButton(flag) {
+    const label = CATEGORY_LABEL[flag.category] || flag.category;
+    const button = el("button", "flag-mute", "mute");
+    button.type = "button";
+    button.setAttribute(
+      "aria-label",
+      "Mute " + label + (flag.target ? " for " + cleanTarget(flag.target) : ""),
+    );
+    button.title = "Mute this Flag — it stays on /api/flags, quiet on the board";
+    button.addEventListener("click", function (event) {
+      event.stopPropagation();
+      const write = function () {
+        if (!window.wkxView) return;
+        window.wkxView.setMute(flag.category, flag.target, true).catch(function () {
+          // The write failed (wkxView already raised view-not-saved); the Flag is
+          // still live, so undo the quieting fade rather than leave the badge
+          // invisible — decorate() keeps an existing badge, so it would not redraw.
+          badgeOf(button).classList.remove("flag--leaving");
+        });
+      };
+      const reduce =
+        window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reduce) {
+        write();
+        return;
+      }
+      badgeOf(button).classList.add("flag--leaving");
+      setTimeout(write, 180);
+    });
+    return button;
+  }
+
+  // The badge span a mute button sits in, so the fade lands on the whole badge.
+  function badgeOf(button) {
+    return button.closest(".flag") || button;
   }
 
   function cleanTarget(target) {
@@ -1282,6 +1344,12 @@ window.wkxFlags = (function () {
       notify();
     },
     tally: tally,
+    // The Categories and targets the operator could still Mute, over the live
+    // registry (a muted Flag is already gone from it): each is a Category the
+    // board currently flags, with its label and the exact-value targets under it.
+    // The config Mutes editor builds its add-form dropdowns from this, so the
+    // category label map and cleanTarget stay owned here.
+    muteOptions: muteOptions,
     // Register a listener for registry changes; it fires on every add and clear
     // and once more when the at-rest Flags land. Returns nothing; there is no
     // unsubscribe, because the collapse layer lives for the life of the page.
@@ -1290,7 +1358,56 @@ window.wkxFlags = (function () {
     },
   };
 
+  function muteOptions() {
+    const groups = new Map();
+    registry.forEach(function (flag) {
+      if (UNMUTABLE[flag.category]) return;
+      if (!groups.has(flag.category)) {
+        groups.set(flag.category, {
+          category: flag.category,
+          label: CATEGORY_LABEL[flag.category] || flag.category,
+          targets: [],
+        });
+      }
+      const group = groups.get(flag.category);
+      const has = group.targets.some(function (t) {
+        return t.value === flag.target;
+      });
+      if (flag.target && !has) group.targets.push({ value: flag.target, label: cleanTarget(flag.target) });
+    });
+    return Array.from(groups.values()).sort(function (a, b) {
+      return a.label.localeCompare(b.label);
+    });
+  }
+
   new MutationObserver(decorate).observe(board, { childList: true, subtree: true });
+
+  // Re-evaluate every Flag against the View's Mute rules whenever the View changes
+  // here or in another tab — a Mute added from a badge or the config editor, or an
+  // unmute — so a newly muted Flag leaves the badges and the tally at once and an
+  // unmuted one returns, with no reload. place() moves each Flag between the live
+  // registry and the muted set; only a real move needs a redraw.
+  if (window.wkxView)
+    window.wkxView.onChange(function () {
+      const all = [];
+      registry.forEach(function (flag) {
+        all.push(flag);
+      });
+      muted.forEach(function (flag) {
+        all.push(flag);
+      });
+      let moved = false;
+      all.forEach(function (flag) {
+        const wasLive = registry.has(keyOf(flag));
+        place(flag);
+        if (registry.has(keyOf(flag)) !== wasLive) moved = true;
+      });
+      if (moved) {
+        decorate();
+        renderSummary();
+        notify();
+      }
+    });
 
   // Wait for the boot gate: Off panels are removed first, so no Flag ever lands on
   // a host the board is about to drop. Needs attention itself is never Off, so this
@@ -1702,7 +1819,6 @@ window.wkxTables = (function () {
     "config-excludes": ["exclude-glob", "flags"],
     "config-tools": ["tool", "version-probe", "flags"],
     "config-off": ["section", "flags"],
-    "config-mutes": ["category", "target", "flags"],
   };
 
   // The catalogue mirror's section field: every table id maps to the Section it
@@ -1725,7 +1841,6 @@ window.wkxTables = (function () {
     "config-excludes": "config",
     "config-tools": "config",
     "config-off": "config",
-    "config-mutes": "config",
   };
 
   // The locked columns of each table: the name column (the row's identity) and the
@@ -1746,7 +1861,6 @@ window.wkxTables = (function () {
     "config-excludes": ["exclude-glob", "flags"],
     "config-tools": ["tool", "flags"],
     "config-off": ["section", "flags"],
-    "config-mutes": ["category", "flags"],
   };
 
   const registry = []; // { table, id, keys, locked } for every equipped table
@@ -3480,26 +3594,119 @@ window.wkxFilter = (function () {
     return built.wrap;
   }
 
-  // The Mute rules, read from the View (ADR 0004): the Mute rules are part of the
-  // View, the board's own file. Each rule names a Flag Category to
-  // silence; a target narrows it to one item's exact wire value, an empty target
-  // mutes the whole Category. Muting is a view preference, so a muted Flag is
-  // dropped from the badges and the tally but stays on /api/flags — this table is
-  // where the operator sees what they silenced.
-  function mutesTable(rules, title) {
-    const built = window.wkxTables.mount(
-      [{ label: "Category" }, { label: "Target" }],
-      "config-mutes",
-      title,
-    );
+  // The Mute rules, part of the View (ADR 0004). Each rule names a Flag Category to
+  // silence; a target narrows it to one item's exact wire value, no target mutes
+  // the whole Category. Muting is a view preference, so a muted Flag is dropped from
+  // the badges and the tally but stays on /api/flags. This is the Mute editor: an
+  // add form on the table head, and a right-justified Unmute action per rule where
+  // the flag rail sits on every other table. A Flag is muted from its badge;
+  // the whole-Category mutes a badge cannot reach are added here, and every mute is
+  // unmuted here — the badge is the impulse, this table is the home.
+  function muteLabel(category) {
+    const options = window.wkxFlags ? window.wkxFlags.muteOptions() : [];
+    const known = options.find(function (o) {
+      return o.category === category;
+    });
+    return known ? known.label : category;
+  }
+
+  // The add-mute form: a Category to silence and, under it, one target or the whole
+  // Category. Built from the live Flags (wkxFlags.muteOptions), so it offers only
+  // Categories the board currently flags; with none it disables the button rather
+  // than offer an empty mute. In the board's control idiom — mono pills, no new hue.
+  function addMuteForm() {
+    const options = window.wkxFlags ? window.wkxFlags.muteOptions() : [];
+    const form = U.el("div", "mute-form");
+    const category = U.el("select", "mute-select");
+    options.forEach(function (option) {
+      const el = U.el("option", null, option.label);
+      el.value = option.category;
+      category.append(el);
+    });
+    const target = U.el("select", "mute-select");
+    function fillTargets() {
+      target.replaceChildren();
+      const whole = U.el("option", null, "whole category");
+      whole.value = "";
+      target.append(whole);
+      const chosen = options.find(function (o) {
+        return o.category === category.value;
+      });
+      (chosen ? chosen.targets : []).forEach(function (t) {
+        const el = U.el("option", null, t.label);
+        el.value = t.value;
+        target.append(el);
+      });
+    }
+    fillTargets();
+    category.addEventListener("change", fillTargets);
+    const add = U.el("button", "mute-add", "add mute");
+    add.type = "button";
+    add.disabled = options.length === 0;
+    add.addEventListener("click", function () {
+      if (window.wkxView && category.value)
+        window.wkxView.setMute(category.value, target.value || null, true);
+    });
+    form.append(U.el("span", "mute-lead", "mute"), category, U.el("span", "mute-arrow", "→"), target, add);
+    return form;
+  }
+
+  // A plain, unsorted table: the Mutes editor is a small management table, not a
+  // sortable catalogue table, so its headers carry no sort affordance. The Unmute
+  // header takes the flag-rail's right-justify (th.flags) so the action settles on
+  // the board's right edge.
+  function plainTable(labels) {
+    const wrap = U.el("div", "tbl-wrap");
+    const table = U.el("table");
+    const head = U.el("tr");
+    labels.forEach(function (label) {
+      head.append(U.el("th", label.right ? "flags" : null, label.text));
+    });
+    const thead = U.el("thead");
+    thead.append(head);
+    const tbody = U.el("tbody");
+    table.append(thead, tbody);
+    wrap.append(table);
+    return { wrap: wrap, tbody: tbody };
+  }
+
+  function mutesEditor(rules, title) {
+    const built = plainTable([
+      { text: "Category" },
+      { text: "Target" },
+      { text: "Unmute", right: true },
+    ]);
+    if (rules.length === 0) {
+      const row = U.el("tr");
+      const cell = U.td("No Flags are muted. Mute one from its badge, or add a rule above.", "q");
+      cell.colSpan = 3;
+      row.append(cell);
+      built.tbody.append(row);
+    }
     rules.forEach(function (rule) {
       const target = rule.target ? U.el("span", "ver", rule.target) : U.quiet("whole category");
+      const unmute = U.el("button", "unmute-btn", "unmute");
+      unmute.type = "button";
+      unmute.setAttribute(
+        "aria-label",
+        "Unmute " + muteLabel(rule.category) + (rule.target ? " for " + rule.target : ""),
+      );
+      unmute.addEventListener("click", function () {
+        if (window.wkxView) window.wkxView.setMute(rule.category, rule.target || null, false);
+      });
       built.tbody.append(
-        U.tr([U.td(U.el("span", "t-name", rule.category)), U.td(target), U.flagCell()]),
+        U.tr([
+          U.td(U.el("span", "t-name", muteLabel(rule.category))),
+          U.td(target),
+          U.td(unmute, "flags-col"),
+        ]),
       );
     });
-    built.equip();
-    return built.wrap;
+    const block = U.el("div", "table-block");
+    const head = U.el("div", "table-head");
+    head.append(U.el("p", "table-title", title), addMuteForm());
+    block.append(head, built.wrap);
+    return block;
   }
 
   // The View-file line: where the board writes its View, and whether the file is
@@ -3624,14 +3831,9 @@ window.wkxFilter = (function () {
         U.summaryLine(["No Sections are off; every Section is on the board."]),
       );
     }
-    if (mutes.length > 0) {
-      nodes.push(mutesTable(mutes, "Mutes (" + mutes.length + ") · from the View"));
-    } else {
-      nodes.push(
-        U.el("p", "sub-head", "Mutes (0) · from the View"),
-        U.summaryLine(["No Flags are muted; every Flag badges its row and counts in the tally."]),
-      );
-    }
+    // The Mute editor always renders, empty or not, so the add form is always at
+    // hand and the operator never has to edit the file to mute (ADR 0004).
+    nodes.push(mutesEditor(mutes, "Mutes (" + mutes.length + ") · from the View"));
 
     mount.replaceChildren.apply(mount, nodes);
   }
@@ -3639,12 +3841,22 @@ window.wkxFilter = (function () {
   // The boot gate already fetched /api/config to learn the Off Sections, so this
   // panel renders from that one body rather than fetching the same endpoint again;
   // the Mutes and the View-file line come from the View wkxView already read.
+  let configData = null;
+  function rerender() {
+    if (configData) render(configData);
+  }
   window.wkxSections.whenActive(mount, function () {
-    const data = window.wkxSections.config();
-    if (data) {
-      render(data);
+    configData = window.wkxSections.config();
+    if (configData) {
+      render(configData);
     } else {
       note("Could not read the configuration. Check that the board is still running.");
     }
   });
+  // Re-render when the Mutes change (a badge or the editor wrote one, here or in
+  // another tab) so the Mutes editor, its Unmute rows, and the Mutes tile stay in
+  // step; and when the live Flags change, so the add form only ever offers a
+  // Category the board still flags.
+  if (window.wkxView) window.wkxView.onChange(rerender);
+  if (window.wkxFlags) window.wkxFlags.subscribe(rerender);
 })();
