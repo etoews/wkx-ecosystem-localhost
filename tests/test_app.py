@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+
+from wkx_ecosystem_localhost.app import write_is_allowed
+
+_ALLOWED_HOSTS = frozenset({"127.0.0.1:8787", "localhost:8787", "[::1]:8787"})
+
+
+def _guard(*, origin: str | None, sec_fetch_site: str | None) -> bool:
+    """Run the write guard with a valid content type and Host, varying only the two."""
+    return write_is_allowed(
+        content_type="application/json",
+        host="127.0.0.1:8787",
+        origin=origin,
+        sec_fetch_site=sec_fetch_site,
+        allowed_hosts=_ALLOWED_HOSTS,
+    )
 
 
 def test_index_serves_the_board(client: TestClient) -> None:
@@ -59,6 +75,37 @@ def test_a_loopback_host_is_allowed(client: TestClient) -> None:
     response = client.get("/api/config", headers={"host": "localhost:8787"})
 
     assert response.status_code == 200
+
+
+# ---------- the write guard's Sec-Fetch-Site branch (finding 18) ----------
+
+
+def test_no_origin_is_a_non_browser_client() -> None:
+    # curl sends no Origin at all; the write is accepted.
+    assert _guard(origin=None, sec_fetch_site=None) is True
+
+
+def test_a_same_origin_origin_is_accepted() -> None:
+    assert _guard(origin="http://127.0.0.1:8787", sec_fetch_site="cross-site") is True
+
+
+@pytest.mark.parametrize(
+    ("sec_fetch_site", "expected"),
+    [
+        ("same-origin", True),
+        ("same-site", False),
+        ("cross-site", False),
+        ("none", False),  # a user-initiated navigation, never a page fetch: refused
+    ],
+)
+def test_a_null_origin_falls_to_sec_fetch_site(sec_fetch_site: str, expected: bool) -> None:
+    # Origin: null (a sandboxed frame, a data: page) does not match the loopback set,
+    # so the request falls to the Sec-Fetch-Site check; only same-origin clears it.
+    assert _guard(origin="null", sec_fetch_site=sec_fetch_site) is expected
+
+
+def test_a_foreign_origin_with_no_sec_fetch_site_is_refused() -> None:
+    assert _guard(origin="http://evil.example", sec_fetch_site=None) is False
 
 
 def test_styles_are_served_with_wkx_tokens(client: TestClient) -> None:

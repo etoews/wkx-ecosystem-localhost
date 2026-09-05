@@ -181,11 +181,13 @@ def write_is_allowed(
 
     A write is accepted only with ``Content-Type: application/json``, a ``Host``
     that is the bound loopback host and port, and either a same-origin ``Origin``,
-    a same-origin ``Sec-Fetch-Site``, or no ``Origin`` at all (a non-browser
-    client). Anything else — a foreign ``Origin``, a ``Host`` naming another name,
-    a form content type — is refused. The board is loopback-only, so this is
-    defence-in-depth against a page in the operator's own browser writing across
-    origins.
+    a ``Sec-Fetch-Site: same-origin``, or no ``Origin`` at all (a non-browser
+    client). Anything else — a foreign or ``null`` ``Origin`` with a ``Sec-Fetch-Site``
+    of ``same-site``, ``cross-site``, or ``none``, a ``Host`` naming another name, a
+    form content type — is refused. ``none`` (a user-initiated navigation, never a
+    page fetch) is deliberately not accepted, so the loosest branch is as tight as
+    the rest. The board is loopback-only, so this is defence-in-depth against a page
+    in the operator's own browser writing across origins.
 
     Args:
         content_type: The request ``Content-Type``.
@@ -205,7 +207,7 @@ def write_is_allowed(
         return True  # a non-browser client (curl) sends no Origin
     if origin in {f"http://{name}" for name in allowed_hosts}:
         return True  # a same-origin browser request
-    return sec_fetch_site in ("same-origin", "none")
+    return sec_fetch_site == "same-origin"
 
 
 def create_app(
