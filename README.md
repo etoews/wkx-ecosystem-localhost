@@ -13,9 +13,9 @@ glossary; [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together.
 
 Each Section leads with a row of stat tiles and a table beneath. Three controls
 shape how a table reads. A Filter keeps only the rows that hold the text and marks
-the match; click the ⌕ button on a Section heading to show it, and one Filter
-narrows every table in the Section. A columns menu above each table hides a column;
-the name column and the Flags rail stay. A header click sorts the column up, then
+the match; type in the `filter…` pill on a Section heading, and one Filter narrows
+every table in the Section. A columns menu above each table hides a column; the
+name column and the Flags rail stay. A header click sorts the column up, then
 down, then back to source order. The board keeps all three in the View. Click a
 Section heading to collapse the Section to its heading. The
 collapsed heading shows the Section count and its Flag tally. Click the heading

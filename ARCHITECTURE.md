@@ -87,9 +87,10 @@ and behind repo discovery, so one board load walks the scan roots once no matter
 how many routes and the Flag layer ask for the repos), `redaction.py`,
 `semver.py`, `_logging.py`, and `exceptions.py`.
 
-`__main__.py` is the typer entry point. `serve` builds `Settings` once, binds
-uvicorn to `127.0.0.1:8787`, and opens the board in a browser. The bind host is
-deliberately not a setting; loopback-only is a security property of the app.
+`__main__.py` is the typer entry point. `serve` builds `Settings` once and binds
+uvicorn to `127.0.0.1` on the configured port; it opens the board in a browser
+only when `--open-browser` is passed. The bind host is deliberately not a setting;
+loopback-only is a security property of the app.
 
 ## Collectors
 

@@ -322,8 +322,9 @@ def create_app(
         The board opens this with a native ``EventSource`` on load. Each repo is
         fetched on a bounded pool and its counts are pushed the moment they are
         ready, so the one slow truth fills in progressively without blocking the
-        rest of the board. This is the only write the app performs, and it
-        touches remote-tracking refs only.
+        rest of the board. The fetch is one of the two writes the app performs (the
+        other is its own View file), and it touches remote-tracking refs only —
+        never a working tree.
         """
         repo_paths = app.state.discovery_cache.discover(
             app.state.machine,
@@ -540,9 +541,10 @@ def create_app(
         """The effective View, read live from the file on every request.
 
         The board's own file (ADR 0004): the theme, the Hidden and Collapsed panels,
-        and the Mutes, plus whether the file is loaded, absent, or not writable, and
-        any key it named that the board does not know. A hand edit shows on the next
-        refresh with no restart, because the file is read here every time.
+        and the Mutes, plus whether the file is loaded, absent, unreadable, or
+        unparseable, whether it is writable, and any key it named that the board does
+        not know. A hand edit shows on the next refresh with no restart, because the
+        file is read here every time.
         """
         return payload_of(read_view(app.state.view_file, home=app.state.home))
 
