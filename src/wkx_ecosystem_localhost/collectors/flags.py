@@ -58,12 +58,13 @@ PROBLEM = "problem"
 # rule's ``category`` against, so a misspelt Category fails fast. The seventeen
 # derived below, plus ``behind-remote`` and ``submodule-tags-behind`` — the two the
 # board raises client-side as its SSE events land (a repo behind its remote, a
-# submodule behind its tags) — and the two the config Section raises from the state
-# of the View file: ``view-not-saved`` when a write fails and ``view-unknown-key``
-# when the View names a panel or Category the board does not know (ADR 0004). None
-# of these four has a server-side derivation, so they are named here explicitly;
-# they are still real Categories an operator can Mute. The client's CATEGORY_LABEL
-# map must list exactly these ids (a test cross-checks them).
+# submodule behind its tags) — and the three the config Section raises from the
+# state of the View file: ``view-not-saved`` when a write fails, ``view-not-parsed``
+# when the file on disk does not parse, and ``view-unknown-key`` when the View names
+# a key, panel, or Category the board does not know (ADR 0004). None of these five
+# has a server-side derivation, so they are named here explicitly; they are still
+# real Categories an operator can Mute. The client's CATEGORY_LABEL map must list
+# exactly these ids (a test cross-checks them).
 CATEGORIES: frozenset[str] = frozenset(
     {
         "dirty-tree",
@@ -86,6 +87,7 @@ CATEGORIES: frozenset[str] = frozenset(
         "git-config-credentials",
         "git-no-identity",
         "view-not-saved",
+        "view-not-parsed",
         "view-unknown-key",
     }
 )

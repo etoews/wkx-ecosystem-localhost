@@ -587,10 +587,11 @@ def _client_category_labels() -> set[str]:
     return set(_LABEL_KEY.findall(match.group(1)))
 
 
-def test_categories_registry_lists_all_twenty_one() -> None:
+def test_categories_registry_lists_all_twenty_two() -> None:
     # Seventeen derived, plus behind-remote and submodule-tags-behind (SSE-raised),
-    # plus view-not-saved and view-unknown-key (the config Section's View Flags).
-    assert len(CATEGORIES) == 21
+    # plus the config Section's three View Flags: view-not-saved, view-not-parsed,
+    # and view-unknown-key.
+    assert len(CATEGORIES) == 22
 
 
 def test_registry_carries_the_two_sse_raised_categories() -> None:

@@ -30,6 +30,8 @@ window.wkxView = (function () {
     file: null,
     found: false,
     writable: true,
+    readable: true,
+    parse_error: false,
     unknown_keys: [],
   };
   const listeners = [];
@@ -78,14 +80,17 @@ window.wkxView = (function () {
       file: current.file,
       found: current.found,
       writable: current.writable,
+      readable: current.readable !== false,
+      parse_error: !!current.parse_error,
       unknown_keys: current.unknown_keys || [],
     };
   }
 
-  // The two config-Section Flags the View state raises. view-not-saved (red) is
-  // raised when a write fails and cleared when one succeeds; view-unknown-key
-  // (amber) is raised when the file names a panel or Category the board does not
-  // know. Both badge the config Section's View-file line.
+  // The three config-Section Flags the View state raises, all on the View-file
+  // line. view-not-saved (red) is raised when a write fails and cleared when one
+  // succeeds; view-not-parsed (red) is raised when the file on disk does not parse
+  // and cleared when it does; view-unknown-key (amber) is raised when the file
+  // names a key, panel, or Category the board does not know.
   function raiseNotSaved() {
     if (window.wkxFlags)
       window.wkxFlags.add({
@@ -99,6 +104,19 @@ window.wkxView = (function () {
   function clearNotSaved() {
     if (window.wkxFlags) window.wkxFlags.clear("config", "view-file", "view-not-saved");
   }
+  function raiseNotParsed() {
+    if (window.wkxFlags)
+      window.wkxFlags.add({
+        section: "config",
+        target: "view-file",
+        level: "problem",
+        category: "view-not-parsed",
+        message: "does not parse",
+      });
+  }
+  function clearNotParsed() {
+    if (window.wkxFlags) window.wkxFlags.clear("config", "view-file", "view-not-parsed");
+  }
   function raiseUnknownKeys() {
     const keys = current.unknown_keys || [];
     if (keys.length === 0 || !window.wkxFlags) return;
@@ -109,6 +127,14 @@ window.wkxView = (function () {
       category: "view-unknown-key",
       message: keys.length === 1 ? "1 unknown key" : keys.length + " unknown keys",
     });
+  }
+
+  // Re-derive the View-file Flags from the current state after every read, so a
+  // corrupt file raises view-not-parsed and a fixed one clears it.
+  function syncViewFlags() {
+    if (current.parse_error) raiseNotParsed();
+    else clearNotParsed();
+    raiseUnknownKeys();
   }
 
   // PATCH one preference. On success the server returns the effective View, which
@@ -178,7 +204,7 @@ window.wkxView = (function () {
     source.addEventListener("view", function (message) {
       try {
         apply(JSON.parse(message.data));
-        raiseUnknownKeys();
+        syncViewFlags();
       } catch (_err) {
         // Ignore a malformed frame rather than tearing down the stream.
       }
@@ -186,7 +212,7 @@ window.wkxView = (function () {
     // EventSource reconnects on its own if the stream drops; nothing to do here.
   }
 
-  const ready = refresh().then(raiseUnknownKeys).then(converge);
+  const ready = refresh().then(syncViewFlags).then(converge);
 
   return {
     ready: ready,
@@ -824,6 +850,7 @@ window.wkxFlags = (function () {
     "git-config-credentials": "Credentials in git config",
     "git-no-identity": "No git identity",
     "view-not-saved": "View not saved",
+    "view-not-parsed": "View not parsed",
     "view-unknown-key": "Unknown View key",
   };
   // How to resolve each anomaly — the tooltip a badge carries, so hovering tells
@@ -849,7 +876,8 @@ window.wkxFlags = (function () {
     "git-config-credentials": "A credential is embedded in a config value. Move it to a credential helper and remove it from gitconfig.",
     "git-no-identity": "No global user.email is set. Set one with git config --global user.email you@example.com.",
     "view-not-saved": "The last change could not be written to the View file. Check the file is present and writable, then try again.",
-    "view-unknown-key": "The View file names a panel or Category the board does not know; the board dropped it. Check the file for a stale name.",
+    "view-not-parsed": "The View file on disk does not parse as TOML, so the board is showing its defaults. Fix the file's syntax, or delete it to reset.",
+    "view-unknown-key": "The View file names a key, panel, or Category the board does not know; the board dropped it. Check the file for a typo or a stale name.",
   };
   const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
 
@@ -3419,13 +3447,24 @@ window.wkxFilter = (function () {
   }
 
   // The View-file line: where the board writes its View, and whether the file is
-  // loaded, absent, or not writable. It is the host for the two View Flags
-  // (view-not-saved, view-unknown-key), so it carries a data-flag-key the Flag
-  // layer badges — the flag key is set on a <p>, never on a table element.
+  // loaded, absent, unreadable, unparseable, or not writable. It is the host for
+  // the three View Flags (view-not-saved, view-not-parsed, view-unknown-key), so it
+  // carries a data-flag-key the Flag layer badges — the flag key is set on a <p>,
+  // never on a table element.
   function viewFileLine(state) {
     let parts;
     if (!state.file) {
       parts = ["The board writes its View to its own file; none is configured here."];
+    } else if (state.found && state.parse_error) {
+      parts = [
+        U.el("span", "ver", state.file),
+        " does not parse as TOML, so the board is showing its defaults; fix its syntax or delete it to reset.",
+      ];
+    } else if (state.found && state.readable === false) {
+      parts = [
+        U.el("span", "ver", state.file),
+        " cannot be read, so the board is showing its defaults; check its permissions.",
+      ];
     } else if (state.found && state.writable) {
       parts = ["The board writes its View to ", U.el("span", "ver", state.file), "."];
     } else if (state.found && !state.writable) {
@@ -3465,7 +3504,7 @@ window.wkxFilter = (function () {
     const mutes = window.wkxView ? window.wkxView.mute() : [];
     const viewState = window.wkxView
       ? window.wkxView.fileState()
-      : { file: null, found: false, writable: false, unknown_keys: [] };
+      : { file: null, found: false, writable: false, readable: true, parse_error: false, unknown_keys: [] };
     // Customised and From-environment count the scalar settings AND every
     // list-shaped block (system tools, Excludes, Off Sections), so a config that
     // customises only, say, sections_off is never reported as nothing changed.

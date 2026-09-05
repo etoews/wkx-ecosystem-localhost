@@ -348,6 +348,51 @@ def test_a_corrupt_file_reads_as_empty_without_raising(tmp_path: Path) -> None:
 
     assert state.view == View()
     assert state.found is True
+    # A corrupt file must not silently look like a board at its defaults: the config
+    # Section raises the red view-not-parsed Flag off this.
+    assert state.parse_error is True
+
+
+def test_an_unknown_top_level_key_is_reported(tmp_path: Path) -> None:
+    path = _view_file(tmp_path)
+    path.write_text('theem = "dark"\n')  # a typo for theme
+
+    state = read_view(path, home=HOME)
+
+    assert state.view.theme is None
+    assert any("theem" in key for key in state.unknown_keys)
+    assert state.parse_error is False
+
+
+@pytest.mark.parametrize(
+    ("body", "needle"),
+    [
+        ('sections_hidden = "docker"\n', "sections_hidden"),  # a string, not a list
+        ('filter = "x"\n', "filter"),  # a string, not a table
+        ("mute = { category = 'x' }\n", "mute"),  # a table, not an array of tables
+        ("theme = 12\n", "theme"),  # a number, not a string
+    ],
+)
+def test_a_wrong_typed_top_level_value_is_reported(tmp_path: Path, body: str, needle: str) -> None:
+    path = _view_file(tmp_path)
+    path.write_text(body)
+
+    state = read_view(path, home=HOME)
+
+    # The value is dropped (the board reads its default) and named, never silently
+    # ignored the way it was before.
+    assert state.view == View()
+    assert any(needle in key for key in state.unknown_keys)
+
+
+def test_a_wrong_typed_nested_value_is_reported(tmp_path: Path) -> None:
+    path = _view_file(tmp_path)
+    path.write_text('[columns_hidden]\nworkspace = "stash"\n')  # a string, not a list of keys
+
+    state = read_view(path, home=HOME)
+
+    assert state.view.columns_hidden == {}
+    assert any("workspace" in key for key in state.unknown_keys)
 
 
 # ---------- the unreadable file (a permission bit) ----------

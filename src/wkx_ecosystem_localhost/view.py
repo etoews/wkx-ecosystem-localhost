@@ -188,7 +188,10 @@ class ViewState(BaseModel):
     file is configured; ``found`` is whether it exists; ``writable`` is whether the
     board could write it (the file, or its directory when the file is absent).
     ``readable`` is whether the file's bytes could be read; a permission bit makes it
-    False and the board serves its defaults rather than 500.
+    False and the board serves its defaults rather than 500. ``parse_error`` is True
+    when the file was read but does not parse as TOML, so the config Section can raise
+    the red ``view-not-parsed`` Flag rather than showing a board that silently
+    reverted to its defaults.
     """
 
     view: View
@@ -197,6 +200,7 @@ class ViewState(BaseModel):
     found: bool = False
     writable: bool = False
     readable: bool = True
+    parse_error: bool = False
 
 
 class ViewPayload(BaseModel):
@@ -220,6 +224,7 @@ class ViewPayload(BaseModel):
     found: bool
     writable: bool
     readable: bool
+    parse_error: bool
     unknown_keys: list[str]
 
 
@@ -237,6 +242,7 @@ def payload_of(state: ViewState) -> ViewPayload:
         found=state.found,
         writable=state.writable,
         readable=state.readable,
+        parse_error=state.parse_error,
         unknown_keys=state.unknown_keys,
     )
 
@@ -513,13 +519,30 @@ def merge(current: View, preference: Preference) -> View:
     return View.model_validate(data)
 
 
+# The View's known top-level keys and the TOML type each must carry. A key not
+# here is a typo (``theem``); a value of the wrong type (``sections_hidden =
+# "docker"``) is a hand edit that would otherwise be skipped in silence. Both are
+# surfaced as unknown keys so the config Section raises view-unknown-key.
+_TOP_LEVEL_TYPES: dict[str, type | tuple[type, ...]] = {
+    "theme": str,
+    "sections_hidden": list,
+    "sections_collapsed": list,
+    "mute": list,
+    "filter": Mapping,
+    "columns_hidden": Mapping,
+    "sort": Mapping,
+}
+
+
 def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
     """Build the effective View from parsed TOML, dropping unknown keys with a warning.
 
-    Lenient by design: an unknown theme, an unknown panel id, an unknown Mute
-    Category, or a malformed Mute rule is dropped and named in the returned list,
-    never raised, so the board never refuses a file it wrote itself. Each dropped
-    key is logged at WARNING.
+    Lenient by design: an unknown top-level key (a typo like ``theem``), a
+    wrong-typed value (``sections_hidden = "docker"``), an unknown theme, an unknown
+    panel id, an unknown Mute Category, or a malformed Mute rule is dropped and named
+    in the returned list, never raised, so the board never refuses a file it wrote
+    itself. Each dropped key is logged at WARNING and surfaces as ``view-unknown-key``
+    in the config Section.
 
     Args:
         data: The parsed TOML mapping.
@@ -528,8 +551,30 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
         The effective View and the list of dropped, unknown keys.
     """
     unknown: list[str] = []
+    # A key the View schema does not know (a hand-edit typo) is dropped and named,
+    # rather than silently ignored, so the config Section can raise view-unknown-key.
+    for key in data:
+        if key not in _TOP_LEVEL_TYPES:
+            unknown.append(f"unknown key: {key!r}")
+            logger.warning("dropping unknown View key: %r", key)
+
+    def _typed(field: str) -> object | None:
+        """The field's value if it is the schema's TOML type, else None, flagging it.
+
+        A known field carrying the wrong type (a table where a list is owed, and so
+        on) would otherwise be skipped in silence by the validators below; here it is
+        named in ``unknown`` and treated as absent.
+        """
+        value = data.get(field)
+        expected = _TOP_LEVEL_TYPES[field]
+        if value is None or isinstance(value, expected):
+            return value
+        unknown.append(f"{field}: wrong type {type(value).__name__}")
+        logger.warning("dropping wrong-typed View %s: %r", field, value)
+        return None
+
     theme: Literal["light", "dark"] | None = None
-    raw_theme = data.get("theme")
+    raw_theme = _typed("theme")
     if raw_theme == "light":
         theme = "light"
     elif raw_theme == "dark":
@@ -539,7 +584,7 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
         logger.warning("dropping unknown View theme: %r", raw_theme)
 
     def _known_panels(field: str) -> list[str]:
-        raw = data.get(field)
+        raw = _typed(field)
         kept: list[str] = []
         for panel in raw if isinstance(raw, list) else []:
             if isinstance(panel, str) and panel in PANEL_IDS:
@@ -551,7 +596,7 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
         return kept
 
     categories = _known_categories()
-    raw_mute = data.get("mute")
+    raw_mute = _typed("mute")
     mute: list[MuteRule] = []
     for entry in raw_mute if isinstance(raw_mute, list) else []:
         if not isinstance(entry, Mapping):
@@ -573,7 +618,7 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
     catalogue = _catalogue()
 
     def _known_filter() -> dict[str, str]:
-        raw = data.get("filter")
+        raw = _typed("filter")
         kept: dict[str, str] = {}
         for section, text in raw.items() if isinstance(raw, Mapping) else []:
             if section in catalogue.sections and isinstance(text, str):
@@ -584,16 +629,20 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
         return kept
 
     def _known_columns_hidden() -> dict[str, list[str]]:
-        raw = data.get("columns_hidden")
+        raw = _typed("columns_hidden")
         kept: dict[str, list[str]] = {}
         for table, keys in raw.items() if isinstance(raw, Mapping) else []:
             if table not in catalogue.tables:
                 unknown.append(f"columns_hidden: {table!r}")
                 logger.warning("dropping unknown View columns_hidden table: %r", table)
                 continue
+            if not isinstance(keys, list):
+                unknown.append(f"columns_hidden {table!r}: wrong type {type(keys).__name__}")
+                logger.warning("dropping wrong-typed View columns_hidden %r: %r", table, keys)
+                continue
             hideable = catalogue.hideable_keys(str(table))
             ordered: list[str] = []
-            for key in keys if isinstance(keys, list) else []:
+            for key in keys:
                 if isinstance(key, str) and key in hideable:
                     if key not in ordered:
                         ordered.append(key)
@@ -605,7 +654,7 @@ def _view_from_data(data: Mapping[str, object]) -> tuple[View, list[str]]:
         return kept
 
     def _known_sort() -> dict[str, SortRule]:
-        raw = data.get("sort")
+        raw = _typed("sort")
         kept: dict[str, SortRule] = {}
         for table, rule in raw.items() if isinstance(raw, Mapping) else []:
             if table not in catalogue.tables or not isinstance(rule, Mapping):
@@ -698,7 +747,13 @@ def read_view(path: Path | None, *, home: Path | None = None) -> ViewState:
         return ViewState(view=View(), file=file_display, found=True, writable=False, readable=False)
     except ViewParseError:
         logger.warning("View file %s does not parse; reading it as empty", path)
-        return ViewState(view=View(), file=file_display, found=True, writable=_writable(path))
+        return ViewState(
+            view=View(),
+            file=file_display,
+            found=True,
+            writable=_writable(path),
+            parse_error=True,
+        )
     view, unknown = _view_from_data(data)
     return ViewState(
         view=view,
