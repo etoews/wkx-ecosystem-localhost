@@ -1,12 +1,12 @@
 """Shared fixtures.
 
-Settings are constructed explicitly and opt out of both file sources
-(``_env_file=None`` for ``.env``, ``_config_file=None`` for the TOML), so the
-suite never reads a real configuration file on the machine it runs on. The
-``isolate_environment`` autouse fixture backs that up: it strips every
-``WKX_ECO_LOCAL_*`` variable and points both file paths at ``tmp_path``, so even
-the code paths that resolve a file from the environment (the CLI, the reload
-factory) read nothing real, whatever the developer's machine has set.
+Settings are built through ``support.make_settings``, which opts out of both file
+sources (``.env`` and the TOML), so the suite never reads a real configuration
+file on the machine it runs on. The ``isolate_environment`` autouse fixture backs
+that up: it strips every ``WKX_ECO_LOCAL_*`` variable and points both file paths
+at ``tmp_path``, so even the code paths that resolve a file from the environment
+(the CLI, the reload factory) read nothing real, whatever the developer's machine
+has set.
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ import fixtures
 import pytest
 from clients import loopback_client
 from fastapi.testclient import TestClient
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ def isolate_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iter
 
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     return loopback_client(create_app(settings))
 
 
@@ -58,7 +58,7 @@ def workspace_client() -> TestClient:
     exercised exactly as production would produce them.
     """
     machine, home, roots = fixtures.build_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -72,7 +72,7 @@ def submodule_client() -> TestClient:
     exactly as production would.
     """
     machine, home, roots = fixtures.build_submodule_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -87,7 +87,7 @@ def toolchains_client() -> TestClient:
     faked.
     """
     machine, home, roots = fixtures.build_toolchains_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -102,9 +102,7 @@ def system_client() -> TestClient:
     production would, only the machine seam faked.
     """
     machine, tools = fixtures.build_system_workspace()
-    settings = Settings(
-        _env_file=None, _config_file=None, scan_roots=[fixtures.DEV], system_tools=tools
-    )
+    settings = make_settings(scan_roots=[fixtures.DEV], system_tools=tools)
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -119,7 +117,7 @@ def claude_client() -> TestClient:
     machine seam faked.
     """
     machine, home = fixtures.build_claude_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -132,7 +130,7 @@ def homebrew_client() -> TestClient:
     production would, only the machine seam faked.
     """
     machine = fixtures.build_homebrew_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -145,7 +143,7 @@ def homebrew_absent_client() -> TestClient:
     fact rather than an error.
     """
     machine = fixtures.build_homebrew_absent()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -158,7 +156,7 @@ def docker_client() -> TestClient:
     as production would, only the machine seam faked.
     """
     machine = fixtures.build_docker_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -171,7 +169,7 @@ def docker_down_client() -> TestClient:
     their empty defaults, a plain fact rather than an error page.
     """
     machine = fixtures.build_docker_down()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -184,7 +182,7 @@ def editor_client() -> TestClient:
     production would, only the machine seam faked.
     """
     machine = fixtures.build_editor_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -197,7 +195,7 @@ def editor_absent_client() -> TestClient:
     empty, a plain fact rather than an error.
     """
     machine = fixtures.build_editor_absent()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=fixtures.HOME))
 
 
@@ -211,7 +209,7 @@ def footprint_client() -> TestClient:
     all produced exactly as production would, only the machine seam faked.
     """
     machine, home, roots = fixtures.build_footprint_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -226,7 +224,7 @@ def git_config_client() -> TestClient:
     would, only the machine seam faked.
     """
     machine, home = fixtures.build_git_config_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[fixtures.DEV])
+    settings = make_settings(scan_roots=[fixtures.DEV])
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -240,7 +238,7 @@ def flags_client() -> TestClient:
     production would, only the machine seam faked.
     """
     machine, home, roots, tools = fixtures.build_flags_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
+    settings = make_settings(scan_roots=roots, system_tools=tools)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -253,5 +251,5 @@ def fetch_client() -> TestClient:
     fake seam exactly as production would produce it.
     """
     machine, home, roots = fixtures.build_fetch_workspace()
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))

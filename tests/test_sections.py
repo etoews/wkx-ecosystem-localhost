@@ -16,9 +16,9 @@ import pytest
 from clients import loopback_client
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.models import Section
 
 STATIC = Path(__file__).parent.parent / "src" / "wkx_ecosystem_localhost" / "static"
@@ -61,20 +61,20 @@ def test_needs_attention_is_not_a_section() -> None:
 
 
 def test_sections_off_defaults_to_empty() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.sections_off == []
 
 
 def test_sections_off_accepts_known_section_names() -> None:
-    settings = Settings(_env_file=None, _config_file=None, sections_off=["docker", "editor"])
+    settings = make_settings(sections_off=["docker", "editor"])
 
     assert settings.sections_off == [Section.DOCKER, Section.EDITOR]
 
 
 def test_sections_off_rejects_an_unknown_section_naming_it() -> None:
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=None, sections_off=["dockr"])
+        make_settings(sections_off=["dockr"])
 
     assert "dockr" in str(excinfo.value)
 
@@ -84,7 +84,7 @@ def test_sections_off_rejects_config_because_it_is_the_bootstrap() -> None:
     # client boots from, so it is served unconditionally and can never be Off. Like
     # needs attention, it can be Hidden but not Off.
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=None, sections_off=["config"])
+        make_settings(sections_off=["config"])
 
     assert "config cannot be switched off" in str(excinfo.value)
 
@@ -94,7 +94,7 @@ def test_toml_sections_off_rejects_an_unknown_section(tmp_path: Path) -> None:
     path.write_text('sections_off = ["editr"]\n')
 
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=path)
+        make_settings(config_file=path)
 
     assert "editr" in str(excinfo.value)
 
@@ -102,7 +102,7 @@ def test_toml_sections_off_rejects_an_unknown_section(tmp_path: Path) -> None:
 def test_env_sections_off_reads_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_SECTIONS_OFF", '["docker"]')
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.sections_off == [Section.DOCKER]
 
@@ -118,13 +118,7 @@ def _off_client(*sections: Section) -> TestClient:
     the real app and Collectors with only the machine seam faked.
     """
     machine, home, roots, tools = fixtures.build_flags_workspace()
-    settings = Settings(
-        _env_file=None,
-        _config_file=None,
-        scan_roots=roots,
-        system_tools=tools,
-        sections_off=list(sections),
-    )
+    settings = make_settings(scan_roots=roots, system_tools=tools, sections_off=list(sections))
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 

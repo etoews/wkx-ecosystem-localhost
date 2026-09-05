@@ -9,12 +9,14 @@ column, or Section is a 422, exactly as an unknown panel already is.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import httpx2
 from clients import loopback_client
 from fastapi.testclient import TestClient
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
 
 HOME = Path("/home/someone")
 HOST = "127.0.0.1:8787"
@@ -22,11 +24,11 @@ HOST = "127.0.0.1:8787"
 
 def _client(tmp_path: Path) -> TestClient:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     return loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
 
-def _patch(client: TestClient, body: dict) -> object:
+def _patch(client: TestClient, body: dict[str, Any]) -> httpx2.Response:
     return client.patch("/api/view", json=body, headers={"host": HOST})
 
 

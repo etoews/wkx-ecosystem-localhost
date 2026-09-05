@@ -10,13 +10,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
+import httpx2
 import pytest
 from clients import loopback_client
 from fastapi.testclient import TestClient
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
 
 # A permission bit does not stop root, so the unreadable-file tests skip there.
 _skip_as_root = pytest.mark.skipif(
@@ -32,11 +34,11 @@ ORIGIN = "http://127.0.0.1:8787"
 
 def _client(tmp_path: Path) -> TestClient:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     return loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
 
-def _patch(client: TestClient, body: dict, **headers: str) -> object:
+def _patch(client: TestClient, body: dict[str, Any], **headers: str) -> httpx2.Response:
     merged = {"host": HOST, **headers}
     return client.patch("/api/view", json=body, headers=merged)
 
@@ -65,7 +67,7 @@ def test_get_view_reports_the_file_line(tmp_path: Path) -> None:
 def test_get_view_surfaces_an_unknown_key(tmp_path: Path) -> None:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text('sections_hidden = ["docker", "nope"]\n')
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     client = loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
     body = client.get("/api/view").json()
@@ -161,7 +163,7 @@ def test_an_unknown_panel_is_rejected(tmp_path: Path) -> None:
 def test_a_corrupt_file_refuses_the_write(tmp_path: Path) -> None:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text("this = is = not valid toml\n")
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     client = loopback_client(create_app(settings, home=HOME, view_file=view_file))
 
     response = _patch(client, {"field": "theme", "value": "dark"})
@@ -196,7 +198,7 @@ def _unreadable_client(tmp_path: Path) -> tuple[TestClient, Path]:
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text('theme = "dark"\n')
     view_file.chmod(0o000)
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[tmp_path])
+    settings = make_settings(scan_roots=[tmp_path])
     return loopback_client(create_app(settings, home=HOME, view_file=view_file)), view_file
 
 

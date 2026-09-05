@@ -187,11 +187,17 @@ def test_merge_preserves_the_other_fields() -> None:
 
 
 def test_parse_theme_preference() -> None:
-    assert parse_preference({"field": "theme", "value": "dark"}).theme == "dark"
+    pref = parse_preference({"field": "theme", "value": "dark"})
+
+    assert isinstance(pref, ThemePreference)
+    assert pref.theme == "dark"
 
 
 def test_parse_theme_auto_clears_the_theme() -> None:
-    assert parse_preference({"field": "theme", "value": "auto"}).theme is None
+    pref = parse_preference({"field": "theme", "value": "auto"})
+
+    assert isinstance(pref, ThemePreference)
+    assert pref.theme is None
 
 
 def test_parse_rejects_an_unknown_theme() -> None:

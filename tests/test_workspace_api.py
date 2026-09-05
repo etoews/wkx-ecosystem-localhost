@@ -7,11 +7,13 @@ relativisation, and the pending ahead/behind, exactly as production would emit i
 
 from __future__ import annotations
 
+from typing import Any
+
 import fixtures
 from fastapi.testclient import TestClient
 
 
-def _repos_by_name(client: TestClient) -> dict[str, dict[str, object]]:
+def _repos_by_name(client: TestClient) -> dict[str, dict[str, Any]]:
     body = client.get("/api/workspace").json()
     return {repo["name"]: repo for repo in body["repos"]}
 

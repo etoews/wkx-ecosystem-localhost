@@ -12,9 +12,10 @@ import fixtures
 from fakes import FakeMachine
 
 from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
+from wkx_ecosystem_localhost.models import ToolchainsSection
 
 
-def _section() -> object:
+def _section() -> ToolchainsSection:
     machine, home, _roots = fixtures.build_toolchains_workspace()
     return collect_toolchains(machine, [fixtures.WEB, fixtures.API, fixtures.CLI], home=home)
 

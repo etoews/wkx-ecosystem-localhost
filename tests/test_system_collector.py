@@ -13,9 +13,10 @@ from fakes import FakeMachine
 
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
 from wkx_ecosystem_localhost.config import ToolSpec
+from wkx_ecosystem_localhost.models import SystemToolsSection
 
 
-def _section() -> object:
+def _section() -> SystemToolsSection:
     machine, tools = fixtures.build_system_workspace()
     return collect_system_tools(machine, tools)
 

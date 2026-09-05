@@ -14,9 +14,9 @@ from pathlib import Path
 import fixtures
 from clients import loopback_client
 from fastapi.testclient import TestClient
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
-from wkx_ecosystem_localhost.config import Settings
 
 
 def _flag_index(flags: list[dict]) -> dict[tuple[str, str], set[str]]:
@@ -112,7 +112,7 @@ def _muted_client(tmp_path: Path) -> TestClient:
     machine, home, roots, tools = fixtures.build_flags_workspace()
     view_file = tmp_path / "wkx-ecosystem-localhost.view.toml"
     view_file.write_text(_MUTED_VIEW)
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
+    settings = make_settings(scan_roots=roots, system_tools=tools)
     return loopback_client(create_app(settings, machine=machine, home=home, view_file=view_file))
 
 

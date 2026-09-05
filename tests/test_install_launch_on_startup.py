@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "install_launch_on_startup.py"
 
 
-def _load_installer():
+def _load_installer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("install_launch_on_startup", _SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

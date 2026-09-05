@@ -57,4 +57,4 @@ addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
 
 [tool.ty.src]
-include = ["src"]
+include = ["src", "tests"]

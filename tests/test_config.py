@@ -1,8 +1,8 @@
 """Settings behaviour: computed defaults, precedence across the sources, and fail-fast.
 
-Every construction opts out of both file sources (``_env_file=None`` for ``.env``,
-``_config_file=None`` for the TOML) unless the test is specifically exercising a
-file, so the suite never reads a real configuration file on the host it runs on.
+Every construction goes through ``support.make_settings``, which opts out of both
+file sources unless the test names one, so the suite never reads a real
+configuration file on the host it runs on.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from support import make_settings
 
 from wkx_ecosystem_localhost.config import (
     ENV_PREFIX,
@@ -25,7 +26,7 @@ from wkx_ecosystem_localhost.models import Section
 
 
 def test_defaults_are_computed_not_literal() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.scan_roots == [Path.home() / "dev"]
     assert settings.scan_depth == 8
@@ -33,7 +34,7 @@ def test_defaults_are_computed_not_literal() -> None:
 
 
 def test_discovery_cache_ttl_defaults_and_shows_in_the_config_view() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     view = describe(settings, home=Path("/home/someone"), config_file=None, environ={})
 
@@ -46,7 +47,7 @@ def test_discovery_cache_ttl_defaults_and_shows_in_the_config_view() -> None:
 def test_env_overrides_port(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_PORT", "9001")
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.port == 9001
 
@@ -54,13 +55,13 @@ def test_env_overrides_port(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_env_overrides_scan_roots(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_SCAN_ROOTS", '["/somewhere/else"]')
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.scan_roots == [Path("/somewhere/else")]
 
 
 def test_default_system_tools_is_the_generic_list() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     names = [tool.name for tool in settings.system_tools]
     assert names == [
@@ -86,14 +87,14 @@ def test_env_extends_system_tools_without_code_change(monkeypatch: pytest.Monkey
         '[{"name": "kubectl"}, {"name": "just", "version_args": ["--version"]}]',
     )
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert [tool.name for tool in settings.system_tools] == ["kubectl", "just"]
     assert settings.system_tools[0].argv() == ("kubectl", "--version")
 
 
 def test_default_exclude_is_empty() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.exclude == []
 
@@ -101,7 +102,7 @@ def test_default_exclude_is_empty() -> None:
 def test_env_sets_exclude_as_a_json_list(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_EXCLUDE", '["~/dev/experiments", "**/vendor"]')
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.exclude == ["~/dev/experiments", "**/vendor"]
 
@@ -111,7 +112,7 @@ def test_unknown_argument_is_rejected() -> None:
     # (test below) is what catches a misspelt WKX_ECO_LOCAL_* variable, which the
     # env source silently ignores on its own.
     with pytest.raises(ValidationError):
-        Settings(_env_file=None, _config_file=None, prot=9001)
+        make_settings(prot=9001)
 
 
 # ---------- TOML file source ----------
@@ -126,7 +127,7 @@ def _write_toml(tmp_path: Path, body: str) -> Path:
 def test_missing_file_yields_the_computed_defaults(tmp_path: Path) -> None:
     absent = tmp_path / "nope.toml"
 
-    settings = Settings(_env_file=None, _config_file=absent)
+    settings = make_settings(config_file=absent)
 
     assert settings.port == 8787
     assert settings.scan_roots == [Path.home() / "dev"]
@@ -135,7 +136,7 @@ def test_missing_file_yields_the_computed_defaults(tmp_path: Path) -> None:
 def test_toml_values_are_read(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, "port = 9100\nscan_depth = 3\n")
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert settings.port == 9100
     assert settings.scan_depth == 3
@@ -144,7 +145,7 @@ def test_toml_values_are_read(tmp_path: Path) -> None:
 def test_toml_paths_accept_tilde(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, 'scan_roots = ["~/code", "~/work"]\n')
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert settings.scan_roots == [Path.home() / "code", Path.home() / "work"]
 
@@ -152,7 +153,7 @@ def test_toml_paths_accept_tilde(tmp_path: Path) -> None:
 def test_env_path_accepts_tilde(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WKX_ECO_LOCAL_SCAN_ROOTS", '["~/code"]')
 
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     assert settings.scan_roots == [Path.home() / "code"]
 
@@ -164,7 +165,7 @@ def test_toml_system_tools_table(tmp_path: Path) -> None:
         '[[system_tools]]\nname = "just"\nversion_args = ["--version"]\n',
     )
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert [tool.name for tool in settings.system_tools] == ["kubectl", "just"]
 
@@ -172,7 +173,7 @@ def test_toml_system_tools_table(tmp_path: Path) -> None:
 def test_toml_sets_exclude(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, 'exclude = ["~/dev/experiments", "**/vendor"]\n')
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert settings.exclude == ["~/dev/experiments", "**/vendor"]
 
@@ -181,7 +182,7 @@ def test_unknown_toml_key_fails_naming_it(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, "prot = 9001\n")
 
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=None, _config_file=path)
+        make_settings(config_file=path)
 
     assert "prot" in str(excinfo.value)
 
@@ -192,7 +193,8 @@ def test_config_file_env_override_selects_the_path(
     path = _write_toml(tmp_path, "port = 9200\n")
     monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(path))
 
-    # No explicit _config_file, so the env-only override selects the file.
+    # No _config_file passed at all (not even None), so the source is resolved from
+    # WKX_ECO_LOCAL_CONFIG_FILE rather than opted out — the one test that needs it.
     settings = Settings(_env_file=None)
 
     assert settings.port == 9200
@@ -228,7 +230,7 @@ def test_argument_beats_environment_beats_toml(
     path = _write_toml(tmp_path, "port = 9100\nscan_depth = 3\n")
     monkeypatch.setenv("WKX_ECO_LOCAL_PORT", "9200")
 
-    settings = Settings(_env_file=None, _config_file=path, port=9300)
+    settings = make_settings(config_file=path, port=9300)
 
     # Explicit argument wins over the environment, which wins over the TOML.
     assert settings.port == 9300
@@ -240,7 +242,7 @@ def test_environment_beats_toml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     path = _write_toml(tmp_path, "port = 9100\n")
     monkeypatch.setenv("WKX_ECO_LOCAL_PORT", "9200")
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert settings.port == 9200
 
@@ -248,7 +250,7 @@ def test_environment_beats_toml(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 def test_toml_beats_default(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, "port = 9100\n")
 
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     assert settings.port == 9100
 
@@ -258,7 +260,7 @@ def test_dotenv_beats_toml(tmp_path: Path) -> None:
     env_file.write_text("WKX_ECO_LOCAL_PORT=9400\n")
     toml = _write_toml(tmp_path, "port = 9100\n")
 
-    settings = Settings(_env_file=env_file, _config_file=toml)
+    settings = make_settings(env_file=env_file, config_file=toml)
 
     # .env sits above the TOML in the precedence chain.
     assert settings.port == 9400
@@ -273,7 +275,7 @@ def test_dotenv_rejects_an_unknown_prefixed_key(tmp_path: Path) -> None:
     env_file.write_text("WKX_ECO_LOCAL_PROT=9400\n")
 
     with pytest.raises(ValidationError) as excinfo:
-        Settings(_env_file=env_file, _config_file=None)
+        make_settings(env_file=env_file)
 
     assert "prot" in str(excinfo.value).lower()
 
@@ -358,7 +360,7 @@ def test_resolve_none_opts_out() -> None:
 
 
 def test_describe_tags_defaults_when_no_file() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
     home = Path("/home/someone")
 
     view = describe(settings, home=home, config_file=None, environ={})
@@ -373,7 +375,7 @@ def test_describe_tags_defaults_when_no_file() -> None:
 
 def test_describe_tags_the_file_source(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, "port = 9100\n")
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
     home = Path("/home/someone")
 
     view = describe(settings, home=home, config_file=path, environ={})
@@ -388,7 +390,7 @@ def test_describe_tags_the_file_source(tmp_path: Path) -> None:
 
 def test_describe_tags_the_env_source(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, "port = 9100\n")
-    settings = Settings(_env_file=None, _config_file=path, port=9300)
+    settings = make_settings(config_file=path, port=9300)
     home = Path("/home/someone")
 
     view = describe(
@@ -405,7 +407,7 @@ def test_describe_tags_the_env_source(tmp_path: Path) -> None:
 
 
 def test_describe_carries_empty_excludes_by_default() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
     home = Path("/home/someone")
 
     view = describe(settings, home=home, config_file=None, environ={})
@@ -416,7 +418,7 @@ def test_describe_carries_empty_excludes_by_default() -> None:
 
 def test_describe_tags_the_exclude_block_from_the_file(tmp_path: Path) -> None:
     path = _write_toml(tmp_path, 'exclude = ["~/dev/experiments", "**/vendor"]\n')
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
     home = Path("/home/someone")
 
     view = describe(settings, home=home, config_file=path, environ={})
@@ -427,7 +429,7 @@ def test_describe_tags_the_exclude_block_from_the_file(tmp_path: Path) -> None:
 
 def test_describe_relativises_scan_roots() -> None:
     home = Path("/home/someone")
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=[home / "dev"])
+    settings = make_settings(scan_roots=[home / "dev"])
 
     view = describe(settings, home=home, config_file=None, environ={})
 
@@ -438,7 +440,7 @@ def test_describe_relativises_scan_roots() -> None:
 def test_describe_relativises_the_file_path() -> None:
     home = Path("/home/someone")
     config_file = home / "wkx-ecosystem-localhost.toml"
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     view = describe(settings, home=home, config_file=config_file, environ={})
 
@@ -453,7 +455,7 @@ def test_env_prefix_is_wkx_eco_local() -> None:
 
 
 def test_describe_reports_no_off_sections_by_default() -> None:
-    settings = Settings(_env_file=None, _config_file=None)
+    settings = make_settings()
 
     view = describe(settings, home=Path("/home/someone"), config_file=None, environ={})
 
@@ -464,7 +466,7 @@ def test_describe_reports_no_off_sections_by_default() -> None:
 def test_describe_reports_the_off_sections_from_the_file(tmp_path: Path) -> None:
     path = tmp_path / "wkx-ecosystem-localhost.toml"
     path.write_text('sections_off = ["docker", "editor"]\n')
-    settings = Settings(_env_file=None, _config_file=path)
+    settings = make_settings(config_file=path)
 
     view = describe(settings, home=Path("/home/someone"), config_file=path, environ={})
 

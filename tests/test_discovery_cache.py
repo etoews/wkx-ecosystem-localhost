@@ -19,10 +19,10 @@ import fixtures
 import pytest
 from clients import loopback_client
 from fakes import FakeMachine
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.collectors.workspace import DiscoveryCache
-from wkx_ecosystem_localhost.config import Settings
 from wkx_ecosystem_localhost.machine import CommandResult, DirEntry
 
 _HOME = Path("/home")
@@ -201,7 +201,7 @@ def test_a_changed_input_is_a_miss_within_ttl(
 def test_one_board_load_walks_the_scan_roots_once() -> None:
     inner, home, roots, tools = fixtures.build_flags_workspace()
     machine = _CountingMachine(inner)
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots, system_tools=tools)
+    settings = make_settings(scan_roots=roots, system_tools=tools)
     client = loopback_client(create_app(settings, machine=machine, home=home))
 
     client.get("/api/workspace")
@@ -219,7 +219,7 @@ def test_one_board_load_walks_the_scan_roots_once() -> None:
 def test_a_fresh_app_starts_with_a_cold_cache() -> None:
     inner, home, roots = fixtures.build_workspace()
     machine = _CountingMachine(inner)
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
 
     first = loopback_client(create_app(settings, machine=machine, home=home))
     first.get("/api/workspace")

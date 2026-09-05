@@ -11,10 +11,10 @@ from __future__ import annotations
 import fixtures
 from clients import loopback_client
 from fastapi.testclient import TestClient
+from support import make_settings
 
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.collectors.roadmap import ROADMAP_FILENAME
-from wkx_ecosystem_localhost.config import Settings
 
 # Two ticked of four task items, so the ratio is an unambiguous 0.5.
 ROADMAP_TEXT = "# Roadmap\n- [x] one\n- [x] two\n- [ ] three\n- [ ] four\n"
@@ -28,7 +28,7 @@ def _repos_by_name(client: TestClient) -> dict[str, dict[str, object]]:
 def _client_with_web_roadmap() -> TestClient:
     machine, home, roots = fixtures.build_workspace()
     machine.files[fixtures.WEB / ROADMAP_FILENAME] = ROADMAP_TEXT
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     return loopback_client(create_app(settings, machine=machine, home=home))
 
 
@@ -47,7 +47,7 @@ def test_a_repo_with_no_roadmap_file_carries_none() -> None:
 def test_a_submodule_row_carries_no_roadmap() -> None:
     machine, home, roots = fixtures.build_submodule_workspace()
     machine.files[fixtures.APP / ROADMAP_FILENAME] = ROADMAP_TEXT
-    settings = Settings(_env_file=None, _config_file=None, scan_roots=roots)
+    settings = make_settings(scan_roots=roots)
     client = loopback_client(create_app(settings, machine=machine, home=home))
 
     repos = _repos_by_name(client)
