@@ -31,11 +31,11 @@ def test_index_serves_the_board(client: TestClient) -> None:
     assert "localhost" in response.text
 
 
-def test_index_carries_the_six_sections(client: TestClient) -> None:
-    response = client.get("/")
-
-    for section in ("workspace", "toolchains", "claude", "system", "homebrew", "docker"):
-        assert section in response.text
+@pytest.mark.parametrize(
+    "section", ["workspace", "toolchains", "claude", "system", "homebrew", "docker"]
+)
+def test_index_carries_each_section(client: TestClient, section: str) -> None:
+    assert section in client.get("/").text
 
 
 def test_index_carries_the_config_section_last(client: TestClient) -> None:
@@ -160,14 +160,15 @@ def test_index_carries_the_sections_menu(client: TestClient) -> None:
     assert 'id="sections-menu"' in response.text
 
 
+@pytest.mark.parametrize("path", ["/", "/static/app.js", "/static/styles.css"])
 def test_the_shell_and_assets_revalidate_so_the_browser_never_runs_stale_code(
-    client: TestClient,
+    client: TestClient, path: str
 ) -> None:
     # The board is a live dashboard, often run under serve --reload; without
     # no-cache a browser can keep running an old app.js after a change, so a
     # newly added panel never fills. The shell and every static asset must carry
     # Cache-Control: no-cache so each load revalidates (unchanged files still 304).
-    for path in ("/", "/static/app.js", "/static/styles.css"):
-        response = client.get(path)
-        assert response.status_code == 200
-        assert response.headers.get("cache-control") == "no-cache", path
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert response.headers.get("cache-control") == "no-cache"

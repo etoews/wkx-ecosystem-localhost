@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from wkx_ecosystem_localhost.collectors.flags import (
     FILTERABLE_SECTIONS,
     TABLES,
@@ -81,9 +83,11 @@ def test_every_table_locks_a_name_column_and_the_flags_rail() -> None:
         assert len(locked) >= 2, table_id  # the Flags rail plus at least one identity column
 
 
-def test_the_example_ids_from_the_milestone_are_present() -> None:
-    for table_id in ("workspace", "claude-plugins", "git-config-keys", "config-mutes"):
-        assert table_id in TABLES
+@pytest.mark.parametrize(
+    "table_id", ["workspace", "claude-plugins", "git-config-keys", "config-mutes"]
+)
+def test_the_example_id_from_the_milestone_is_present(table_id: str) -> None:
+    assert table_id in TABLES
 
 
 def test_the_example_column_keys_from_the_milestone_are_present() -> None:

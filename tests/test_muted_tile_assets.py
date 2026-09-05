@@ -13,6 +13,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 STATIC = Path(__file__).parent.parent / "src" / "wkx_ecosystem_localhost" / "static"
 
 # The tiles() spec objects the summary builds, each {value, label, kind?}. The four
@@ -20,12 +22,11 @@ STATIC = Path(__file__).parent.parent / "src" / "wkx_ecosystem_localhost" / "sta
 TILE_LABEL = re.compile(r'label:\s*"([^"]+)"')
 
 
-def test_summary_renders_the_four_needs_attention_tiles() -> None:
-    app_js = (STATIC / "app.js").read_text()
-    labels = set(TILE_LABEL.findall(app_js))
+@pytest.mark.parametrize("label", ["Total flags", "Attention", "Problems", "Muted"])
+def test_summary_renders_the_needs_attention_tile(label: str) -> None:
+    labels = set(TILE_LABEL.findall((STATIC / "app.js").read_text()))
 
-    for label in ("Total flags", "Attention", "Problems", "Muted"):
-        assert label in labels, f'the needs-attention summary is missing the "{label}" tile'
+    assert label in labels, f'the needs-attention summary is missing the "{label}" tile'
 
 
 def test_muted_tile_is_built_with_the_muted_kind() -> None:

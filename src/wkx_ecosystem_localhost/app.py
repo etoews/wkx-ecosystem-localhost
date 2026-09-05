@@ -638,7 +638,15 @@ def create_app(
             html = html.replace('<html lang="en-NZ">', stamped, 1)
         return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
-    logger.debug("app created with %d scan root(s)", len(settings.scan_roots))
+    # One INFO line naming what the board loaded, so the always-on instance's log
+    # shows its effective configuration at a glance without turning on DEBUG.
+    logger.info(
+        "board ready on port %d: config=%s view=%s scan_roots=%s",
+        guard_port,
+        config_file,
+        view_file,
+        ", ".join(str(root) for root in settings.scan_roots),
+    )
     return app
 
 
