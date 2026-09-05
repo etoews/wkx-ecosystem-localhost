@@ -280,6 +280,21 @@ def create_app(
     # registered below, so ``/api/<section>`` 404s and its Collector never runs.
     off = set(settings.sections_off)
 
+    def discover_repos() -> list[Path]:
+        """The repos under the scan roots, shared through the discovery cache.
+
+        Every route and the Flag layer ask for the repos on one board load; the cache
+        walks the roots once and serves the rest from that within its TTL, so this one
+        call site keeps the five that need the repos in step.
+        """
+        return app.state.discovery_cache.discover(
+            app.state.machine,
+            settings.scan_roots,
+            home=app.state.home,
+            max_depth=settings.scan_depth,
+            excludes=settings.exclude,
+        )
+
     def _section_route(section: Section, path: str) -> Callable[[_Route], _Route]:
         """Register a GET route only when its Section is on.
 
@@ -326,13 +341,7 @@ def create_app(
         other is its own View file), and it touches remote-tracking refs only —
         never a working tree.
         """
-        repo_paths = app.state.discovery_cache.discover(
-            app.state.machine,
-            settings.scan_roots,
-            home=app.state.home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        repo_paths = discover_repos()
 
         def events() -> Iterator[str]:
             for event in stream_fetches(
@@ -358,13 +367,7 @@ def create_app(
         ``latest`` and ``behind`` arrive over the SSE probe below; this returns the
         pins straight away so the page renders without waiting on any network.
         """
-        repo_paths = app.state.discovery_cache.discover(
-            app.state.machine,
-            settings.scan_roots,
-            home=app.state.home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        repo_paths = discover_repos()
         return collect_submodules(app.state.machine, repo_paths, home=app.state.home)
 
     @_section_route(Section.WORKSPACE, "/api/submodules/probe")
@@ -376,13 +379,7 @@ def create_app(
         are pushed the moment they are ready, so the network truth fills in
         progressively without blocking the board. No submodule objects are fetched.
         """
-        repo_paths = app.state.discovery_cache.discover(
-            app.state.machine,
-            settings.scan_roots,
-            home=app.state.home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        repo_paths = discover_repos()
 
         def events() -> Iterator[str]:
             for event in stream_submodule_probes(
@@ -412,13 +409,7 @@ def create_app(
         Reuses the same repo discovery as the workspace so the per-repo Python
         pins and per-repo TypeScript line up with the repos already on the board.
         """
-        repo_paths = app.state.discovery_cache.discover(
-            app.state.machine,
-            settings.scan_roots,
-            home=app.state.home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        repo_paths = discover_repos()
         return collect_toolchains(app.state.machine, repo_paths, home=app.state.home)
 
     @_section_route(Section.SYSTEM, "/api/system")
@@ -492,13 +483,7 @@ def create_app(
         cached = app.state.footprint_cache.get()
         if cached is not None:
             return cached
-        repo_paths = app.state.discovery_cache.discover(
-            app.state.machine,
-            settings.scan_roots,
-            home=app.state.home,
-            max_depth=settings.scan_depth,
-            excludes=settings.exclude,
-        )
+        repo_paths = discover_repos()
         section = collect_footprint(app.state.machine, repo_paths, home=app.state.home)
         app.state.footprint_cache.set(section)
         return section
