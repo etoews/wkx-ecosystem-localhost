@@ -121,15 +121,19 @@ def test_serve_reload_watches_only_the_package_source(reloader_calls: list[Reloa
 
 
 def test_serve_reload_hands_the_config_file_to_the_reloader(
-    reloader_calls: list[ReloaderCall],
+    reloader_calls: list[ReloaderCall], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    config = tmp_path / "wkx-ecosystem-localhost.toml"
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(config))
+
     result = runner.invoke(cli.app, ["serve", "--reload"])
 
     assert result.exit_code == 0
     (_config, config_file) = reloader_calls[0]
-    # The config file is not in reload_dirs; it is polled by _ConfigAwareReload, so a
-    # TOML save restarts the instance without widening the directory watch.
-    assert config_file == Path("wkx-ecosystem-localhost.toml")
+    # serve resolves the config file from the environment and hands it to the
+    # reloader, which polls it (not reload_dirs) so a TOML save restarts the instance
+    # without widening the directory watch.
+    assert config_file == config
 
 
 def test_serve_reload_binds_the_requested_port(reloader_calls: list[ReloaderCall]) -> None:

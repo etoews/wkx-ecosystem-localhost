@@ -2,11 +2,17 @@
 
 Settings are constructed explicitly and opt out of both file sources
 (``_env_file=None`` for ``.env``, ``_config_file=None`` for the TOML), so the
-suite never reads a real configuration file on the machine it runs on.
+suite never reads a real configuration file on the machine it runs on. The
+``isolate_environment`` autouse fixture backs that up: it strips every
+``WKX_ECO_LOCAL_*`` variable and points both file paths at ``tmp_path``, so even
+the code paths that resolve a file from the environment (the CLI, the reload
+factory) read nothing real, whatever the developer's machine has set.
 """
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import fixtures
@@ -16,6 +22,25 @@ from fastapi.testclient import TestClient
 
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.config import Settings
+
+
+@pytest.fixture(autouse=True)
+def isolate_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Isolate every test from the ambient machine's board configuration.
+
+    A real ``WKX_ECO_LOCAL_*`` variable, a ``wkx-ecosystem-localhost.toml`` in the
+    working directory, or a ``.env`` would make results depend on the machine — a
+    stray port export or a bad TOML silently changes what the suite asserts. Strip
+    every ``WKX_ECO_LOCAL_*`` variable and point both file paths at ``tmp_path``
+    (absent files), so a test that builds real ``Settings`` or invokes the CLI reads
+    nothing real. A test that wants a specific value sets it after this runs.
+    """
+    for name in list(os.environ):
+        if name.startswith("WKX_ECO_LOCAL_"):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(tmp_path / "absent.toml"))
+    monkeypatch.setenv("WKX_ECO_LOCAL_VIEW_FILE", str(tmp_path / "absent.view.toml"))
+    yield
 
 
 @pytest.fixture
