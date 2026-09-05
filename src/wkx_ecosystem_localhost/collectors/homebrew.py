@@ -10,9 +10,9 @@ is the separate M6 Flag layer.
 
 from __future__ import annotations
 
-import json
 import logging
 
+from wkx_ecosystem_localhost.collectors import loads_or_none
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import HomebrewSection, OutdatedPackage
 
@@ -60,10 +60,7 @@ def parse_brew_outdated(text: str) -> tuple[list[OutdatedPackage], list[Outdated
     Returns:
         A ``(formulae, casks)`` pair of outdated packages.
     """
-    try:
-        data = json.loads(text)
-    except ValueError, TypeError:
-        return [], []
+    data = loads_or_none(text)
     if not isinstance(data, dict):
         return [], []
 

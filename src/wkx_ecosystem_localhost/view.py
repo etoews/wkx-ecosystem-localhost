@@ -33,7 +33,7 @@ import tomlkit
 from pydantic import BaseModel, ConfigDict
 from tomlkit.exceptions import TOMLKitError
 
-from wkx_ecosystem_localhost.config import _UNSET, ENV_PREFIX, _Unset
+from wkx_ecosystem_localhost.config import _UNSET, ENV_PREFIX, _Unset, resolve_file_setting
 from wkx_ecosystem_localhost.exceptions import (
     InvalidPreference,
     ViewParseError,
@@ -228,16 +228,22 @@ class ViewPayload(BaseModel):
     unknown_keys: list[str]
 
 
-def payload_of(state: ViewState) -> ViewPayload:
-    """Flatten a read of the View file into the wire payload ``/api/view`` serves."""
+def payload_of(state: ViewState, *, view: View | None = None) -> ViewPayload:
+    """Flatten a read of the View file into the wire payload ``/api/view`` serves.
+
+    ``view`` overrides the read's effective View when given: a write returns the
+    just-merged View with the freshly re-read file metadata, so a concurrent hand
+    edit cannot make the response disagree with what the write set.
+    """
+    effective = view if view is not None else state.view
     return ViewPayload(
-        theme=state.view.theme,
-        sections_hidden=state.view.sections_hidden,
-        sections_collapsed=state.view.sections_collapsed,
-        mute=state.view.mute,
-        filter=state.view.filter,
-        columns_hidden=state.view.columns_hidden,
-        sort=state.view.sort,
+        theme=effective.theme,
+        sections_hidden=effective.sections_hidden,
+        sections_collapsed=effective.sections_collapsed,
+        mute=effective.mute,
+        filter=effective.filter,
+        columns_hidden=effective.columns_hidden,
+        sort=effective.sort,
         file=state.file,
         found=state.found,
         writable=state.writable,
@@ -314,25 +320,12 @@ def resolve_view_file(
 ) -> Path | None:
     """Resolve which file the View is read from and written to.
 
-    Mirrors ``config.resolve_config_file``. ``_UNSET`` resolves the path from
-    ``WKX_ECO_LOCAL_VIEW_FILE`` or the default file in the working directory;
-    ``None`` opts out entirely (the suite passes None so it never touches a real
-    file); an explicit path is used verbatim.
-
-    Args:
-        environ: The environment to read the path override from.
-        override: An explicit choice, ``None`` to opt out, or ``_UNSET`` to resolve
-            from the environment or the default.
-
-    Returns:
-        The path to read and write, or None when the View file is opted out.
+    The same env-only file-path shape as the configuration file
+    (``config.resolve_file_setting``): ``_UNSET`` resolves from
+    ``WKX_ECO_LOCAL_VIEW_FILE`` or the default file in the working directory; ``None``
+    opts out (the suite passes None); an explicit path is used verbatim.
     """
-    if isinstance(override, _Unset):
-        raw = environ.get(VIEW_FILE_ENV)
-        return Path(raw).expanduser() if raw else DEFAULT_VIEW_FILE
-    if override is None:
-        return None
-    return Path(override).expanduser()
+    return resolve_file_setting(environ, override, env_var=VIEW_FILE_ENV, default=DEFAULT_VIEW_FILE)
 
 
 def parse_preference(body: object) -> Preference:

@@ -14,13 +14,13 @@ Facts only; anomaly judgement is the separate M6 Flag layer.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from wkx_ecosystem_localhost.collectors import loads_or_none
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import (
     NodeToolchain,
@@ -157,10 +157,7 @@ def parse_declared_typescript(package_json_text: str) -> str | None:
         The declared spec, or None when TypeScript is not declared or the JSON
         cannot be parsed.
     """
-    try:
-        data = json.loads(package_json_text)
-    except ValueError, TypeError:
-        return None
+    data = loads_or_none(package_json_text)
     if not isinstance(data, dict):
         return None
     for group in ("devDependencies", "dependencies"):
@@ -182,10 +179,7 @@ def parse_installed_typescript(package_json_text: str) -> str | None:
         The installed ``version``, or None when it is absent or the JSON cannot
         be parsed.
     """
-    try:
-        data = json.loads(package_json_text)
-    except ValueError, TypeError:
-        return None
+    data = loads_or_none(package_json_text)
     if not isinstance(data, dict):
         return None
     version = data.get("version")

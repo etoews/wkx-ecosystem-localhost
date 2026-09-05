@@ -22,13 +22,13 @@ layer.
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from wkx_ecosystem_localhost.collectors import loads_or_none
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import ClaudeSection, McpServer, Plugin, Skill
 from wkx_ecosystem_localhost.redaction import relativise
@@ -133,14 +133,6 @@ def parse_skill_frontmatter(text: str) -> tuple[str | None, str | None]:
     return name, description
 
 
-def _load_json(text: str) -> object:
-    """Parse JSON, returning None instead of raising so one bad file degrades a row."""
-    try:
-        return json.loads(text)
-    except ValueError:
-        return None
-
-
 def _as_dict(value: object) -> dict[str, object]:
     """Return ``value`` as a string-keyed dict, or an empty one when it is not a dict.
 
@@ -164,7 +156,7 @@ def parse_installed_plugins(text: str) -> list[InstalledPlugin]:
     Returns:
         Installed plugins in manifest order.
     """
-    plugins_map = _as_dict(_as_dict(_load_json(text)).get("plugins"))
+    plugins_map = _as_dict(_as_dict(loads_or_none(text)).get("plugins"))
 
     plugins: list[InstalledPlugin] = []
     for key, records in plugins_map.items():
@@ -205,7 +197,7 @@ def parse_known_marketplaces(text: str) -> dict[str, str | None]:
         not a GitHub repo.
     """
     repos: dict[str, str | None] = {}
-    for marketplace, entry in _as_dict(_load_json(text)).items():
+    for marketplace, entry in _as_dict(loads_or_none(text)).items():
         repo: str | None = None
         source = _as_dict(entry).get("source")
         if isinstance(source, dict) and source.get("source") == "github":
@@ -225,7 +217,7 @@ def parse_enabled_plugins(text: str) -> dict[str, bool]:
         The ``<name>@<marketplace>`` to enabled-state map, or an empty map when the
         file declares none or cannot be parsed.
     """
-    enabled = _as_dict(_as_dict(_load_json(text)).get("enabledPlugins"))
+    enabled = _as_dict(_as_dict(loads_or_none(text)).get("enabledPlugins"))
     return {key: bool(value) for key, value in enabled.items()}
 
 
@@ -244,7 +236,7 @@ def parse_skill_overrides(text: str) -> dict[str, str]:
         The skill-name to tier map, or an empty map when the file declares none or
         cannot be parsed.
     """
-    overrides = _as_dict(_as_dict(_load_json(text)).get("skillOverrides"))
+    overrides = _as_dict(_as_dict(loads_or_none(text)).get("skillOverrides"))
     return {key: value for key, value in overrides.items() if isinstance(value, str)}
 
 
@@ -292,7 +284,7 @@ def parse_mcp_servers(text: str) -> list[McpServerSpec]:
         One spec per declared server, in declaration order; empty when the file
         declares none or cannot be parsed.
     """
-    return _servers_from_map(_as_dict(_load_json(text)).get("mcpServers"))
+    return _servers_from_map(_as_dict(loads_or_none(text)).get("mcpServers"))
 
 
 def parse_auth_cache(text: str) -> set[str]:
@@ -305,7 +297,7 @@ def parse_auth_cache(text: str) -> set[str]:
         The recorded keys; empty when the file is absent or cannot be parsed. Only
         the keys are read, never the cached timestamps or ids.
     """
-    return set(_as_dict(_load_json(text)).keys())
+    return set(_as_dict(loads_or_none(text)).keys())
 
 
 def parse_user_config_mcp(text: str) -> tuple[list[McpServerSpec], list[McpServerSpec]]:
@@ -325,7 +317,7 @@ def parse_user_config_mcp(text: str) -> tuple[list[McpServerSpec], list[McpServe
         The ``(user_servers, project_servers)`` pair; both empty when the config
         declares none or cannot be parsed.
     """
-    data = _as_dict(_load_json(text))
+    data = _as_dict(loads_or_none(text))
     user_servers = _servers_from_map(data.get("mcpServers"))
 
     project_servers: list[McpServerSpec] = []

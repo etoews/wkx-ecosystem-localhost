@@ -62,28 +62,43 @@ class _Unset:
 _UNSET = _Unset()
 
 
+def resolve_file_setting(
+    environ: Mapping[str, str],
+    override: Path | str | _Unset | None,
+    *,
+    env_var: str,
+    default: Path,
+) -> Path | None:
+    """Resolve an env-only file-path setting: an env override, an explicit path, or None.
+
+    The shape both the configuration file and the View file follow. ``_UNSET``
+    resolves the path from ``env_var`` or falls back to ``default``; ``None`` opts
+    the source out entirely (the suite passes it so it never reads a real file); an
+    explicit path is used verbatim.
+
+    Returns:
+        The path to read, or None when the source is opted out.
+    """
+    if isinstance(override, _Unset):
+        raw = environ.get(env_var)
+        return Path(raw).expanduser() if raw else default
+    if override is None:
+        return None
+    return Path(override).expanduser()
+
+
 def resolve_config_file(
     environ: Mapping[str, str], override: Path | str | _Unset | None = _UNSET
 ) -> Path | None:
     """Resolve which TOML file the configuration is read from.
 
-    Args:
-        environ: The environment to read the path override from.
-        override: An explicit choice. ``_UNSET`` (the default) resolves the path
-            from ``WKX_ECO_LOCAL_CONFIG_FILE`` or falls back to the default file
-            in the working directory. ``None`` opts the file source out entirely,
-            the way ``_env_file=None`` opts out of ``.env``; the suite passes it so
-            it never reads a real file. An explicit path is used verbatim.
-
-    Returns:
-        The path to read, or None when the file source is opted out.
+    ``_UNSET`` (the default) resolves the path from ``WKX_ECO_LOCAL_CONFIG_FILE`` or
+    the default file in the working directory; ``None`` opts the file source out (the
+    suite passes it); an explicit path is used verbatim.
     """
-    if isinstance(override, _Unset):
-        raw = environ.get(CONFIG_FILE_ENV)
-        return Path(raw).expanduser() if raw else DEFAULT_CONFIG_FILE
-    if override is None:
-        return None
-    return Path(override).expanduser()
+    return resolve_file_setting(
+        environ, override, env_var=CONFIG_FILE_ENV, default=DEFAULT_CONFIG_FILE
+    )
 
 
 def _default_scan_roots() -> list[Path]:

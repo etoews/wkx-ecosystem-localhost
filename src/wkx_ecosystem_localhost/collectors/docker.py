@@ -11,10 +11,10 @@ M6 Flag layer.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 
+from wkx_ecosystem_localhost.collectors import loads_or_none
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import DockerSection
 
@@ -139,10 +139,7 @@ def _disk(machine: Machine, *, timeout: float) -> tuple[str | None, str | None]:
         line = line.strip()
         if not line:
             continue
-        try:
-            row = json.loads(line)
-        except ValueError, TypeError:
-            continue
+        row = loads_or_none(line)
         if not isinstance(row, dict):
             continue
         size_field = row.get("Size")
@@ -183,10 +180,7 @@ def collect_docker(machine: Machine, *, timeout: float = PROBE_TIMEOUT_S) -> Doc
     info = machine.run(DOCKER_INFO_ARGV, timeout=timeout)
     if not info.ok:
         return DockerSection(daemon_reachable=False)
-    try:
-        data = json.loads(info.stdout)
-    except ValueError, TypeError:
-        data = None
+    data = loads_or_none(info.stdout)
     if not isinstance(data, dict):
         return DockerSection(daemon_reachable=False)
     total_disk, reclaimable = _disk(machine, timeout=timeout)

@@ -591,17 +591,10 @@ def create_app(
         except ViewWriteError as error:
             logger.error("a View write failed: %s", error)
             return JSONResponse({"detail": str(error)}, status_code=500)
-        result = payload_of(read_view(app.state.view_file, home=app.state.home))
         # Merge is the source of truth for the effective View; re-reading only adds
-        # the file metadata. Keep the just-merged fields so a concurrent hand edit
-        # cannot make the response disagree with what this write set.
-        result.theme = merged.theme
-        result.sections_hidden = merged.sections_hidden
-        result.sections_collapsed = merged.sections_collapsed
-        result.mute = merged.mute
-        result.filter = merged.filter
-        result.columns_hidden = merged.columns_hidden
-        result.sort = merged.sort
+        # the file metadata. payload_of keeps the just-merged fields so a concurrent
+        # hand edit cannot make the response disagree with what this write set.
+        result = payload_of(read_view(app.state.view_file, home=app.state.home), view=merged)
         app.state.view_broadcaster.publish(sse.pack_event("view", result))
         return JSONResponse(result.model_dump())
 
