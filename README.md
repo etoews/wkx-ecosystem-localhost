@@ -156,7 +156,9 @@ refresh with no restart. You do not need to edit the file.
 The View file holds only what you change from the defaults, so a fresh board
 writes nothing. Delete the file to reset the board to its defaults. To read it
 from another path, set the environment variable `WKX_ECO_LOCAL_VIEW_FILE`, the way
-`WKX_ECO_LOCAL_CONFIG_FILE` sets the configuration path.
+`WKX_ECO_LOCAL_CONFIG_FILE` sets the configuration path. You can symlink the View
+file into your dotfiles: the board writes through the link to its target, so the
+link is kept and your dotfiles copy stays current.
 
 The board never refuses to start on the View file: a name it does not know is
 dropped with a warning and raised as a Flag in the config Section, so the board
