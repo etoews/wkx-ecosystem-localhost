@@ -289,6 +289,22 @@ def test_a_write_to_a_missing_directory_is_refused_and_creates_nothing(tmp_path:
     assert not path.parent.exists()
 
 
+def test_a_write_through_a_symlink_keeps_the_link_and_updates_the_target(tmp_path: Path) -> None:
+    # An operator who symlinks the View into their dotfiles must keep the link on a
+    # write: the atomic rename lands on the target, not on the link itself.
+    target = tmp_path / "dotfiles" / "wkx.view.toml"
+    target.parent.mkdir()
+    target.write_text('theme = "light"\n')
+    link = tmp_path / "wkx-ecosystem-localhost.view.toml"
+    link.symlink_to(target)
+
+    apply_preference(link, ThemePreference(theme="dark"))
+
+    assert link.is_symlink()
+    assert 'theme = "dark"' in target.read_text()
+    assert read_view(link, home=HOME).view.theme == "dark"
+
+
 def test_a_read_only_view_file_refuses_the_write(tmp_path: Path) -> None:
     # An operator who makes the View file read-only means it. The atomic rename
     # would otherwise replace it (the directory stays writable), so the write is

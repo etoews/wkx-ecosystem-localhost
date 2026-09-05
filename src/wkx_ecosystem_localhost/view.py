@@ -818,13 +818,19 @@ def _write_atomic(path: Path, view: View) -> None:
     ``writable: false`` (a typo in ``WKX_ECO_LOCAL_VIEW_FILE``), so the board must
     not silently create directories the operator never asked for.
 
+    A symlinked View file is resolved to its target first, so the rename lands on
+    the file the link points at rather than replacing the link with a regular file
+    — an operator who symlinks the View into their dotfiles keeps the link, and the
+    dotfiles copy stays current.
+
     Raises:
         ViewWriteError: If the file is read-only, its directory is missing, it
             cannot be written, or it cannot be renamed into place.
     """
     if path.exists() and not os.access(path, os.W_OK):
         raise ViewWriteError(f"the View file {path} is read-only; the change was not saved")
-    directory = path.parent if str(path.parent) else Path()
+    target = path.resolve() if path.is_symlink() else path
+    directory = target.parent if str(target.parent) else Path()
     if not directory.is_dir():
         raise ViewWriteError(
             f"the View file's directory {directory} does not exist; the change was not saved"
@@ -832,14 +838,14 @@ def _write_atomic(path: Path, view: View) -> None:
     temp_path: Path | None = None
     try:
         handle_fd, temp_name = tempfile.mkstemp(
-            dir=directory, prefix=f".{path.name}.", suffix=".tmp"
+            dir=directory, prefix=f".{target.name}.", suffix=".tmp"
         )
         temp_path = Path(temp_name)
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             tomlkit.dump(_document(view), handle)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp_path, path)
+        os.replace(temp_path, target)
     except OSError as error:
         if temp_path is not None:
             with contextlib.suppress(OSError):

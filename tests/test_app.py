@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
-from wkx_ecosystem_localhost.app import write_is_allowed
+from wkx_ecosystem_localhost.app import ViewBroadcaster, write_is_allowed
 
 _ALLOWED_HOSTS = frozenset({"127.0.0.1:8787", "localhost:8787", "[::1]:8787"})
 
@@ -106,6 +108,23 @@ def test_a_null_origin_falls_to_sec_fetch_site(sec_fetch_site: str, expected: bo
 
 def test_a_foreign_origin_with_no_sec_fetch_site_is_refused() -> None:
     assert _guard(origin="http://evil.example", sec_fetch_site=None) is False
+
+
+# ---------- the convergence broadcaster's bounded queue (finding 20) ----------
+
+
+def test_publish_drops_a_frame_for_a_full_subscriber_queue() -> None:
+    # A wedged tab's queue must not grow without bound: publish drops the frame
+    # rather than raising or buffering forever. Each frame is a full View snapshot,
+    # so that tab simply resyncs from the next frame it reads.
+    broadcaster = ViewBroadcaster()
+    full: asyncio.Queue[str] = asyncio.Queue(maxsize=1)
+    full.put_nowait("already here")
+    broadcaster._subscribers.add(full)
+
+    broadcaster.publish("new frame")  # must not raise
+
+    assert full.qsize() == 1  # the new frame was dropped, not queued behind the first
 
 
 def test_styles_are_served_with_wkx_tokens(client: TestClient) -> None:

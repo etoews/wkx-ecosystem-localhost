@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import Headers
@@ -101,6 +102,12 @@ class _NoCacheStaticFiles(StaticFiles):
         return response
 
 
+# Per-subscriber SSE queue depth. Each frame is a full View snapshot, so a slow
+# tab only needs the latest; a handful of buffered frames is ample and bounds the
+# memory a wedged subscriber can hold.
+_STREAM_QUEUE_MAXSIZE = 32
+
+
 class ViewBroadcaster:
     """Fans a View change out to every open tab over the convergence SSE stream.
 
@@ -114,13 +121,21 @@ class ViewBroadcaster:
         self._subscribers: set[asyncio.Queue[str]] = set()
 
     def publish(self, frame: str) -> None:
-        """Hand one pre-framed SSE payload to every current subscriber, without blocking."""
+        """Hand one pre-framed SSE payload to every current subscriber, without blocking.
+
+        A subscriber whose queue is full (a wedged or disconnected tab) has the frame
+        dropped rather than growing the queue without bound; because each frame is a
+        full View snapshot, that tab simply resyncs from the next one it does read.
+        """
         for queue in list(self._subscribers):
-            queue.put_nowait(frame)
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                logger.debug("dropping a View frame for a full subscriber queue")
 
     async def stream(self) -> AsyncIterator[str]:
         """Yield SSE frames for one subscriber until its connection closes."""
-        queue: asyncio.Queue[str] = asyncio.Queue()
+        queue: asyncio.Queue[str] = asyncio.Queue(maxsize=_STREAM_QUEUE_MAXSIZE)
         self._subscribers.add(queue)
         try:
             yield sse.comment("view stream open")
@@ -565,7 +580,9 @@ def create_app(
         except InvalidPreference as error:
             return JSONResponse({"detail": str(error)}, status_code=422)
         try:
-            merged = apply_preference(app.state.view_file, preference)
+            # apply_preference does a blocking, fsynced write under a lock; run it off
+            # the event loop so a write never stalls the open SSE streams.
+            merged = await run_in_threadpool(apply_preference, app.state.view_file, preference)
         except ViewParseError as error:
             logger.warning("refused a View write: %s", error)
             return JSONResponse({"detail": str(error)}, status_code=409)
