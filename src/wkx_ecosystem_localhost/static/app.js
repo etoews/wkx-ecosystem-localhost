@@ -117,9 +117,16 @@ window.wkxView = (function () {
   function clearNotParsed() {
     if (window.wkxFlags) window.wkxFlags.clear("config", "view-file", "view-not-parsed");
   }
-  function raiseUnknownKeys() {
+  // Raise view-unknown-key when the file names keys the board does not know, and
+  // clear it once the operator fixes the file (unknown_keys is empty), so the amber
+  // Flag does not linger until a reload and teach the operator to ignore it.
+  function syncUnknownKeys() {
+    if (!window.wkxFlags) return;
     const keys = current.unknown_keys || [];
-    if (keys.length === 0 || !window.wkxFlags) return;
+    if (keys.length === 0) {
+      window.wkxFlags.clear("config", "view-file", "view-unknown-key");
+      return;
+    }
     window.wkxFlags.add({
       section: "config",
       target: "view-file",
@@ -130,11 +137,12 @@ window.wkxView = (function () {
   }
 
   // Re-derive the View-file Flags from the current state after every read, so a
-  // corrupt file raises view-not-parsed and a fixed one clears it.
+  // corrupt file raises view-not-parsed and a fixed one clears it, and an unknown
+  // key raised on one read is cleared on the next once the file is fixed.
   function syncViewFlags() {
     if (current.parse_error) raiseNotParsed();
     else clearNotParsed();
-    raiseUnknownKeys();
+    syncUnknownKeys();
   }
 
   // PATCH one preference. On success the server returns the effective View, which
@@ -978,6 +986,10 @@ window.wkxFlags = (function () {
     { key: "flags", label: "Flags", locked: true },
   ];
   const summaryHidden = new Set();
+  // The rollup's client-side sort ({col, dir}), kept beside summaryHidden. The
+  // rollup is rebuilt on every Flag event and is not a View table, so its
+  // header-click sort persists nowhere; this holds it across rebuilds (finding 10).
+  let summarySort = null;
 
   // Stamp each header and body cell with its column key, so the menu can drop a
   // column with a class on the table (the same hide-<key> mechanism the Section
@@ -1056,6 +1068,17 @@ window.wkxFlags = (function () {
 
   function renderSummary() {
     if (!summaryMount) return;
+    // Read the rollup's current sort and open-menu state off the live table before
+    // it is replaced, so a Flag event does not silently reset either (finding 10).
+    const priorTable = summaryMount.querySelector(".table-block table");
+    if (priorTable) {
+      const sortedTh = priorTable.querySelector("th[aria-sort]");
+      summarySort = sortedTh
+        ? { col: sortedTh.dataset.col, dir: sortedTh.getAttribute("aria-sort") }
+        : null;
+    }
+    const priorMenu = summaryMount.querySelector(".table-toolbar .disc-menu");
+    const menuWasOpen = !!(priorMenu && !priorMenu.hidden);
     const flags = Array.from(registry.values());
     const mutedCount = muted.size;
     // Needs attention shows its own total on its collapsed heading — the count of
@@ -1183,7 +1206,21 @@ window.wkxFlags = (function () {
     head.append(el("p", "table-title", "By category"), summaryColumnsMenu(tableEl));
     block.append(head, built.wrap);
     applySummaryHidden(tableEl);
+    // Re-apply the sort the operator set, on the values this render produced, so the
+    // header keeps the order it claims (finding 10). An absent rule leaves the
+    // default level-then-count order the build already put the rows in.
+    if (summarySort && summarySort.col) {
+      U.applySortByKey(tableEl, summarySort.col, summarySort.dir);
+    }
     summaryMount.replaceChildren(tiles, block);
+    // Restore the columns menu's open state, so a Flag landing while it is open does
+    // not snap it shut under the operator.
+    if (menuWasOpen) {
+      const menu = block.querySelector(".table-toolbar .disc-menu");
+      const btn = block.querySelector(".table-toolbar .disc");
+      if (menu) menu.hidden = false;
+      if (btn) btn.setAttribute("aria-expanded", "true");
+    }
   }
 
   function decorate() {
@@ -1861,6 +1898,17 @@ window.wkxTables = (function () {
     V.setSort(table.dataset.tableId, column, direction || null);
   }
 
+  // Re-apply a table's saved sort. A sort on an SSE-filled column (Ahead, Behind,
+  // a submodule's latest/behind) is first applied at equip time, before those
+  // values land, so a Section calls this once its stream has settled to re-sort the
+  // rows on the values that arrived. A no-op for an unknown table id.
+  function resort(tableId) {
+    const entry = registry.find(function (candidate) {
+      return candidate.id === tableId;
+    });
+    if (entry) applySort(entry);
+  }
+
   // Re-apply the Hidden columns and the sort whenever the View changes here or in
   // another tab, and re-check every open menu, so the tables stay in step.
   if (V)
@@ -1871,7 +1919,7 @@ window.wkxTables = (function () {
       });
     });
 
-  return { mount: mount, persistSort: persistSort };
+  return { mount: mount, persistSort: persistSort, resort: resort };
 })();
 
 // ---------- filter: one Filter per Section, header-native (M13) ----------
@@ -2362,9 +2410,13 @@ window.wkxFilter = (function () {
     }
   }
 
-  function startStream(url, onMessage) {
+  function startStream(url, onMessage, onSettled) {
     if (typeof EventSource === "undefined") return;
     const source = new EventSource(url);
+    function settle() {
+      source.close();
+      if (onSettled) onSettled();
+    }
     source.addEventListener("message", function (message) {
       try {
         onMessage(JSON.parse(message.data));
@@ -2372,12 +2424,10 @@ window.wkxFilter = (function () {
         // Ignore a stray or malformed frame rather than tearing down the stream.
       }
     });
-    source.addEventListener("done", function () {
-      source.close();
-    });
-    source.addEventListener("error", function () {
-      source.close();
-    });
+    // Re-sort once the stream settles (its values have all landed, or it errored
+    // out with what arrived), so a saved sort on an SSE-filled column takes effect.
+    source.addEventListener("done", settle);
+    source.addEventListener("error", settle);
   }
 
   function render(workspace, submodules) {
@@ -2436,8 +2486,14 @@ window.wkxFilter = (function () {
     built.equip();
 
     mount.replaceChildren(summary, built.wrap);
-    startStream("/api/workspace/fetch", fillAheadBehind);
-    startStream("/api/submodules/probe", fillSubmodule);
+    // Both streams fill columns of the workspace table (submodules are its rows), so
+    // each re-sorts the table once its values have landed (finding: a saved sort on
+    // Ahead/Behind was applied before the SSE values arrived and never re-applied).
+    const resortWorkspace = function () {
+      if (window.wkxTables) window.wkxTables.resort("workspace");
+    };
+    startStream("/api/workspace/fetch", fillAheadBehind, resortWorkspace);
+    startStream("/api/submodules/probe", fillSubmodule, resortWorkspace);
   }
 
   window.wkxSections.whenActive(mount, function () {
