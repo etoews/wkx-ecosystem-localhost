@@ -17,10 +17,11 @@ from wkx_ecosystem_localhost._logging import configure as configure_logging
 from wkx_ecosystem_localhost.app import create_app
 from wkx_ecosystem_localhost.config import (
     ENV_PREFIX,
-    Settings,
+    build_settings,
     check_environment,
     resolve_config_file,
 )
+from wkx_ecosystem_localhost.exceptions import ConfigError
 from wkx_ecosystem_localhost.view import resolve_view_file
 
 # Deliberately not configurable: the board is loopback-only as a security
@@ -157,9 +158,16 @@ def serve(
     ] = False,
 ) -> None:
     """Serve the board on loopback."""
-    check_environment()
-    config_file = resolve_config_file(os.environ)
-    settings = Settings()
+    try:
+        check_environment()
+        config_file = resolve_config_file(os.environ)
+        settings = build_settings()
+    except ConfigError as error:
+        # A stray environment variable, an unparseable TOML, or an invalid value is
+        # a clear one-line message and exit 1, never a traceback the operator has to
+        # read (error-handling.md).
+        typer.secho(f"error: {error}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(1) from error
     view_file = resolve_view_file(os.environ)
     bind_port = port if port is not None else settings.port
     url = f"http://{_HOST}:{bind_port}/"

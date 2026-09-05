@@ -5,6 +5,7 @@ uvicorn.run is stubbed so these exercise how serve calls it, never a real socket
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from collections.abc import Iterator
@@ -160,6 +161,14 @@ def test_serve_reload_exports_the_bound_port_for_the_worker_guard(
     assert "127.0.0.1:9123" in guard_app.state.allowed_hosts
 
 
+def _serve_output(result: object) -> str:
+    """The CLI's combined stdout and stderr, however this Click version splits them."""
+    out = getattr(result, "output", "") or ""
+    with contextlib.suppress(ValueError):
+        out += getattr(result, "stderr", "") or ""
+    return out
+
+
 def test_serve_rejects_an_unknown_env_variable(
     uvicorn_calls: list[Call], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -167,10 +176,45 @@ def test_serve_rejects_an_unknown_env_variable(
 
     result = runner.invoke(cli.app, ["serve"])
 
-    # The startup scan fails fast before uvicorn is ever asked to bind.
-    assert result.exit_code != 0
+    # The startup scan fails fast before uvicorn is ever asked to bind, with a clean
+    # message and exit 1 rather than a traceback.
+    assert result.exit_code == 1
     assert uvicorn_calls == []
-    assert "WKX_ECO_LOCAL_PROT" in str(result.exception)
+    assert "WKX_ECO_LOCAL_PROT" in _serve_output(result)
+    assert "Traceback" not in _serve_output(result)
+
+
+def test_serve_reports_a_toml_syntax_error_without_a_traceback(
+    uvicorn_calls: list[Call], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bad = tmp_path / "wkx-ecosystem-localhost.toml"
+    bad.write_text("port = = 1\n")
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(bad))
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 1
+    assert uvicorn_calls == []
+    output = _serve_output(result)
+    assert str(bad) in output
+    assert "does not parse" in output
+    assert "Traceback" not in output
+
+
+def test_serve_reports_an_invalid_value_naming_the_key(
+    uvicorn_calls: list[Call], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bad = tmp_path / "wkx-ecosystem-localhost.toml"
+    bad.write_text('port = "not a number"\n')
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(bad))
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 1
+    assert uvicorn_calls == []
+    output = _serve_output(result)
+    assert "port" in output
+    assert "Traceback" not in output
 
 
 def test_reload_factory_builds_the_real_app() -> None:

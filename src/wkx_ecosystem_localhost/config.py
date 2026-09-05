@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import tomlkit
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -309,6 +309,38 @@ def check_environment(environ: Mapping[str, str] | None = None) -> None:
             f"unknown {ENV_PREFIX} environment variable(s): {joined}. "
             "Each must match a configuration field; check for a typo."
         )
+
+
+def build_settings() -> Settings:
+    """Build ``Settings``, translating a TOML or validation failure into ``ConfigError``.
+
+    ``pydantic-settings`` reads the TOML file while constructing ``Settings``, so a
+    syntax error surfaces as a raw ``tomlkit`` error and an unknown key or wrong-typed
+    value as a ``pydantic`` ``ValidationError``. Both are translated at this seam into
+    a ``ConfigError`` that names the file and the offending line or key, so the CLI
+    prints one clear line and exits 1 rather than a traceback, and the always-on
+    instance's log carries a message instead of a stack trace (``error-handling.md``).
+
+    Raises:
+        ConfigError: If the configuration file does not parse, or a value is invalid.
+    """
+    config_file = resolve_config_file(os.environ)
+    try:
+        return Settings()
+    except TOMLKitError as error:
+        line = getattr(error, "line", None)
+        where = f" at line {line}" if line is not None else ""
+        logger.error("configuration file %s does not parse%s: %s", config_file, where, error)
+        raise ConfigError(
+            f"the configuration file {config_file} does not parse{where}: {error}"
+        ) from error
+    except ValidationError as error:
+        problems = "; ".join(
+            f"{'.'.join(str(part) for part in item['loc'])}: {item['msg']}"
+            for item in error.errors()
+        )
+        logger.error("configuration in %s is invalid: %s", config_file, problems)
+        raise ConfigError(f"the configuration in {config_file} is invalid: {problems}") from error
 
 
 class ConfigItem(BaseModel):

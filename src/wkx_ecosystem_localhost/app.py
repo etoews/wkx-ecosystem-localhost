@@ -37,6 +37,7 @@ from wkx_ecosystem_localhost.collectors.workspace import DiscoveryCache, collect
 from wkx_ecosystem_localhost.config import (
     ConfigView,
     Settings,
+    build_settings,
     check_environment,
     describe,
     resolve_config_file,
@@ -641,4 +642,4 @@ def create_app_from_env() -> FastAPI:
     check_environment()
     config_file = resolve_config_file(os.environ)
     view_file = resolve_view_file(os.environ)
-    return create_app(Settings(), config_file=config_file, view_file=view_file)
+    return create_app(build_settings(), config_file=config_file, view_file=view_file)

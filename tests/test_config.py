@@ -15,6 +15,7 @@ from pydantic import ValidationError
 from wkx_ecosystem_localhost.config import (
     ENV_PREFIX,
     Settings,
+    build_settings,
     check_environment,
     describe,
     resolve_config_file,
@@ -303,6 +304,37 @@ def test_scan_logs_the_unknown_variable(caplog: pytest.LogCaptureFixture) -> Non
         check_environment({"WKX_ECO_LOCAL_TYPO": "x"})
 
     assert "WKX_ECO_LOCAL_TYPO" in caplog.text
+
+
+# ---------- build_settings translates startup failures ----------
+
+
+def test_build_settings_translates_a_toml_syntax_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad = tmp_path / "wkx-ecosystem-localhost.toml"
+    bad.write_text("port = = 1\n")
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(bad))
+
+    with pytest.raises(ConfigError) as excinfo:
+        build_settings()
+
+    message = str(excinfo.value)
+    assert str(bad) in message
+    assert "line" in message
+
+
+def test_build_settings_translates_an_invalid_value_naming_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad = tmp_path / "wkx-ecosystem-localhost.toml"
+    bad.write_text('port = "not a number"\n')
+    monkeypatch.setenv("WKX_ECO_LOCAL_CONFIG_FILE", str(bad))
+
+    with pytest.raises(ConfigError) as excinfo:
+        build_settings()
+
+    assert "port" in str(excinfo.value)
 
 
 # ---------- resolve_config_file ----------
