@@ -748,24 +748,34 @@ tr.skillrow .table-block { margin-left: 1.1rem; }
  * flag's own level colour, with a seam in currentColor where the fact ends and the
  * action begins, strengthening as you approach it. Reads "quiet this", never
  * "close". The reveal and the quieting fade are stilled by the reduced-motion rule
- * below; the badge fades before it leaves the rail (the one deliberate motion). */
+ * below; the badge fades before it leaves the rail (the one deliberate motion).
+ *
+ * The reveal fades in place — it never changes the badge's width. The action holds
+ * its slot in layout at rest (invisible, its seam hidden, and inert to the pointer),
+ * so hovering only crossfades opacity and the seam, never geometry. A badge that
+ * grew on hover would widen its cell, and on a facts table whose flag rail has no
+ * spare width that ripples out to every other column — the herky-jerky push the
+ * operator sees. Holding the slot keeps every column still, on every table. */
 .flag-mute {
   font: inherit;
   color: inherit;
   background: transparent;
   border: 0;
-  border-left: 1px solid currentColor;
+  border-left: 1px solid transparent;
   margin-left: .34rem;
   padding: 0 0 0 .34rem;
   cursor: pointer;
-  max-width: 0;
   opacity: 0;
-  overflow: hidden;
+  pointer-events: none;
   white-space: nowrap;
-  transition: max-width .14s ease, opacity .14s ease;
+  transition: opacity .14s ease, border-color .14s ease;
 }
 .flag:hover .flag-mute,
-.flag:focus-within .flag-mute { max-width: 4rem; opacity: .72; }
+.flag:focus-within .flag-mute {
+  opacity: .72;
+  pointer-events: auto;
+  border-left-color: currentColor;
+}
 .flag-mute:hover,
 .flag-mute:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: .18em; }
 .flag--leaving { opacity: 0; transition: opacity .18s ease; }
