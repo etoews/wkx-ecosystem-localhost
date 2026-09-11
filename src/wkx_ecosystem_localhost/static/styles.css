@@ -849,11 +849,81 @@ button.mute-add:disabled { opacity: .5; cursor: default; }
   outline-offset: 1px;
 }
 
+/* ---------- jump palette ----------
+ * Press g (or /) to reach a Section without scrolling: a centred palette over a
+ * dimmed board lists the shown Sections, type narrows them, Enter jumps. Nothing
+ * shows until summoned. The [hidden] guard is explicit because the flex display
+ * below would otherwise beat the UA rule and leave the palette open — the same
+ * guard .disc-menu carries. The active row wears --sky, the board's wayfinding
+ * colour: a row points at where a Section starts, as a Category link does; the
+ * matched run reuses mark.match, the Filter's own highlight. */
+.jump {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16vh;
+  background: color-mix(in srgb, var(--deep) 62%, transparent);
+  animation: fade-in .12s ease-out;
+}
+.jump[hidden] { display: none; }
+.jump-box {
+  width: min(30rem, 92vw);
+  background: var(--hull);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 60px -20px rgba(4, 10, 16, .7);
+  overflow: hidden;
+}
+.jump-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--deep);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: .9rem;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: .7rem .9rem;
+}
+.jump-input::placeholder { color: var(--fog); }
+.jump-input:focus-visible { outline: 2px solid var(--match); outline-offset: -2px; }
+.jump-list { list-style: none; margin: 0; padding: .35rem; max-height: 48vh; overflow-y: auto; }
+.jump-link {
+  display: block;
+  font-family: var(--mono);
+  font-size: .8rem;
+  text-transform: capitalize;
+  color: var(--text);
+  text-decoration: none;
+  padding: .42rem .6rem;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+}
+.jump-option.is-active .jump-link {
+  background: var(--water);
+  border-left-color: var(--sky);
+  color: var(--sky);
+}
+.jump-empty { font-family: var(--mono); font-size: .78rem; color: var(--fog); padding: .5rem .6rem; }
+
 footer {
   padding-top: 1.5rem;
   font-family: var(--mono);
   font-size: .72rem;
   color: var(--fog);
+}
+/* The one key the board names in chrome: the footer says how to open the jump
+ * palette, so the keyboard-only affordance is discoverable without a floating hint. */
+footer .key {
+  font-family: var(--mono);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 .3rem;
+  color: var(--text);
 }
 
 @media (prefers-reduced-motion: reduce) {

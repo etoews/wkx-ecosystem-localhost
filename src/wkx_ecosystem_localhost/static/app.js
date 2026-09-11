@@ -3860,3 +3860,177 @@ window.wkxFilter = (function () {
   if (window.wkxView) window.wkxView.onChange(rerender);
   if (window.wkxFlags) window.wkxFlags.subscribe(rerender);
 })();
+
+// ---------- section jump: press g for a keyboard-first jump palette ----------
+// Reach any Section without scrolling. `g` (or `/`) opens a centred palette over
+// the board listing the shown Sections; type to narrow — the matched run wears the
+// board's Filter highlight — Up/Down to move, Enter or click to jump. The jump
+// lands the panel under its scroll-margin, exactly as a needs-attention Category
+// link does. Nothing shows on the board until summoned; the footer names the key.
+(function () {
+  "use strict";
+
+  const U = window.wkxUI;
+  const board = document.querySelector("main.board");
+  if (!U || !board) return;
+
+  // The Sections a jump can reach: every panel still on the board and not Hidden.
+  // Off panels are removed from the DOM and Hidden ones carry the `hidden`
+  // attribute, so this query tracks the sections menu without coupling to it.
+  function sections() {
+    return Array.prototype.slice
+      .call(board.querySelectorAll("section.panel"))
+      .filter(function (panel) {
+        return panel.id && !panel.hidden;
+      })
+      .map(function (panel) {
+        return { id: panel.id, label: panel.getAttribute("aria-label") || panel.id };
+      });
+  }
+
+  const overlay = U.el("div", "jump");
+  overlay.hidden = true;
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Jump to a section");
+  const box = U.el("div", "jump-box");
+  const input = U.el("input", "jump-input");
+  input.type = "text";
+  input.placeholder = "Jump to a section…";
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-controls", "jump-list");
+  input.setAttribute("aria-expanded", "true");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-label", "Jump to a section");
+  const listEl = U.el("ul", "jump-list");
+  listEl.id = "jump-list";
+  listEl.setAttribute("role", "listbox");
+  box.append(input, listEl);
+  overlay.append(box);
+  document.body.append(overlay);
+
+  let options = []; // [{ id, node, link }] in the current filtered order
+  let activeIndex = 0;
+
+  // Wash the matched run of the label with the board's Filter highlight, so the
+  // palette and the Section Filter mark a match the same way.
+  function drawLabel(node, label, query) {
+    node.replaceChildren();
+    const at = query ? label.toLowerCase().indexOf(query.toLowerCase()) : -1;
+    if (at < 0) {
+      node.append(label);
+      return;
+    }
+    node.append(label.slice(0, at));
+    node.append(U.el("mark", "match", label.slice(at, at + query.length)));
+    node.append(label.slice(at + query.length));
+  }
+
+  function render(query) {
+    listEl.replaceChildren();
+    options = sections()
+      .filter(function (s) {
+        return !query || s.label.toLowerCase().indexOf(query.toLowerCase()) >= 0;
+      })
+      .map(function (s, i) {
+        const link = U.el("a", "jump-link");
+        link.href = "#" + s.id;
+        link.id = "jump-option-" + i;
+        drawLabel(link, s.label, query);
+        link.addEventListener("click", function (event) {
+          event.preventDefault();
+          activate(s.id);
+        });
+        link.addEventListener("mousemove", function () {
+          setActive(i);
+        });
+        const li = U.el("li", "jump-option");
+        li.setAttribute("role", "option");
+        li.append(link);
+        listEl.append(li);
+        return { id: s.id, node: li, link: link };
+      });
+    if (options.length) {
+      setActive(0);
+    } else {
+      input.removeAttribute("aria-activedescendant");
+      listEl.append(U.el("li", "jump-empty", "No section matches."));
+    }
+  }
+
+  function setActive(i) {
+    if (!options.length) return;
+    activeIndex = (i + options.length) % options.length;
+    options.forEach(function (option, k) {
+      const on = k === activeIndex;
+      option.node.classList.toggle("is-active", on);
+      option.node.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    input.setAttribute("aria-activedescendant", options[activeIndex].link.id);
+    options[activeIndex].node.scrollIntoView({ block: "nearest" });
+  }
+
+  // Jump instantly to the panel: scroll-behavior is auto on this board, and a
+  // scrollIntoView re-scrolls even to the Section you are already on (a hash would
+  // not), so a repeat jump to the same Section still lands. scroll-margin-top on
+  // the panel keeps the heading clear of the top edge.
+  function activate(id) {
+    close(false);
+    const target = document.getElementById(id);
+    if (target) target.scrollIntoView({ block: "start" });
+  }
+
+  let lastFocus = null;
+  function open() {
+    if (!overlay.hidden) return;
+    lastFocus = document.activeElement;
+    overlay.hidden = false;
+    input.value = "";
+    render("");
+    input.focus();
+  }
+  function close(restoreFocus) {
+    if (overlay.hidden) return;
+    overlay.hidden = true;
+    if (restoreFocus && lastFocus && typeof lastFocus.focus === "function") lastFocus.focus();
+  }
+
+  input.addEventListener("input", function () {
+    render(input.value.trim());
+  });
+  input.addEventListener("keydown", function (event) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(activeIndex - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (options.length) activate(options[activeIndex].id);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      close(true);
+    }
+  });
+  // A press on the backdrop, outside the box, cancels.
+  overlay.addEventListener("mousedown", function (event) {
+    if (event.target === overlay) close(true);
+  });
+
+  function typingInField() {
+    const a = document.activeElement;
+    return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable);
+  }
+  // `g` or `/` opens it — unless a field is focused (the Section Filter, say) or a
+  // modifier is held, so Ctrl-G and the browser's own quick-find are left alone.
+  document.addEventListener("keydown", function (event) {
+    if (!overlay.hidden) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (typingInField()) return;
+    if (event.key === "g" || event.key === "/") {
+      event.preventDefault();
+      open();
+    }
+  });
+})();
