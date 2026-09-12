@@ -2,17 +2,26 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Every branch. Dependabot branches are covered once, by pull_request.
+    branches-ignore: ["dependabot/**"]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
 
@@ -22,14 +31,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      - name: Ruff lint
-        run: uv run ruff check
-
-      - name: Ruff format check
-        run: uv run ruff format --check
-
-      - name: ty type check
-        run: uv run ty check
+      # The hook set from .pre-commit-config.yaml is the one definition of the
+      # checks: ruff, ty, the lock check, and the hygiene hooks.
+      - name: pre-commit
+        run: uv run --frozen pre-commit run --all-files --show-diff-on-failure
 
       - name: pytest
-        run: uv run pytest --cov=wkx_ecosystem_localhost --cov-report=term-missing
+        run: uv run --frozen pytest --cov=wkx_ecosystem_localhost --cov-report=term-missing
