@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Mapping
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -159,8 +160,13 @@ class TomlkitConfigSettingsSource(TomlConfigSettingsSource):
     base class expects.
     """
 
-    def _read_file(self, file_path: Path) -> dict[str, Any]:
-        """Read one TOML file with ``tomlkit`` instead of ``tomllib``."""
+    def _read_file(self, file_path: Path | Traversable) -> dict[str, Any]:
+        """Read one TOML file with ``tomlkit`` instead of ``tomllib``.
+
+        The parameter is as wide as the base class's, which accepts any
+        ``Traversable`` (a packaged resource as well as a ``Path``), so the
+        override stays a valid substitute as pydantic-settings widens.
+        """
         with file_path.open(encoding="utf-8") as handle:
             return tomlkit.load(handle).unwrap()
 
