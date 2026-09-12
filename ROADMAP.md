@@ -45,7 +45,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | M | ✅ Complete |
 | [M12: The View lives in its own file](#m12-the-view-lives-in-its-own-file) | L | ✅ Complete |
 | [M13: Table search and hideable columns](#m13-table-search-and-hideable-columns) | M | ✅ Complete |
-| [M14: Repository hygiene](#m14-repository-hygiene) | S | 🔲 Not started |
+| [M14: Repository hygiene](#m14-repository-hygiene) | S | ✅ Complete |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
@@ -377,5 +377,5 @@ System Section goes on showing it missing, as it does `ruff` and `ty`.
 - [x] Push with a failing test; the `pre-push` stage refuses it. Fix it; the push lands.
 - [x] `uv run pre-commit run --all-files` is clean.
 - [x] Push a feat branch; the Actions tab shows a green run for that branch within a minute, with the pre-commit step listing every hook, and the badge on `main` still reads "passing".
-- [ ] `gh api repos/{owner}/{repo}/vulnerability-alerts` returns 204; the repo allows rebase merge only and deletes a branch on merge. Dependabot's first run after the merge to `main` opens its grouped PRs (or none, when everything is current), CI runs on each, and each commit title starts with `chore`.
+- [x] `gh api repos/{owner}/{repo}/vulnerability-alerts` returns 204; the repo allows rebase merge only and deletes a branch on merge. Dependabot's first run after the merge to `main` opens its grouped PRs (or none, when everything is current), CI runs on each, and each commit title starts with `chore`.
 - [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
