@@ -45,6 +45,7 @@ are the cross-cutting decisions every milestone inherits.
 | [M11: Board interaction and refinements](#m11-board-interaction-and-refinements) | M | ✅ Complete |
 | [M12: The View lives in its own file](#m12-the-view-lives-in-its-own-file) | L | ✅ Complete |
 | [M13: Table search and hideable columns](#m13-table-search-and-hideable-columns) | M | ✅ Complete |
+| [M14: Repository hygiene](#m14-repository-hygiene) | S | 🔲 Not started |
 
 **Sizes:** S = ≤ a session. M = a focused session or two. L = several sessions.
 
@@ -54,7 +55,9 @@ and Flags from M1–M6 and is otherwise independent. M11 refines the Sections, t
 Workspace table, and the Flag layer from M1–M9; it is independent of M10. M12
 moves every view preference out of the browser into a View file the board
 writes; it is independent of M11. M13 refines every table and depends on M12,
-because its controls persist through the View.
+because its controls persist through the View. M14 is independent of the board:
+it hardens the repo's gates and touches no Section. Within it, the hook set
+follows the gate, and the badges follow CI.
 
 ---
 
@@ -344,3 +347,34 @@ new Section.
 - [x] Sort by Behind, click twice more; the table is back in source order and the View file has no sort line.
 - [x] Hide a column in one tab; the other tab hides it too.
 - [x] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
+
+---
+
+## M14: Repository hygiene
+
+The gates around the code, not the code. `.pre-commit-config.yaml` and the CI
+workflow have existed since M0, but the `pre-commit` tool is not installed on
+the machine, no git hook is wired, and the workflow runs only on a push to
+`main` and on a pull request. This repo opens no pull requests of its own, so a
+feat branch is never checked before it is merged. Dependabot is absent and the
+repo's vulnerability alerts are off. The README carries no badges. This
+milestone closes each gap, keeps the hook set and CI on the same tools, and
+pins what runs in CI by commit. No Collector, no Section, no route. The board
+changes only in that its own System tools row for `pre-commit` turns from
+missing to present.
+
+**Deliverables**
+- [ ] The pre-commit gate runs: `pre-commit` is a global uv tool (`uv tool install pre-commit`), the config names `default_install_hook_types` (`pre-commit`, `commit-msg`, `pre-push`) so one `pre-commit install` wires every stage, and `pre-commit run --all-files` is clean. Every `rev:` is pinned and current: `ruff-pre-commit` equal to the locked `ruff` dev dependency, `pre-commit-hooks` at its current release. A test reads `.pre-commit-config.yaml` and `uv.lock` and fails when the `ruff-pre-commit` rev and the locked `ruff` version disagree, so a Dependabot bump of `ruff` that is not mirrored in the hook config cannot land green. README's Running section gains a short "Before you commit" subsection: the one-time wiring, what each stage checks, and that `git commit -n` skips the gate while CI stays the enforcer.
+- [ ] The lint hooks are the CI tools and nothing CI lacks: `ruff check --fix` and `ruff format` through `ruff-pre-commit`; `ty check` as a `local` system hook; `uv lock --check` as a `local` system hook, so the lock never drifts from `pyproject.toml` (CI's `uv sync --locked` fails on the same drift, later); and the hygiene hooks (trailing whitespace, end of file, YAML, TOML, JSON, large files, merge markers). Two further stages: a `commit-msg` hook, local and regex-only, that accepts the Conventional Commits prefixes the log already uses (`feat`, `fix`, `docs`, `test`, `refactor`, `style`, `chore`, `perf`, `build`, `ci`, with an optional scope and `!`) and refuses any other first line; and `pytest` at the `pre-push` stage, so a push carries a green suite without slowing every commit. No third-party hook repo beyond `ruff-pre-commit` and `pre-commit-hooks`.
+- [ ] The CI workflow checks every branch: `on: push` for all branches, with `pull_request` kept for Dependabot and outside contributors. `permissions: contents: read` at the top, a `concurrency` group per ref with `cancel-in-progress`, and `timeout-minutes` on the job. Each action is pinned to a full commit SHA with its version tag in a trailing comment (`actions/checkout` and `astral-sh/setup-uv`, each at its current major), the form Dependabot keeps current. The steps stay the four tools: `ruff check`, `ruff format --check`, `ty check`, `pytest --cov`.
+- [ ] Dependabot watches the lock file and the workflow: `.github/dependabot.yml` with the `uv` ecosystem and the `github-actions` ecosystem, each weekly, each grouped into one PR, each with a `commit-message.prefix` of `chore` so its commits pass the `commit-msg` hook. The `gitsubmodule` ecosystem is deliberately absent: `standards/python` is pinned to a release on purpose, and Dependabot tracks a branch head, not a tag. Vulnerability alerts and automated security fixes are switched on for the repo (`gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts` and `.../automated-security-fixes`). A Dependabot PR lands the way any branch does: CI runs on it through the `pull_request` trigger, and it is merged without a merge commit (rebase merge, or pulled and ff-merged locally). The pre-commit `rev:` pins are outside Dependabot's reach; `pre-commit autoupdate` is the manual counterpart, and the drift test above is the guard.
+- [ ] Badges: one row directly under the README's title, plain Markdown images with alt text: the CI workflow status on `main` (GitHub's own badge endpoint), Python 3.14, uv, ruff, ty, pre-commit, and the MIT licence (static shields.io badges). Nothing dynamic beyond the CI status; no coverage service is added.
+- [ ] README's Stack section names the gates beside the tools. ARCHITECTURE.md is untouched, because nothing in the service changes.
+
+**Hands-on artefact**
+- [ ] Stage a file with a formatting fault and commit; the hook reformats it and refuses the commit. Stage the fix; the commit lands. Commit with the first line `update stuff`; the `commit-msg` hook refuses it.
+- [ ] `pre-commit run --all-files` is clean, and the System tools Section of the board shows `pre-commit` present with its version, where it showed missing.
+- [ ] Push a feat branch; the Actions tab shows a green run for that branch within a minute, and the badge on `main` still reads "passing".
+- [ ] `gh api repos/{owner}/{repo}/vulnerability-alerts` returns 204. Dependabot's first run opens its grouped PRs (or none, when everything is current), CI runs on each, and each commit title starts with `chore`.
+- [ ] Change the `ruff-pre-commit` rev alone; the drift test fails. Put it back; it passes.
+- [ ] `uv run ruff check`, `uv run ty check`, `uv run pytest` all clean.
