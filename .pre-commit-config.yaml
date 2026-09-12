@@ -1,21 +1,57 @@
+# The hook set is the one definition of the checks. CI runs it too, through
+# `pre-commit run --all-files`, so the two cannot drift. ruff, ty, uv, and
+# pytest run as local hooks in the project venv, so uv.lock is their only pin.
+# Every `uv run` is `--frozen`: a bare `uv run` re-locks on a pyproject.toml
+# change, which would hide the drift the lock check exists to refuse.
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
+default_stages: [pre-commit]
 
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.1 # keep in sync with the ruff version in pyproject.toml
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
-
   - repo: local
     hooks:
-      - id: ty
-        name: ty
-        entry: uv run ty check
+      - id: uv-lock-check
+        name: uv lock --check
+        entry: uv lock --check
         language: system
-        types: [python]
+        files: ^(pyproject\.toml|uv\.lock)$
         pass_filenames: false
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+      - id: ty
+        name: ty check
+        entry: uv run --frozen ty check
+        language: system
+        types_or: [python, pyi, toml]
+        pass_filenames: false
+      - id: conventional-commit
+        name: conventional commit subject
+        # The first line is at most 120 characters (each UTF-8 code point counts
+        # as one) and starts with a Conventional Commits type, an optional
+        # (scope), an optional !, then ": " and a subject; or with git's own
+        # Revert "...". --negate refuses the message when the pattern does not
+        # match. pygrep matches bytes with DOTALL, hence the byte classes and
+        # the absence of ".".
+        language: pygrep
+        entry: '\A(?=(?:[\x00-\x09\x0b-\x7f]|[\xc2-\xf4][\x80-\xbf]+){1,120}(?:\n|\Z))(?:(?:feat|fix|docs|test|refactor|style|chore|perf|build|ci|revert)(?:\([^()\n]+\))?!?: \S|Revert ")'
+        args: [--multiline, --negate]
+        stages: [commit-msg]
+      - id: pytest
+        name: pytest
+        entry: uv run --frozen pytest
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -24,5 +60,6 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-toml
+      - id: check-json
       - id: check-added-large-files
       - id: check-merge-conflict
