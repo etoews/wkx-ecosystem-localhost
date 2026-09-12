@@ -985,7 +985,8 @@ window.wkxFlags = (function () {
     return node;
   }
 
-  // The Mute action that rides inside a Flag badge (ADR 0004): silent until
+  // The Mute action that hangs off a Flag badge (ADR 0004; styles.css places it
+  // out of flow beside the badge, so the reveal moves no column): silent until
   // the badge is hovered or this button focused, so a clean rail scan stays quiet.
   // It writes one Mute rule for this Flag's Category and exact target; the View
   // change comes back through wkxView.onChange, which re-evaluates every Flag, so

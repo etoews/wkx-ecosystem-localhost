@@ -743,41 +743,54 @@ tr.skillrow .table-block { margin-left: 1.1rem; }
 .lvl--problem::before { border-radius: 1px; }
 
 /* ---------- Mute a Flag from its badge ----------
- * A mute action that lives inside the badge, silent until the badge is hovered or
- * this button focused, so a clean rail scan stays quiet. No new hue: it wears the
- * flag's own level colour, with a seam in currentColor where the fact ends and the
- * action begins, strengthening as you approach it. Reads "quiet this", never
- * "close". The reveal and the quieting fade are stilled by the reduced-motion rule
- * below; the badge fades before it leaves the rail (the one deliberate motion).
+ * A mute action that hangs off the badge's leading edge, silent until the badge is
+ * hovered or this button focused, so a clean rail scan stays quiet. No new hue: it
+ * wears the flag's own level colour, and the badge's own border is the seam between
+ * fact and action. Reads "quiet this", never "close". The reveal and the quieting
+ * fade are stilled by the reduced-motion rule below; the badge fades before it
+ * leaves the rail (the one deliberate motion).
  *
- * The reveal fades in place — it never changes the badge's width. The action holds
- * its slot in layout at rest (invisible, its seam hidden, and inert to the pointer),
- * so hovering only crossfades opacity and the seam, never geometry. A badge that
- * grew on hover would widen its cell, and on a facts table whose flag rail has no
- * spare width that ripples out to every other column — the herky-jerky push the
- * operator sees. Holding the slot keeps every column still, on every table. */
+ * The action is out of flow: absolutely placed against the badge, so revealing it
+ * changes no width anywhere — the badge measures the same hovered and at rest, and
+ * no column on any table moves. It sits to the LEFT of the badge because the flag
+ * rail is right-justified: the empty width of the rail lies on that side, so the
+ * action lands in whitespace in the common case. It is shaped as a second pill of
+ * the badge's height, outlined in the level colour on the hovered row's own opaque
+ * ground, so where it must cross something (a second badge on the line, or a rail
+ * with no spare width) it stacks over it cleanly for the moment of hover, never
+ * muddling two texts. Reserving the slot inside the badge instead would leave every
+ * badge trailing an empty pocket at rest, and holding a lane beside it would space
+ * badges out; both cost the resting board for a hover-only need. */
+.flag { position: relative; }
+.flag:hover,
+.flag:focus-within { z-index: 1; }
 .flag-mute {
   font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-left: 1px solid transparent;
-  margin-left: .34rem;
-  padding: 0 0 0 .34rem;
+  /* 72 % of the level colour for text and outline, mixed rather than an opacity so
+   * the ground stays opaque over whatever it crosses. */
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  background: var(--hull);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: .3rem;
+  padding: .02rem .42rem;
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
   white-space: nowrap;
-  transition: opacity .14s ease, border-color .14s ease;
+  transition: opacity .14s ease;
 }
 .flag:hover .flag-mute,
-.flag:focus-within .flag-mute {
-  opacity: .72;
-  pointer-events: auto;
-  border-left-color: currentColor;
-}
+.flag:focus-within .flag-mute { opacity: 1; pointer-events: auto; }
 .flag-mute:hover,
-.flag-mute:focus-visible { opacity: 1; text-decoration: underline; text-underline-offset: .18em; }
+.flag-mute:focus-visible { color: inherit; text-decoration: underline; text-underline-offset: .18em; }
+/* A tile hosts its badge at its left edge, so the action swaps to the right, where
+ * the tile has room; there is no rail to keep still. */
+.tile .flag-mute { right: auto; left: 100%; margin-right: 0; margin-left: .3rem; }
 .flag--leaving { opacity: 0; transition: opacity .18s ease; }
 
 /* ---------- the Mute editor (config Section) ----------
