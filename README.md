@@ -190,6 +190,44 @@ running with its output visible, and its `smoke.sh` driver verifies every
 endpoint and screenshots the board. See
 [its SKILL.md](.claude/skills/run-wkx-ecosystem-localhost/SKILL.md).
 
+### Before you commit
+
+The repo has a pre-commit gate. `pre-commit` is a dev dependency, so `uv sync`
+installs it. Wire the git hooks once per clone:
+
+```sh
+uv run pre-commit install
+```
+
+That one command wires three stages:
+
+- `pre-commit`, on each commit: `ruff check --fix`, `ruff format`, `ty check`,
+  `uv lock --check`, and the hygiene checks (trailing whitespace, end of file,
+  YAML, TOML, JSON, large files, merge markers). A hook that changes a file
+  refuses the commit. Stage the change and commit again.
+- `commit-msg`, on each commit: the first line must be at most 120 characters
+  and must start with a Conventional Commits type (`feat`, `fix`, `docs`,
+  `test`, `refactor`, `style`, `chore`, `perf`, `build`, `ci`, `revert`), with
+  an optional scope and `!`, or with git's own `Revert "`.
+- `pre-push`, on each push: `pytest`.
+
+To run the commit-stage checks on the whole tree:
+
+```sh
+uv run pre-commit run --all-files
+```
+
+`git commit -n` skips the gate. CI runs the same hook set on every push, so CI
+stays the enforcer. `uv run pre-commit autoupdate` bumps the one third-party
+hook repo, `pre-commit-hooks`; Dependabot bumps everything else through
+`uv.lock`. A Dependabot PR lands without a merge commit: rebase-merge it in
+GitHub, or pull it and ff-merge it locally.
+
+This hook set diverges from `standards/python/standards/pre-commit.md`, which
+runs ruff through a mirror and wires one stage.
+[python-standards#1](https://github.com/etoews/python-standards/issues/1) is
+the planned change to the standard.
+
 ### Run at startup (macOS)
 
 You can run the board at login and keep it developable at the same time. A
