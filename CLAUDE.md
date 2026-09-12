@@ -21,6 +21,13 @@ The five canonical roles, each label string equal to its name. See `docs/agents/
 
 Single-context: `CONTEXT.md` at the repo root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 
+## Git
+
+Commit subjects follow Conventional Commits (`feat`, `fix`, `docs`, `test`,
+`refactor`, `style`, `chore`, `perf`, `build`, `ci`, `revert`, an optional
+scope, an optional `!`), at most 120 characters; the `commit-msg` hook refuses
+any other.
+
 # Python standards
 
 @standards/python/standards/manifest.md

@@ -1,5 +1,13 @@
 # WKX Ecosystem localhost
 
+[![CI](https://github.com/etoews/wkx-ecosystem-localhost/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/etoews/wkx-ecosystem-localhost/actions/workflows/ci.yml)
+[![Python 3.14](https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow)](LICENSE)
+
 A read-only localhost web app that inventories the dev machine it runs on:
 repos and their git status, language toolchains, the Claude environment,
 system tools, Homebrew, and Docker. It shows facts, lights up data-evident
@@ -72,6 +80,9 @@ count of skills you set to `off`, not the skills of a disabled plugin.
 - This repo is machine-neutral: code and docs reference no specific machine,
   config is typed with computed defaults, example data is synthetic, and the
   UI relativises paths and strips credentials from remotes by default.
+- The repo's supply chain is gated: the CI workflow token is read-only, each
+  action is pinned to a full commit SHA, Dependabot watches the lock file and
+  the workflow, and vulnerability alerts and automated security fixes are on.
 
 ## Stack
 
@@ -79,6 +90,12 @@ Python 3.14 · uv · FastAPI · pydantic · static HTML/JS frontend with no buil
 step · SSE for progressive fill-in. Python standards are followed via the
 `standards/python/` git submodule, pinned to a released tag of
 [python-standards](https://github.com/etoews/python-standards).
+
+The gates beside the tools: a pre-commit hook set (ruff, ty, the lock check,
+hygiene checks, a Conventional Commits subject rule, and pytest on push), CI
+on every branch that runs that same hook set with each action pinned by
+commit, and Dependabot on the lock file and the workflow. See
+[Before you commit](#before-you-commit).
 
 The look and feel is borrowed from the `wkx-namespace` design system; its
 status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
