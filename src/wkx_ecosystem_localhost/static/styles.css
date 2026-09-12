@@ -784,6 +784,18 @@ tr.skillrow .table-block { margin-left: 1.1rem; }
   white-space: nowrap;
   transition: opacity .14s ease;
 }
+/* The gap between action and badge is bridged by an invisible strip of the action
+ * itself, so a pointer crossing from one to the other never leaves the badge's
+ * hover: without it the action hides (and goes inert) the instant the pointer
+ * enters the gap, and cannot be reached at all. Inert at rest with its parent. */
+.flag-mute::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 100%;
+  width: .3rem;
+}
 .flag:hover .flag-mute,
 .flag:focus-within .flag-mute { opacity: 1; pointer-events: auto; }
 .flag-mute:hover,
@@ -791,6 +803,7 @@ tr.skillrow .table-block { margin-left: 1.1rem; }
 /* A tile hosts its badge at its left edge, so the action swaps to the right, where
  * the tile has room; there is no rail to keep still. */
 .tile .flag-mute { right: auto; left: 100%; margin-right: 0; margin-left: .3rem; }
+.tile .flag-mute::after { left: auto; right: 100%; }
 .flag--leaving { opacity: 0; transition: opacity .18s ease; }
 
 /* ---------- the Mute editor (config Section) ----------
