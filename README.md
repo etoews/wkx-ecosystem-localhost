@@ -228,6 +228,17 @@ That one command wires three stages:
   an optional scope and `!`, or with git's own `Revert "`.
 - `pre-push`, on each push: `pytest`.
 
+The diagram shows the two sides of the gate. On the laptop, the hooks run on
+`git commit` and on `git push`. In GitHub, the CI workflow runs the same hook
+set again, and then pytest. A run starts on your `git push` of any branch, on
+a Dependabot pull request, or on a rebase-merge in GitHub.
+
+![The CI gates: the hooks on the laptop, and the run in GitHub that repeats them](docs/ci.svg)
+
+Like the architecture diagram, [docs/ci.svg](docs/ci.svg) is drawn in the
+`wkx-namespace` design system. It follows the night theme by default and the
+day theme when the viewer prefers light.
+
 To run the commit-stage checks on the whole tree:
 
 ```sh

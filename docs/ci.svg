@@ -1,0 +1,200 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 880" role="img" aria-label="The CI gates of WKX Ecosystem localhost: the hooks on the laptop, and the run in GitHub that repeats them">
+  <style>
+    svg {
+      /* night, the identity default */
+      --deep: #0A141E;
+      --water: #0E1C2A;
+      --hull: #14273A;
+      --line: #21374C;
+      --text: #E8F0F6;
+      --fog: #8AA3B5;
+      --add: #3DDC97;
+      --del: #FF6257;
+      --chg: #F5B84A;
+      --masthead: #FFFFFF;
+    }
+    @media (prefers-color-scheme: light) {
+      svg {
+        --deep: #EEF3F6;
+        --water: #FFFFFF;
+        --hull: #DFE8EE;
+        --line: #C6D3DC;
+        --text: #182634;
+        --fog: #5B7284;
+        --add: #0F8A5F;
+        --del: #C3362B;
+        --chg: #A06E00;
+        --masthead: #0A141E;
+      }
+    }
+    /* when inline in a page, the viewer's theme toggle wins in both directions */
+    :root[data-theme="light"] svg {
+      --deep: #EEF3F6;
+      --water: #FFFFFF;
+      --hull: #DFE8EE;
+      --line: #C6D3DC;
+      --text: #182634;
+      --fog: #5B7284;
+      --add: #0F8A5F;
+      --del: #C3362B;
+      --chg: #A06E00;
+      --masthead: #0A141E;
+    }
+    :root[data-theme="dark"] svg {
+      --deep: #0A141E;
+      --water: #0E1C2A;
+      --hull: #14273A;
+      --line: #21374C;
+      --text: #E8F0F6;
+      --fog: #8AA3B5;
+      --add: #3DDC97;
+      --del: #FF6257;
+      --chg: #F5B84A;
+      --masthead: #FFFFFF;
+    }
+
+    text { font-family: "Avenir Next", "Avenir", "Helvetica Neue", Helvetica, Arial, sans-serif; }
+    .mast { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 34px; font-weight: 700; letter-spacing: 4px; fill: var(--masthead); }
+    .dim  { fill: var(--fog); font-weight: 500; }
+    .sub  { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--fog); }
+    .sign { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 2.5px; fill: var(--fog); }
+    .lane-h { font-family: "Avenir Next Condensed", "Avenir Next", "Arial Narrow", sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 2px; fill: var(--fog); }
+    .path { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12.5px; font-weight: 400; letter-spacing: 0; fill: var(--text); }
+    .mono { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12.5px; fill: var(--text); }
+    .lblt { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--text); }
+    .lblf { font-family: ui-monospace, "Menlo", "SF Mono", monospace; font-size: 12px; fill: var(--fog); }
+    .small { font-size: 12px; fill: var(--fog); }
+
+    .bg   { fill: var(--deep); }
+    .deck { fill: var(--water); stroke: var(--line); }
+    .bar  { fill: var(--fog); }
+    .chip { fill: var(--hull); stroke: var(--line); }
+    .tile { fill: var(--deep); stroke: var(--line); }
+    .rail { stroke: var(--fog); stroke-width: 2; fill: none; }
+    .head { fill: var(--fog); }
+    .dot-g { fill: var(--add); }
+    .dot-a { fill: var(--chg); }
+    .dot-r { fill: var(--del); }
+  </style>
+
+  <rect class="bg" width="920" height="880"/>
+
+  <!-- masthead -->
+  <text class="mast" x="40" y="64">WKX <tspan class="dim">ECOSYSTEM LOCALHOST</tspan></text>
+  <text class="sub" x="880" y="60" text-anchor="end">the gates · laptop and GitHub</text>
+
+  <!-- ============ lane 1 · the laptop ============ -->
+  <rect class="deck" x="40" y="100" width="404" height="720"/>
+  <rect class="bar" x="40" y="100" width="404" height="3"/>
+  <text class="sign" x="60" y="126">THE LAPTOP  ·  <tspan class="path">.pre-commit-config.yaml</tspan></text>
+  <text class="small" x="60" y="148">hooks wired once per clone by uv run pre-commit install</text>
+  <text class="small" x="60" y="164">hooks run in the project venv · uv.lock is the only pin</text>
+
+  <text class="lane-h" x="60" y="190">WHO STARTS IT</text>
+  <rect class="tile" x="60" y="200" width="364" height="32" rx="4"/>
+  <text class="mono" x="76" y="220">you, or an agent, at the keyboard</text>
+
+  <line class="rail" x1="80" y1="232" x2="80" y2="292"/>
+  <path class="head" d="M75,292 h10 l-5,8 z"/>
+  <text class="lblt" x="94" y="263">git commit</text>
+  <text class="lblf" x="94" y="280">pre-commit stage, then commit-msg stage</text>
+
+  <text class="lane-h" x="60" y="324">ON GIT COMMIT</text>
+  <rect class="chip" x="60"  y="334" width="136" height="30" rx="4"/>
+  <text class="mono" x="128" y="353" text-anchor="middle">ruff check --fix</text>
+  <rect class="chip" x="205" y="334" width="99"  height="30" rx="4"/>
+  <text class="mono" x="254.5" y="353" text-anchor="middle">ruff format</text>
+  <rect class="chip" x="313" y="334" width="76"  height="30" rx="4"/>
+  <text class="mono" x="351" y="353" text-anchor="middle">ty check</text>
+  <rect class="chip" x="60"  y="372" width="129" height="30" rx="4"/>
+  <text class="mono" x="124.5" y="391" text-anchor="middle">uv lock --check</text>
+  <rect class="chip" x="198" y="372" width="91"  height="30" rx="4"/>
+  <text class="mono" x="243.5" y="391" text-anchor="middle">hygiene ×7</text>
+  <rect class="chip" x="298" y="372" width="91"  height="30" rx="4"/>
+  <text class="mono" x="343.5" y="391" text-anchor="middle">commit-msg</text>
+  <text class="small" x="60" y="424">hygiene ×7: whitespace · end of file · YAML · TOML · JSON</text>
+  <text class="small" x="60" y="440">large files · merge markers</text>
+  <text class="small" x="60" y="456">commit-msg: a Conventional Commits subject · ≤ 120 chars</text>
+  <circle class="dot-r" cx="66" cy="480" r="5"/>
+  <text class="small" x="80" y="484">a hook fails, or changes a file · the commit is refused</text>
+  <circle class="dot-g" cx="66" cy="498" r="5"/>
+  <text class="small" x="80" y="502">every hook passes · the commit lands</text>
+  <circle class="dot-a" cx="66" cy="516" r="5"/>
+  <text class="small" x="80" y="520">git commit -n skips this gate · CI stays the enforcer</text>
+
+  <line class="rail" x1="80" y1="536" x2="80" y2="596"/>
+  <path class="head" d="M75,596 h10 l-5,8 z"/>
+  <text class="lblt" x="94" y="571">git push</text>
+  <text class="lblf" x="94" y="588">the pre-push stage</text>
+
+  <text class="lane-h" x="60" y="628">ON GIT PUSH</text>
+  <rect class="chip" x="60" y="638" width="196" height="30" rx="4"/>
+  <text class="mono" x="76" y="657">pytest · the whole suite</text>
+  <circle class="dot-r" cx="66" cy="690" r="5"/>
+  <text class="small" x="80" y="694">a test fails · the push is refused</text>
+  <circle class="dot-a" cx="66" cy="708" r="5"/>
+  <text class="small" x="80" y="712">git push --no-verify skips this gate</text>
+  <rect class="tile" x="60" y="730" width="364" height="32" rx="4"/>
+  <circle class="dot-g" cx="76" cy="746" r="5"/>
+  <text class="mono" x="90" y="750">the suite is green · the push lands</text>
+  <text class="small" x="60" y="784">GitHub then repeats the commit stage and pytest</text>
+
+  <!-- ============ lane 2 · GitHub ============ -->
+  <rect class="deck" x="476" y="100" width="404" height="720"/>
+  <rect class="bar" x="476" y="100" width="404" height="3"/>
+  <text class="sign" x="496" y="126">GITHUB  ·  <tspan class="path">.github/workflows/ci.yml</tspan></text>
+  <text class="small" x="496" y="148">one job, test, on ubuntu-latest · a 10 minute timeout</text>
+  <text class="small" x="496" y="164">read-only token · each action pinned to a commit SHA</text>
+
+  <text class="lane-h" x="496" y="190">WHAT STARTS A RUN</text>
+  <rect class="tile" x="496" y="200" width="364" height="32" rx="4"/>
+  <text class="mono" x="512" y="220">Dependabot · weekly, or on a security alert</text>
+  <text class="small" x="496" y="250">one grouped PR each for uv.lock and the workflow's actions</text>
+  <text class="small" x="496" y="266">titled chore(deps) · fires pull_request, once</text>
+  <rect class="tile" x="496" y="280" width="364" height="32" rx="4"/>
+  <text class="mono" x="512" y="300">you, in GitHub · rebase-merge a PR onto main</text>
+  <text class="small" x="496" y="330">usually a green Dependabot PR · arrives as a push on main</text>
+  <rect class="tile" x="496" y="344" width="364" height="32" rx="4"/>
+  <text class="mono" x="512" y="364">you, or an agent · git push of any branch</text>
+  <text class="small" x="496" y="394">push on dependabot/** is ignored · pull_request covers it</text>
+
+  <line class="rail" x1="516" y1="404" x2="516" y2="464"/>
+  <path class="head" d="M511,464 h10 l-5,8 z"/>
+  <text class="lblt" x="530" y="439">push · pull_request</text>
+  <text class="lblf" x="530" y="456">one run per ref · a new push cancels the old</text>
+
+  <text class="lane-h" x="496" y="496">THE RUN  ·  THE test JOB, IN ORDER</text>
+  <rect class="chip" x="496" y="506" width="76"  height="30" rx="4"/>
+  <text class="mono" x="534" y="525" text-anchor="middle">checkout</text>
+  <rect class="chip" x="581" y="506" width="144" height="30" rx="4"/>
+  <text class="mono" x="653" y="525" text-anchor="middle">setup-uv · cached</text>
+  <rect class="chip" x="734" y="506" width="99"  height="30" rx="4"/>
+  <text class="mono" x="783.5" y="525" text-anchor="middle">python 3.14</text>
+  <rect class="chip" x="496" y="544" width="136" height="30" rx="4"/>
+  <text class="mono" x="564" y="563" text-anchor="middle">uv sync --locked</text>
+  <rect class="chip" x="641" y="544" width="211" height="30" rx="4"/>
+  <text class="mono" x="746.5" y="563" text-anchor="middle">pre-commit run --all-files</text>
+  <rect class="chip" x="496" y="582" width="106" height="30" rx="4"/>
+  <text class="mono" x="549" y="601" text-anchor="middle">pytest --cov</text>
+  <text class="small" x="496" y="634">the pre-commit step is the laptop's commit stage</text>
+  <text class="small" x="496" y="650">the commit-msg hook is the one check CI cannot run</text>
+
+  <line class="rail" x1="516" y1="664" x2="516" y2="724"/>
+  <path class="head" d="M511,724 h10 l-5,8 z"/>
+  <text class="lblt" x="530" y="699">a status check</text>
+  <text class="lblf" x="530" y="716">on the commit, or on the PR</text>
+
+  <text class="lane-h" x="496" y="756">THE RESULT</text>
+  <circle class="dot-r" cx="502" cy="772" r="5"/>
+  <text class="small" x="516" y="776">a step fails · the check is red</text>
+  <circle class="dot-g" cx="502" cy="790" r="5"/>
+  <text class="small" x="516" y="794">every step passes · a green check · the badge on main</text>
+
+  <!-- the push crosses from the laptop to GitHub -->
+  <path class="rail" d="M424,746 H460 V360 H488"/>
+  <path class="head" d="M488,355 v10 l8,-5 z"/>
+
+  <!-- footer -->
+  <text class="small" x="40" y="852">wkx-namespace design system · colour is for outcomes only: green lands · amber skips a gate · red refuses</text>
+  <text class="sub" x="880" y="852" text-anchor="end">one hook set, run twice</text>
+</svg>
