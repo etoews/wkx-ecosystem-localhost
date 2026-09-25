@@ -41,8 +41,12 @@ _SECRET_SUBSTRINGS = ("token", "password", "secret", "authorization")
 
 # The final dotted component of a legitimately multi-valued key. A key ending in
 # one of these holds a list, not a single setting, so two differing values are the
-# design, never a conflict to flag.
-_MULTIVAR_FINALS = frozenset({"insteadof", "pushinsteadof", "fetch", "push"})
+# design, never a conflict to flag. For ``helper`` and ``extraheader`` an empty
+# value clears the list inherited from earlier in the chain; ``gh auth setup-git``
+# writes that reset before its own helper.
+_MULTIVAR_FINALS = frozenset(
+    {"insteadof", "pushinsteadof", "fetch", "push", "pushurl", "helper", "extraheader"}
+)
 
 
 def parse_git_config(stdout: str) -> list[dict[str, str]]:
@@ -105,9 +109,11 @@ def is_multivar(key: str) -> bool:
     """True when ``key`` names a legitimately multi-valued family.
 
     A key whose final dotted component (lowercased) is ``insteadof``,
-    ``pushinsteadof``, ``fetch``, or ``push`` holds a list of values by design, so
-    it is excluded from conflict and shadow detection: two differing values there
-    are expected, not an anomaly.
+    ``pushinsteadof``, ``fetch``, ``push``, ``pushurl``, ``helper``, or
+    ``extraheader`` holds a list of values by design, so it is excluded from
+    conflict and shadow detection: two differing values there are expected, not an
+    anomaly. This includes an empty value followed by a real one, which is git's
+    idiom for resetting the list.
     """
     return key.rsplit(".", 1)[-1].lower() in _MULTIVAR_FINALS
 

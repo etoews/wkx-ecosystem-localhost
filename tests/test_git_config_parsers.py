@@ -129,6 +129,11 @@ def test_redact_value_relativises_a_home_path_in_the_value() -> None:
         "remote.origin.pushInsteadOf",
         "remote.origin.fetch",
         "remote.origin.push",
+        "remote.origin.pushurl",
+        "credential.helper",
+        "credential.https://github.com.helper",
+        "http.extraheader",
+        "http.https://example.com/.extraHeader",
     ],
 )
 def test_is_multivar_recognises_the_multi_valued_families(key: str) -> None:

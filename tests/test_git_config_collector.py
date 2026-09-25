@@ -52,6 +52,16 @@ def test_multivar_duplicate_is_never_shadowed() -> None:
     assert all(entry.shadowed is False for entry in insteadof)
 
 
+def test_credential_helper_reset_then_set_is_never_shadowed() -> None:
+    machine, home = fixtures.build_git_config_workspace()
+    section = collect_git_config(machine, home=home)
+    helpers = _entries(section, "credential.https://github.com.helper")
+    # An empty value clears the helper list inherited from earlier in the chain, then
+    # the next line adds gh: two list operations, not two competing settings.
+    assert len(helpers) == 2
+    assert all(entry.shadowed is False for entry in helpers)
+
+
 def test_embedded_credential_is_stripped_and_flagged() -> None:
     machine, home = fixtures.build_git_config_workspace()
     section = collect_git_config(machine, home=home)

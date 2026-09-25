@@ -935,6 +935,8 @@ GIT_CONFIG_INVENTORY = (
     "file:/home/.gitconfig\tcore.editor=vim\n"
     "file:/home/.gitconfig\turl.git@github.com:.insteadof=https://github.com/\n"
     "file:/home/.gitconfig\turl.git@github.com:.insteadof=git://github.com/\n"
+    "file:/home/.gitconfig\tcredential.https://github.com.helper=\n"
+    "file:/home/.gitconfig\tcredential.https://github.com.helper=!gh auth git-credential\n"
     f"file:/home/.gitconfig\tmyservice.endpoint=https://ada:{SECRET_TOKEN}@example.com/api\n"
     "file:/home/.gitconfig\tinclude.path=~/.gitconfig-work\n"
     "file:/home/.gitconfig\tincludeif.gitdir:~/work/.path=~/.gitconfig-missing\n"
@@ -949,9 +951,11 @@ def build_git_config_workspace() -> tuple[FakeMachine, Path]:
     ``core.editor`` twice to different values across two origins (a real conflict,
     the second value coming from an included file), lists ``url.<base>.insteadof``
     twice with different values (a multi-valued key that must not read as a
-    conflict), carries a value with an embedded credential (masked), and declares
-    two includes: ``include.path`` whose target is present and a conditional
-    include whose target is absent (broken). Returns the machine and its home.
+    conflict), resets and then sets a ``credential.<url>.helper`` the way
+    ``gh auth setup-git`` writes it (also multi-valued, not a conflict), carries a
+    value with an embedded credential (masked), and declares two includes:
+    ``include.path`` whose target is present and a conditional include whose
+    target is absent (broken). Returns the machine and its home.
     """
     machine = FakeMachine(
         files={GITCONFIG_WORK: "[core]\n\teditor = code --wait\n"},
