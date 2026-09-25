@@ -1,0 +1,3 @@
+# The owner reviews every change. This makes GitHub request a review on each
+# Dependabot PR, so the owner gets a notification without watching the repo.
+* @etoews

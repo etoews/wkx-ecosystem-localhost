@@ -251,6 +251,10 @@ hook repo, `pre-commit-hooks`; Dependabot bumps everything else through
 `uv.lock`. A Dependabot PR lands without a merge commit: rebase-merge it in
 GitHub, or pull it and ff-merge it locally.
 
+`.github/CODEOWNERS` names the owner for every path. GitHub requests the
+owner's review on each Dependabot PR, so the owner gets a notification without
+watching the repo.
+
 This hook set diverges from `standards/python/standards/pre-commit.md`, which
 runs ruff through a mirror and wires one stage.
 [python-standards#1](https://github.com/etoews/python-standards/issues/1) is
