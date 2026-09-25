@@ -9,7 +9,7 @@ colour appears only when the data raises a Flag.
 The vocabulary used here (Collector, Section, Origin, Flag) is defined in
 [CONTEXT.md](CONTEXT.md).
 
-![Simplified architecture, five layers from the board down to the dev machine](docs/architecture.svg)
+![Simplified architecture, five layers from the board down to the dev machine](docs/images/architecture.svg)
 
 ## The board
 
@@ -175,6 +175,6 @@ identity, a token, or a username.
 
 ## The diagram
 
-[docs/architecture.svg](docs/architecture.svg) is drawn in the `wkx-namespace`
+[docs/images/architecture.svg](docs/images/architecture.svg) is drawn in the `wkx-namespace`
 design system and carries both its palettes; it follows the night theme by
 default and the day theme when the viewer prefers light.

@@ -233,9 +233,9 @@ The diagram shows the two sides of the gate. On the laptop, the hooks run on
 set again, and then pytest. A run starts on your `git push` of any branch, on
 a Dependabot pull request, or on a rebase-merge in GitHub.
 
-![The CI gates: the hooks on the laptop, and the run in GitHub that repeats them](docs/ci.svg)
+![The CI gates: the hooks on the laptop, and the run in GitHub that repeats them](docs/images/ci.svg)
 
-Like the architecture diagram, [docs/ci.svg](docs/ci.svg) is drawn in the
+Like the architecture diagram, [docs/images/ci.svg](docs/images/ci.svg) is drawn in the
 `wkx-namespace` design system. It follows the night theme by default and the
 day theme when the viewer prefers light.
 
