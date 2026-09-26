@@ -8,16 +8,31 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-yellow)](LICENSE)
 
-A read-only localhost web app that inventories the dev machine it runs on:
+A read-only localhost web app that inventories the macOS dev machine it runs on:
 repos and their git status, language toolchains, the Claude environment,
 system tools, Homebrew, and Docker. It shows facts, lights up data-evident
 anomalies inline, and never changes the machine.
 
 The board is built end to end, from the workspace slice to the flag layer.
-[ROADMAP.md](ROADMAP.md) is the build order; [CONTEXT.md](CONTEXT.md) is the
-glossary; [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together.
+[CONTEXT.md](CONTEXT.md) is the ubiquitous domain language,
+[ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together, and
+[ROADMAP.md](ROADMAP.md) is the build order.
 
-## The board
+- [The dashboard](#the-dashboard)
+- [Running](#running)
+  - [Options](#options)
+  - [Run at startup (macOS)](#run-at-startup-macos)
+  - [Configuration](#configuration)
+  - [The View](#the-view)
+- [Stack](#stack)
+  - [Development](#development)
+  - [Before you commit](#before-you-commit)
+- [Security posture](#security-posture)
+- [License](#license)
+
+## The dashboard
+
+![Example dashboard](docs/images/dashboard.png)
 
 Each Section leads with a row of stat tiles and a table beneath. Three controls
 shape how a table reads. A Filter keeps only the rows that hold the text and marks
@@ -68,45 +83,6 @@ disabled plugin raises one plugin-disabled flag and nothing more for its assets:
 its skills and its MCP servers stay quiet. The disabled-skill count is thus the
 count of skills you set to `off`, not the skills of a disabled plugin.
 
-## Security posture
-
-- Binds to `127.0.0.1` only, with no auth. Loopback is the boundary, so every
-  route — reads included — refuses a request whose `Host` is not a bound loopback
-  name and port with `403`, which shuts out a DNS-rebinding page that would
-  otherwise reach the board same-origin under its own name.
-- Every collector is a probe. The board writes two things and nothing else: a
-  non-interactive background `git fetch`, bounded and timed out, which never
-  touches a working tree; and its own View file (see below). It never writes its
-  configuration and never changes what it inventories.
-- The View file is the board's first write route. The board accepts a write only
-  from loopback and its own origin: the request must send `application/json`, a
-  `Host` that is the bound host and port, and a same-origin `Origin` (or none, for
-  a non-browser client). Any other request gets `403`. Each write changes one
-  preference, merges under a lock, and writes the file atomically; a corrupt file
-  on disk stops the write, because the board never rebuilds the file from memory.
-- This repo is machine-neutral: code and docs reference no specific machine,
-  config is typed with computed defaults, example data is synthetic, and the
-  UI relativises paths and strips credentials from remotes by default.
-- The repo's supply chain is gated: the CI workflow token is read-only, each
-  action is pinned to a full commit SHA, Dependabot watches the lock file and
-  the workflow, and vulnerability alerts and automated security fixes are on.
-
-## Stack
-
-Python 3.14 · uv · FastAPI · pydantic · static HTML/JS frontend with no build
-step · SSE for progressive fill-in. Python standards are followed via the
-`standards/python/` git submodule, pinned to a released tag of
-[python-standards](https://github.com/etoews/python-standards).
-
-The gates beside the tools: a pre-commit hook set (ruff, ty, the lock check,
-hygiene checks, a Conventional Commits subject rule, and pytest on push), CI
-on every branch that runs that same hook set with each action pinned by
-commit, and Dependabot on the lock file and the workflow. See
-[Before you commit](#before-you-commit).
-
-The look and feel is borrowed from the `wkx-namespace` design system; its
-status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
-
 ## Running
 
 Clone, sync, and serve:
@@ -129,6 +105,54 @@ Then open `http://localhost:8787`.
 | `--port <n>` | `8787` | Bind on `127.0.0.1:<n>`. |
 | `--open-browser` | off | Open the board in the default browser at startup. |
 | `--reload` | off | Restart on a source or configuration change. For development. |
+
+### Run at startup (macOS)
+
+You can run the board at login and keep it developable at the same time. A
+launchd LaunchAgent runs `serve --reload`, so the one always-on instance is also
+the development instance. When you edit the package source, that instance
+restarts and serves the new code.
+
+Install it with the helper script:
+
+```sh
+uv run scripts/install_launch_on_startup.py
+```
+
+The script fills the committed plist template
+(`scripts/wkx-ecosystem-localhost.plist.template`) with paths found on your
+machine, writes the result to `~/Library/LaunchAgents`, validates it, and loads
+the agent. The rendered plist holds machine paths, so it stays out of this
+repository. Set `PORT`, `LABEL`, or `UV_BIN` as environment variables to
+override the defaults.
+
+Manage the agent (change the label if you set your own):
+
+```sh
+# status
+launchctl print gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+# restart, for example after a dependency change
+launchctl kickstart -k gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+# stop and remove
+launchctl bootout gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
+```
+
+The reloader watches the package source and the configuration file
+(`wkx-ecosystem-localhost.toml`). It picks up a Python code change and a
+configuration edit, and reads the new configuration on the restart. It does not
+pick up a dependency change (`pyproject.toml` or `uv.lock`), and it does not pick
+up a `.env` change on its own. For those, restart the agent with `launchctl
+kickstart -k`.
+
+A reload or a stop waits at most 2 seconds for open connections, then closes
+them. Each open board tab holds a live View stream that does not end on its own,
+so without this limit a reload stops while a tab is open. The tab reconnects its
+stream to the new instance automatically.
+
+This pattern has one trade-off. If you save a file with a syntax error or a bad
+import, the reloader does not serve the broken code, so the board is down until
+you fix it. On a single-user development machine this is the intended behaviour,
+because the always-on instance is deliberately the development instance.
 
 ### Configuration
 
@@ -194,6 +218,22 @@ link is kept and your dotfiles copy stays current.
 The board never refuses to start on the View file: a name it does not know is
 dropped with a warning and raised as a Flag in the config Section, so the board
 always starts on a file it wrote.
+
+## Stack
+
+Python 3.14 · uv · FastAPI · pydantic · static HTML/JS frontend with no build
+step · SSE for progressive fill-in. Python standards are followed via the
+`standards/python/` git submodule, pinned to a released tag of
+[python-standards](https://github.com/etoews/python-standards).
+
+The gates beside the tools: a pre-commit hook set (ruff, ty, the lock check,
+hygiene checks, a Conventional Commits subject rule, and pytest on push), CI
+on every branch that runs that same hook set with each action pinned by
+commit, and Dependabot on the lock file and the workflow. See
+[Before you commit](#before-you-commit).
+
+The look and feel is borrowed from the `wkx-namespace` design system; its
+status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
 
 ### Development
 
@@ -267,53 +307,28 @@ runs ruff through a mirror and wires one stage.
 [python-standards#1](https://github.com/etoews/python-standards/issues/1) is
 the planned change to the standard.
 
-### Run at startup (macOS)
+## Security posture
 
-You can run the board at login and keep it developable at the same time. A
-launchd LaunchAgent runs `serve --reload`, so the one always-on instance is also
-the development instance. When you edit the package source, that instance
-restarts and serves the new code.
-
-Install it with the helper script:
-
-```sh
-uv run scripts/install_launch_on_startup.py
-```
-
-The script fills the committed plist template
-(`scripts/wkx-ecosystem-localhost.plist.template`) with paths found on your
-machine, writes the result to `~/Library/LaunchAgents`, validates it, and loads
-the agent. The rendered plist holds machine paths, so it stays out of this
-repository. Set `PORT`, `LABEL`, or `UV_BIN` as environment variables to
-override the defaults.
-
-Manage the agent (change the label if you set your own):
-
-```sh
-# status
-launchctl print gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
-# restart, for example after a dependency change
-launchctl kickstart -k gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
-# stop and remove
-launchctl bootout gui/$(id -u)/dev.$(id -un).wkx-ecosystem-localhost
-```
-
-The reloader watches the package source and the configuration file
-(`wkx-ecosystem-localhost.toml`). It picks up a Python code change and a
-configuration edit, and reads the new configuration on the restart. It does not
-pick up a dependency change (`pyproject.toml` or `uv.lock`), and it does not pick
-up a `.env` change on its own. For those, restart the agent with `launchctl
-kickstart -k`.
-
-A reload or a stop waits at most 2 seconds for open connections, then closes
-them. Each open board tab holds a live View stream that does not end on its own,
-so without this limit a reload stops while a tab is open. The tab reconnects its
-stream to the new instance automatically.
-
-This pattern has one trade-off. If you save a file with a syntax error or a bad
-import, the reloader does not serve the broken code, so the board is down until
-you fix it. On a single-user development machine this is the intended behaviour,
-because the always-on instance is deliberately the development instance.
+- Binds to `127.0.0.1` only, with no auth. Loopback is the boundary, so every
+  route — reads included — refuses a request whose `Host` is not a bound loopback
+  name and port with `403`, which shuts out a DNS-rebinding page that would
+  otherwise reach the board same-origin under its own name.
+- Every collector is a probe. The board writes two things and nothing else: a
+  non-interactive background `git fetch`, bounded and timed out, which never
+  touches a working tree; and its own View file (see below). It never writes its
+  configuration and never changes what it inventories.
+- The View file is the board's first write route. The board accepts a write only
+  from loopback and its own origin: the request must send `application/json`, a
+  `Host` that is the bound host and port, and a same-origin `Origin` (or none, for
+  a non-browser client). Any other request gets `403`. Each write changes one
+  preference, merges under a lock, and writes the file atomically; a corrupt file
+  on disk stops the write, because the board never rebuilds the file from memory.
+- This repo is machine-neutral: code and docs reference no specific machine,
+  config is typed with computed defaults, example data is synthetic, and the
+  UI relativises paths and strips credentials from remotes by default.
+- The repo's supply chain is gated: the CI workflow token is read-only, each
+  action is pinned to a full commit SHA, Dependabot watches the lock file and
+  the workflow, and vulnerability alerts and automated security fixes are on.
 
 ## License
 
