@@ -95,6 +95,25 @@ def test_serve_default_binds_a_built_app(uvicorn_calls: list[Call]) -> None:
     assert not kwargs.get("reload", False)  # the production path never reloads
 
 
+def test_serve_default_bounds_the_graceful_shutdown(uvicorn_calls: list[Call]) -> None:
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 0
+    (_args, kwargs) = uvicorn_calls[0]
+    # An open SSE stream never closes on its own, so an unbounded wait would hang
+    # the shutdown for as long as a board tab stays open.
+    assert kwargs["timeout_graceful_shutdown"] == cli._GRACEFUL_SHUTDOWN_S
+
+
+def test_serve_reload_bounds_the_graceful_shutdown(reloader_calls: list[ReloaderCall]) -> None:
+    result = runner.invoke(cli.app, ["serve", "--reload"])
+
+    assert result.exit_code == 0
+    (config, _config_file) = reloader_calls[0]
+    # Each reload shuts the old worker down; an open SSE stream must not wedge it.
+    assert config.timeout_graceful_shutdown == cli._GRACEFUL_SHUTDOWN_S
+
+
 def test_serve_reload_uses_the_factory_import_string(reloader_calls: list[ReloaderCall]) -> None:
     result = runner.invoke(cli.app, ["serve", "--reload"])
 

@@ -37,6 +37,13 @@ _HOST = "127.0.0.1"
 # its own by _ConfigWatch instead (see _ConfigAwareReload).
 _PACKAGE_DIR = Path(__file__).resolve().parent
 
+# How long a shutdown waits for open connections before it cancels them. Every
+# open board tab holds /api/view/stream, an SSE stream that never ends on its own,
+# so an unbounded wait (uvicorn's default) hangs every reload and every stop for as
+# long as a tab stays open. A cancelled stream costs nothing: the browser's
+# EventSource reconnects to the new worker. Short, so a reload stays prompt.
+_GRACEFUL_SHUTDOWN_S = 2
+
 # Import-string factory uvicorn's reloader re-imports on each change.
 _RELOAD_TARGET = "wkx_ecosystem_localhost.app:create_app_from_env"
 
@@ -200,6 +207,7 @@ def serve(
             host=_HOST,
             port=bind_port,
             log_config=None,
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_S,
         )
         _run_reloader(config, config_file)
     else:
@@ -213,6 +221,7 @@ def serve(
             host=_HOST,
             port=bind_port,
             log_config=None,
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_S,
         )
 
 

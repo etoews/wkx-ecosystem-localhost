@@ -298,6 +298,11 @@ pick up a dependency change (`pyproject.toml` or `uv.lock`), and it does not pic
 up a `.env` change on its own. For those, restart the agent with `launchctl
 kickstart -k`.
 
+A reload or a stop waits at most 2 seconds for open connections, then closes
+them. Each open board tab holds a live View stream that does not end on its own,
+so without this limit a reload stops while a tab is open. The tab reconnects its
+stream to the new instance automatically.
+
 This pattern has one trade-off. If you save a file with a syntax error or a bad
 import, the reloader does not serve the broken code, so the board is down until
 you fix it. On a single-user development machine this is the intended behaviour,
