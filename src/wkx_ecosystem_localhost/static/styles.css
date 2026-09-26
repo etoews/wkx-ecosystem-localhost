@@ -520,7 +520,17 @@ mark.match {
  * Flag layer and a clean row leaves the cell quiet. The inner .cell-flex is
  * inline, so text-align settles its badge against the right edge. */
 th.flags, td.flags-col { text-align: right; }
-.t-name { font-weight: 600; overflow-wrap: anywhere; }
+/* A name is one identifier (a repo, tool, package, skill, or extension), so it
+ * breaks only where it already has a break, at a hyphen or a space, never mid-word.
+ * Letting it wrap anywhere also shrank its column's minimum width, so a tight
+ * table squeezed the name column first and split names like "wkx-ecosyste|m-lo".
+ * Not nowrap either: above the phone breakpoint the wrap cannot scroll, so a name
+ * that could not wrap would push a tight table past its panel. At phone widths
+ * the wrap does scroll, so there a name stays whole (see the 640px query). A long
+ * free-form value in the name column (a path, a config key, a Mute label) opts
+ * back into wrapping anywhere with .t-wrap. */
+.t-name { font-weight: 600; }
+.t-name.t-wrap { overflow-wrap: anywhere; }
 /* A GitHub repository link: quiet by default so it never competes with the row's
  * facts, brightening on hover or keyboard focus. */
 .gh-link { color: var(--fog); text-decoration: none; font-size: .82rem; white-space: nowrap; }
@@ -971,4 +981,7 @@ footer .key {
    * sideways. This makes the wrap a scroll box, so its header sticks within the
    * wrap rather than to the screen — the accepted trade at phone widths. */
   .tbl-wrap { overflow-x: auto; }
+  /* The wrap scrolls here, so a name keeps its one line and the table scrolls
+   * instead of breaking the name at its hyphens. */
+  .t-name:not(.t-wrap) { white-space: nowrap; }
 }

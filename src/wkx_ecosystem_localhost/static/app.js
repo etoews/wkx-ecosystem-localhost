@@ -3328,7 +3328,7 @@ window.wkxFilter = (function () {
       totalCell.setAttribute("data-sort", String(repo.total_bytes));
       built.tbody.append(
         U.tr([
-          U.td(U.el("span", "t-name", repo.path)),
+          U.td(U.el("span", "t-name t-wrap", repo.path)),
           sizeCell(repo.venv),
           sizeCell(repo.node_modules),
           totalCell,
@@ -3436,7 +3436,7 @@ window.wkxFilter = (function () {
   }
 
   function keyCell(entry) {
-    const cell = U.td(U.el("span", "t-name", entry.key));
+    const cell = U.td(U.el("span", "t-name t-wrap", entry.key));
     if (entry.shadowed) {
       U.append(cell, U.el("span", "q", " · shadowed"));
       cell.title = "A later entry sets this key to a different value; git takes the last, so this one has no effect.";
@@ -3495,7 +3495,7 @@ window.wkxFilter = (function () {
         built.tbody.append(
           U.tr([
             U.td(inc.condition ? U.el("span", "ver", inc.condition) : U.quiet("always")),
-            U.td(U.el("span", "t-name", inc.path)),
+            U.td(U.el("span", "t-name t-wrap", inc.path)),
             status,
             U.flagCell("git-config:" + inc.path),
           ]),
@@ -3558,7 +3558,7 @@ window.wkxFilter = (function () {
     values.forEach(function (item) {
       built.tbody.append(
         U.tr([
-          U.td(U.el("span", "t-name", item.key)),
+          U.td(U.el("span", "t-name t-wrap", item.key)),
           U.td(U.el("span", "ver", item.value)),
           sourceCell(item.source),
           U.flagCell(),
@@ -3720,7 +3720,7 @@ window.wkxFilter = (function () {
       });
       built.tbody.append(
         U.tr([
-          U.td(U.el("span", "t-name", muteLabel(rule.category))),
+          U.td(U.el("span", "t-name t-wrap", muteLabel(rule.category))),
           U.td(target),
           U.td(unmute, "flags-col"),
         ]),
