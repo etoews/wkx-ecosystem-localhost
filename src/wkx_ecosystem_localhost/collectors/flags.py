@@ -100,8 +100,8 @@ CATEGORIES: frozenset[str] = frozenset(
 # The name column (the row's identity) and the Flags rail are locked on every
 # table, so every row stays identifiable and its Flags visible; a table whose
 # columns are all locked still carries a (no-op) menu, for consistency. Tables that
-# share one on-screen column spec share one id here — the four toolchains subtables
-# under ``toolchains`` and the two Claude skills tables under ``claude-skills`` — so
+# share one on-screen column spec share one id here — the two Node toolchains
+# subtables under ``toolchains`` and the two Claude skills tables under ``claude-skills`` — so
 # their columns stay aligned. The client's TABLE_COLUMNS map in app.js must list
 # exactly these ids and keys (a test cross-checks them, the way CATEGORY_LABEL is
 # cross-checked against CATEGORIES).
@@ -147,6 +147,15 @@ TABLES: dict[str, BoardTable] = {
             ("working-tree", _H),
             ("stash", _H),
             ("roadmap", _H),
+            ("flags", _L),
+        ),
+    ),
+    "toolchains-python": BoardTable(
+        section="toolchains",
+        columns=_cols(
+            ("name", _L),
+            ("installed", _H),
+            ("current", _H),
             ("flags", _L),
         ),
     ),
@@ -389,9 +398,9 @@ def _homebrew_flags(homebrew: HomebrewSection) -> list[Flag]:
 
 
 def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
-    """One Flag per uv-managed interpreter with a newer stable release on offer.
+    """One Flag per uv-managed interpreter whose current release is newer.
 
-    The Python sibling of ``brew-outdated``: ``latest`` is set by the Collector from
+    The Python sibling of ``brew-outdated``: ``current`` is set by the Collector from
     what ``uv python list`` offers, so the Flag reads straight off the model.
     """
     return [
@@ -403,7 +412,7 @@ def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
             message="update available",
         )
         for interpreter in toolchains.python.interpreters
-        if interpreter.latest is not None
+        if interpreter.current != interpreter.version
     ]
 
 
@@ -645,7 +654,7 @@ def _empty_toolchains() -> ToolchainsSection:
     """
     absent = Tool(name="", present=False)
     return ToolchainsSection(
-        python=PythonToolchain(interpreters=[], global_pin=None, repo_pins=[], system=absent),
+        python=PythonToolchain(interpreters=[], system=absent),
         node=NodeToolchain(node=absent, npm=absent, tsc=absent, package_managers=[], repos=[]),
     )
 

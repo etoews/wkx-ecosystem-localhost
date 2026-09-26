@@ -54,7 +54,7 @@ the real app end to end on a fake.
 | `/api/workspace/fetch` | SSE, each repo's ahead/behind as its background fetch lands |
 | `/api/submodules` | each repo's submodules with pins resolved |
 | `/api/submodules/probe` | SSE, each submodule's latest release and tags-behind |
-| `/api/toolchains` | Python and TypeScript/Node, global and per repo |
+| `/api/toolchains` | uv-managed Python interpreters, and TypeScript/Node globally and per repo |
 | `/api/claude` | skills, plugins, and MCP servers, each with its Origin |
 | `/api/system` | configured dev CLIs, present with version or missing |
 | `/api/homebrew` | outdated formulae and casks, or Homebrew's absence |

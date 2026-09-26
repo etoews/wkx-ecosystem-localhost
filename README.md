@@ -37,12 +37,13 @@ find a Section. Press `Enter` to go to it.
   stashes, and a Roadmap column that shows each repo's `ROADMAP.md` task-item
   progress as "ticked / total" with a thin meter; each submodule nested beneath
   its repo as "pinned · latest · releases-behind".
-- **Toolchains**: Python and TypeScript/Node, global and per repo, every subtable
-  in one shape (name · version · detail · state) so the columns align. A
-  uv-managed interpreter shows the latest stable Python release when a newer one
-  is available, and gets a Flag, the same as an outdated Homebrew package.
-  `uv python list` supplies the latest release, so the board makes no network
-  request.
+- **Toolchains**: Python and TypeScript/Node. The uv-managed Python interpreters
+  show Installed and Current, the same as the Homebrew tables. Current is the
+  latest stable Python release. An interpreter with a newer Current gets a Flag.
+  Hover an Installed version to see the path to that interpreter. `uv python
+  list` supplies the latest release, so the board makes no network request. The
+  Node tools and per-repo TypeScript share one shape (name · version · detail ·
+  state) so the columns align.
 - **Claude**: plugins with a count of the skills each ships (expand a plugin row
   to reveal them), your own skills in their own table, and MCP servers, each with
   its Origin. Each skill shows its own state. A plugin skill has no switch of its

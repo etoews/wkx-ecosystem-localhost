@@ -280,11 +280,6 @@ UV_PYTHON_LIST = (
     "pypy-3.11.11-macos-aarch64-none        <download available>\n"
 )
 
-# The uv global pin file and per-repo pins.
-UV_GLOBAL_PIN = "3.14.4\n"
-WEB_PYTHON_PIN = "3.14.4\n"
-API_PYTHON_PIN = "3.13.13\n"
-
 # Per-repo package.json manifests. web declares TypeScript ^5.4.0 but has 5.3.3
 # installed (visible drift); api declares ~5.2.0 with nothing installed; cli has
 # a manifest but no TypeScript at all, so it drops out of the TypeScript story.
@@ -300,12 +295,11 @@ CLI_PACKAGE_JSON = '{\n  "name": "cli",\n  "dependencies": {\n    "chalk": "^5.3
 def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine exercising the toolchains Collector.
 
-    uv manages two installed interpreters (3.14.4 and 3.13.13) with a download
-    line excluded; the uv global pin is 3.14.4. Three repos under ``~/dev/acme``:
-    ``web`` pins 3.14.4 and declares TypeScript ^5.4.0 with 5.3.3 installed
-    (drift), ``api`` pins 3.13.13 and declares ~5.2.0 with nothing installed, and
-    ``cli`` carries a manifest without TypeScript so it drops from the TypeScript
-    rows and, lacking a ``.python-version``, from the pins. Globally node and npm
+    uv manages two installed interpreters (3.14.4 and 3.13.13) with the download
+    lines excluded. Three repos under ``~/dev/acme``: ``web`` declares TypeScript
+    ^5.4.0 with 5.3.3 installed (drift), ``api`` declares ~5.2.0 with nothing
+    installed, and ``cli`` carries a manifest without TypeScript so it drops from
+    the TypeScript rows. Globally node and npm
     are present, pnpm is present, and tsc and bun are absent, so an absent tool
     lands as an absent fact. Returns the machine plus the home and roots.
     """
@@ -313,11 +307,8 @@ def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
         dirs={DEV, DEV / "acme", WEB, API, CLI},
         repos={WEB, API, CLI},
         files={
-            HOME / ".config" / "uv" / ".python-version": UV_GLOBAL_PIN,
-            WEB / ".python-version": WEB_PYTHON_PIN,
             WEB / "package.json": WEB_PACKAGE_JSON,
             WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
-            API / ".python-version": API_PYTHON_PIN,
             API / "package.json": API_PACKAGE_JSON,
             CLI / "package.json": CLI_PACKAGE_JSON,
         },
@@ -848,9 +839,8 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
     """Build a fake machine that lights up the whole at-rest Flag layer.
 
     Three repos under ``~/dev/acme``: ``web`` is dirty on a tracked branch,
-    ``api`` is detached, and ``cli`` is on a branch with no upstream. ``web`` pins
-    Python 3.14.4 and ``api`` pins 3.13.13; both uv-managed interpreters have a newer stable
-    release on offer (Python update); ``web`` has TypeScript
+    ``api`` is detached, and ``cli`` is on a branch with no upstream. Both uv-managed
+    interpreters have a newer stable release on offer (Python update); ``web`` has TypeScript
     5.3.3 installed and ``cli`` has 5.4.5 (version drift). One configured tool
     (``ty``) is missing. The Claude environment carries a disabled plugin (whose
     skills stay enabled on their own), a user skill set off in skillOverrides (the
@@ -876,12 +866,9 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
         },
         repos={WEB, API, CLI},
         files={
-            # toolchain pins and manifests
-            HOME / ".config" / "uv" / ".python-version": UV_GLOBAL_PIN,
-            WEB / ".python-version": WEB_PYTHON_PIN,
+            # toolchain manifests
             WEB / "package.json": WEB_PACKAGE_JSON,
             WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
-            API / ".python-version": API_PYTHON_PIN,
             CLI / "package.json": FLAGS_CLI_PACKAGE_JSON,
             CLI / "node_modules" / "typescript" / "package.json": FLAGS_CLI_INSTALLED_TS,
             # Claude environment

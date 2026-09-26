@@ -1806,6 +1806,7 @@ window.wkxTables = (function () {
   // is pinned to CATEGORIES, so the client and the write-side validation agree.
   const TABLE_COLUMNS = {
     "workspace": ["repo", "branch", "upstream", "ahead", "behind", "working-tree", "stash", "roadmap", "flags"],
+    "toolchains-python": ["name", "installed", "current", "flags"],
     "toolchains": ["name", "version", "detail", "state", "flags"],
     "claude-plugins": ["plugin", "marketplace", "repo", "version", "state", "skills", "flags"],
     "claude-skills": ["skill", "origin", "state", "description", "flags"],
@@ -1828,6 +1829,7 @@ window.wkxTables = (function () {
   // Pinned to flags.TABLES the same way TABLE_COLUMNS is.
   const TABLE_SECTION = {
     "workspace": "workspace",
+    "toolchains-python": "toolchains",
     "toolchains": "toolchains",
     "claude-plugins": "claude",
     "claude-skills": "claude",
@@ -2635,10 +2637,10 @@ window.wkxFilter = (function () {
 })();
 
 // ---------- toolchains ----------
-// Four subtables — Python interpreters, per-repo pins, Node tools, per-repo
-// TypeScript — share one shape: Name | Version | Detail | State, laid out fixed so
-// the columns align down the Section. State carries the status word; the Flags
-// rail carries the update and drift badges.
+// Three subtables. The Python interpreters read like the Homebrew tables: Name |
+// Installed | Current, with an update badge when Current is newer. The Node tools
+// and per-repo TypeScript share one shape: Name | Version | Detail | State, laid
+// out fixed so their columns align. The Flags rail carries the badges.
 (function () {
   "use strict";
 
@@ -2671,39 +2673,21 @@ window.wkxFilter = (function () {
   }
 
   function interpreterTable(python) {
-    const built = window.wkxTables.mount(COLUMNS, "toolchains", "Python · interpreters (uv-managed)");
+    const built = window.wkxTables.mount(
+      [{ label: "Name" }, { label: "Installed" }, { label: "Current" }],
+      "toolchains-python",
+      "Python · per-repo interpreters (uv-managed)",
+    );
     python.interpreters.forEach(function (interp) {
-      const detail = interp.latest ? "latest " + interp.latest : "uv-managed";
+      const installed = U.el("span", "from", interp.version);
+      // Hovering the installed version names the interpreter it resolves to.
+      if (interp.path) installed.title = interp.path;
       built.tbody.append(
         U.tr([
           nameCell(interp.implementation, "tool"),
-          verCell(interp.version),
-          U.td(U.quiet(detail)),
-          U.td(interp.installed ? U.ok("installed") : U.quiet("not installed")),
+          U.td(installed),
+          U.td(U.el("span", "to", interp.current || "—")),
           U.flagCell("toolchains:python:" + interp.implementation + "-" + interp.version),
-        ]),
-      );
-    });
-    built.equip();
-    return built.wrap;
-  }
-
-  function pinTable(python) {
-    const built = window.wkxTables.mount(
-      COLUMNS,
-      "toolchains",
-      "Python · per-repo pins (global " + (python.global_pin || "unset") + ")",
-    );
-    python.repo_pins.forEach(function (pin) {
-      const matches = pin.version === python.global_pin;
-      const state = U.td(U.quiet(matches ? "matches global" : "differs from global"));
-      built.tbody.append(
-        U.tr([
-          nameCell(base(pin.repo), "repo"),
-          verCell(pin.version),
-          U.td(U.quiet("global " + (python.global_pin || "unset"))),
-          state,
-          U.flagCell(),
         ]),
       );
     });
@@ -2776,15 +2760,11 @@ window.wkxFilter = (function () {
     const nodes = [
       U.tiles([
         { value: py.interpreters.length, label: "Interpreters" },
-        { value: py.repo_pins.length, label: "Python pins" },
         { value: 3 + node.package_managers.length, label: "Node tools" },
         { value: node.repos.length, label: "TS repos" },
       ]),
       interpreterTable(py),
     ];
-    if (py.repo_pins.length > 0) {
-      nodes.push(pinTable(py));
-    }
     nodes.push(nodeToolTable(node));
     if (node.repos.length > 0) {
       nodes.push(tsTable(node));

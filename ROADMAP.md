@@ -116,7 +116,7 @@ The tracer bullet: one Collector wired end-to-end (Collector → pydantic model 
 ## M3: Toolchains + System tools
 
 **Deliverables**
-- [x] Python: `uv python list`, global pin (`~/.config/uv/.python-version`), per-repo `.python-version`, system `python3`.
+- [x] Python: `uv python list` (each interpreter's installed and current release), system `python3`. The global pin and per-repo `.python-version` pins were later removed from the board.
 - [x] TypeScript/Node: global `tsc`/`node`/`npm` (+ `pnpm`/`bun` if present); per-repo TypeScript from `package.json` and installed `node_modules/typescript`.
 - [x] System tools: configurable list with a generic default (`git`, `gh`, `uv`, `ruff`, `ty`, `pre-commit`, `docker`, `terraform`, `aws`, `code`, `node`); present-or-missing + version each.
 

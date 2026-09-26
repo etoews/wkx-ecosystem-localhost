@@ -172,27 +172,17 @@ class UvPython(BaseModel):
     ``installed`` distinguishes an interpreter present on this machine from one uv
     merely offers to download; only installed interpreters reach the board.
     ``path`` is the home-relative path uv reports for it, or None when uv gives no
-    path. ``latest`` is the newest stable release of the same implementation and
-    build variant that uv offers above ``version`` (a new minor counts as well as
-    a new patch), or None when this interpreter is already the newest.
+    path. ``current`` is the newest stable release of the same implementation and
+    build variant that uv offers (a new minor counts as well as a new patch), the
+    way Homebrew's ``current`` is the version it would upgrade to; it equals
+    ``version`` when this interpreter is already the newest.
     """
 
     implementation: str
     version: str
     installed: bool
     path: str | None = None
-    latest: str | None = None
-
-
-class RepoPin(BaseModel):
-    """One repo's Python pin, read from its ``.python-version``.
-
-    ``repo`` is the home-relative repo path and ``version`` is the pinned
-    interpreter version verbatim.
-    """
-
-    repo: str
-    version: str
+    current: str
 
 
 class Tool(BaseModel):
@@ -238,14 +228,11 @@ class RepoTypeScript(BaseModel):
 class PythonToolchain(BaseModel):
     """The Python side of the toolchains Section, all facts side by side.
 
-    ``interpreters`` are the installed interpreters uv manages, ``global_pin`` is
-    the uv global ``.python-version`` (None when unset), ``repo_pins`` are the
-    per-repo pins, and ``system`` is the ``python3`` found on the path.
+    ``interpreters`` are the installed interpreters uv manages and ``system`` is
+    the ``python3`` found on the path.
     """
 
     interpreters: list[UvPython]
-    global_pin: str | None = None
-    repo_pins: list[RepoPin]
     system: Tool
 
 

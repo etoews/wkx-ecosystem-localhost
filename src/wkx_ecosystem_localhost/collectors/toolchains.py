@@ -1,9 +1,8 @@
 """The toolchains Collector: the whole language story as facts.
 
 Reports the Python and the Node/TypeScript toolchains side by side. Python: the
-interpreters uv manages, each with the newest stable release uv offers above it,
-the uv global pin, each repo's ``.python-version`` pin, and the system
-``python3``. Node/TypeScript: the global ``node``, ``npm``, and ``tsc``, the
+interpreters uv manages, each with the current release uv offers for it, and the
+system ``python3``. Node/TypeScript: the global ``node``, ``npm``, and ``tsc``, the
 alternative package managers only when present, and per repo the declared versus
 installed TypeScript so drift is visible.
 
@@ -26,7 +25,6 @@ from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import (
     NodeToolchain,
     PythonToolchain,
-    RepoPin,
     RepoTypeScript,
     Tool,
     ToolchainsSection,
@@ -50,12 +48,7 @@ BUN_VERSION_ARGV = ("bun", "--version")
 # enough that a wedged tool degrades one row instead of hanging the board.
 PROBE_TIMEOUT_S = 5.0
 
-# The uv global pin lives here, under the user's config directory. Computed from
-# home so the default carries no machine-specific literal.
-_UV_PIN_REL = Path(".config") / "uv" / ".python-version"
-
 # Per-repo files read through the seam.
-_PYTHON_VERSION_FILE = ".python-version"
 _PACKAGE_JSON = "package.json"
 _INSTALLED_TS_REL = Path("node_modules") / "typescript" / "package.json"
 
@@ -246,10 +239,8 @@ def _tool(machine: Machine, name: str, argv: Sequence[str], *, timeout: float) -
     return Tool(name=name, version=version, present=version is not None)
 
 
-def _collect_python(
-    machine: Machine, repo_paths: Sequence[Path], *, home: Path, timeout: float
-) -> PythonToolchain:
-    """Assemble the Python side: uv interpreters, pins, and the system python3."""
+def _collect_python(machine: Machine, *, home: Path, timeout: float) -> PythonToolchain:
+    """Assemble the Python side: uv interpreters and the system python3."""
     list_result = machine.run(UV_PYTHON_LIST_ARGV, timeout=timeout)
     interpreters: list[UvPython] = []
     if list_result.ok:
@@ -268,37 +259,12 @@ def _collect_python(
                     version=entry.version,
                     installed=True,
                     path=relativise(Path(entry.path), home) if entry.path else None,
-                    latest=newer_stable(entry, entries),
+                    current=newer_stable(entry, entries) or entry.version,
                 )
             )
 
-    global_pin = _read_pin(machine, home / _UV_PIN_REL)
-
-    repo_pins: list[RepoPin] = []
-    for repo_path in repo_paths:
-        pin = _read_pin(machine, repo_path / _PYTHON_VERSION_FILE)
-        if pin is not None:
-            repo_pins.append(RepoPin(repo=relativise(repo_path, home), version=pin))
-
     system = _tool(machine, "python3", PYTHON3_VERSION_ARGV, timeout=timeout)
-    return PythonToolchain(
-        interpreters=interpreters,
-        global_pin=global_pin,
-        repo_pins=repo_pins,
-        system=system,
-    )
-
-
-def _read_pin(machine: Machine, path: Path) -> str | None:
-    """Read a ``.python-version`` file, returning its first non-empty line."""
-    text = machine.read_file(path)
-    if not text:
-        return None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return None
+    return PythonToolchain(interpreters=interpreters, system=system)
 
 
 def _collect_node(
@@ -357,23 +323,22 @@ def collect_toolchains(
 ) -> ToolchainsSection:
     """Collect the toolchains Section: the Python and Node/TypeScript facts.
 
-    A pure Collector over the seam. Every version probe and every pin or manifest
-    read reaches the host only through ``machine``, so the whole Section is
+    A pure Collector over the seam. Every version probe and every manifest read
+    reaches the host only through ``machine``, so the whole Section is
     exercised in tests against a fake. No judgement is applied: drift is left
     plainly visible for the M6 Flag layer to interpret.
 
     Args:
         machine: The seam every probe and read runs through.
         repo_paths: The repos discovered for the workspace Section, reused here
-            for per-repo pins and per-repo TypeScript.
-        home: Home directory, for relativising displayed paths and locating the
-            uv global pin.
+            for per-repo TypeScript.
+        home: Home directory, for relativising displayed paths.
         timeout: Per-probe wall-clock ceiling in seconds.
 
     Returns:
         The Section model: the Python toolchain and the Node/TypeScript toolchain.
     """
     return ToolchainsSection(
-        python=_collect_python(machine, repo_paths, home=home, timeout=timeout),
+        python=_collect_python(machine, home=home, timeout=timeout),
         node=_collect_node(machine, repo_paths, home=home, timeout=timeout),
     )

@@ -11,14 +11,16 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def test_toolchains_reports_uv_interpreters_and_pins(toolchains_client: TestClient) -> None:
+def test_toolchains_reports_uv_interpreters_installed_and_current(
+    toolchains_client: TestClient,
+) -> None:
     python = toolchains_client.get("/api/toolchains").json()["python"]
 
-    versions = [(i["implementation"], i["version"]) for i in python["interpreters"]]
-    assert versions == [("cpython", "3.14.4"), ("cpython", "3.13.13")]
-    assert python["global_pin"] == "3.14.4"
-    pins = {pin["repo"]: pin["version"] for pin in python["repo_pins"]}
-    assert pins == {"~/dev/acme/web": "3.14.4", "~/dev/acme/api": "3.13.13"}
+    rows = [(i["implementation"], i["version"], i["current"]) for i in python["interpreters"]]
+    assert rows == [("cpython", "3.14.4", "3.14.7"), ("cpython", "3.13.13", "3.14.7")]
+    # The per-repo and global pins are no longer part of the Section.
+    assert "repo_pins" not in python
+    assert "global_pin" not in python
 
 
 def test_toolchains_reports_the_system_interpreter(toolchains_client: TestClient) -> None:
@@ -62,8 +64,6 @@ def test_toolchains_paths_are_all_home_relative(toolchains_client: TestClient) -
 
     for interpreter in body["python"]["interpreters"]:
         assert interpreter["path"] is None or interpreter["path"].startswith("~")
-    for pin in body["python"]["repo_pins"]:
-        assert pin["repo"].startswith("~")
     for repo in body["node"]["repos"]:
         assert repo["repo"].startswith("~")
 

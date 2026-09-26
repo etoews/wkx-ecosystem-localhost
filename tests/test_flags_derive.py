@@ -26,7 +26,6 @@ from wkx_ecosystem_localhost.models import (
     Plugin,
     PythonToolchain,
     Repo,
-    RepoPin,
     RepoTypeScript,
     Section,
     Skill,
@@ -73,15 +72,16 @@ def _system(*tools: Tool) -> SystemToolsSection:
 def _toolchains(
     *,
     interpreters: list[UvPython] | None = None,
-    repo_pins: list[RepoPin] | None = None,
     ts_repos: list[RepoTypeScript] | None = None,
 ) -> ToolchainsSection:
     return ToolchainsSection(
         python=PythonToolchain(
             interpreters=interpreters
-            or [UvPython(implementation="cpython", version="3.14.4", installed=True)],
-            global_pin="3.14.4",
-            repo_pins=repo_pins or [],
+            or [
+                UvPython(
+                    implementation="cpython", version="3.14.4", installed=True, current="3.14.4"
+                )
+            ],
             system=Tool(name="python3", version="3.14.4", present=True),
         ),
         node=NodeToolchain(
@@ -292,8 +292,8 @@ def test_mcp_needs_auth_is_a_problem_flag() -> None:
 def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
     toolchains = _toolchains(
         interpreters=[
-            UvPython(implementation="cpython", version="3.14.4", installed=True, latest="3.14.7"),
-            UvPython(implementation="cpython", version="3.14.7", installed=True),
+            UvPython(implementation="cpython", version="3.14.4", installed=True, current="3.14.7"),
+            UvPython(implementation="cpython", version="3.14.7", installed=True, current="3.14.7"),
         ]
     )
 
@@ -304,19 +304,6 @@ def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
     assert outdated[0].section == "toolchains"
     assert outdated[0].level == ATTENTION
     assert outdated[0].message == "update available"
-
-
-def test_differing_repo_pins_raise_no_flag() -> None:
-    toolchains = _toolchains(
-        repo_pins=[
-            RepoPin(repo="~/dev/acme/web", version="3.14.4"),
-            RepoPin(repo="~/dev/acme/api", version="3.13.13"),
-        ]
-    )
-
-    flags = _derive(toolchains=toolchains)
-
-    assert [f for f in flags if f.section == "toolchains"] == []
 
 
 # ------------------------- cross-item drift (multi-repo) -------------------------
@@ -524,7 +511,7 @@ def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
     # silence the claude shadow the same pass derives.
     toolchains = _toolchains(
         interpreters=[
-            UvPython(implementation="cpython", version="3.14.4", installed=True, latest="3.14.7")
+            UvPython(implementation="cpython", version="3.14.4", installed=True, current="3.14.7")
         ],
         ts_repos=[
             RepoTypeScript(repo="~/dev/acme/web", declared="^5.4.0", installed="5.3.3"),
@@ -556,9 +543,10 @@ def test_no_flag_message_uses_the_status_words() -> None:
     flags = _derive(
         workspace=_workspace(repo),
         toolchains=_toolchains(
-            repo_pins=[
-                RepoPin(repo="~/dev/acme/web", version="3.14.4"),
-                RepoPin(repo="~/dev/acme/api", version="3.13.13"),
+            interpreters=[
+                UvPython(
+                    implementation="cpython", version="3.14.4", installed=True, current="3.14.7"
+                )
             ]
         ),
         system=_system(Tool(name="ty", version=None, present=False)),
@@ -621,9 +609,10 @@ def test_every_derived_category_is_registered() -> None:
     flags = _derive(
         workspace=_workspace(repo),
         toolchains=_toolchains(
-            repo_pins=[
-                RepoPin(repo="~/dev/acme/web", version="3.14.4"),
-                RepoPin(repo="~/dev/acme/api", version="3.13.13"),
+            interpreters=[
+                UvPython(
+                    implementation="cpython", version="3.14.4", installed=True, current="3.14.7"
+                )
             ]
         ),
         system=_system(Tool(name="ty", version=None, present=False)),

@@ -1,7 +1,7 @@
 """The toolchains Collector, driven over the fake seam with synthetic fixtures.
 
 Exercises the assembled Section: uv interpreters de-duplicated and relativised,
-the global and per-repo Python pins, the system python3, the present-only package
+each interpreter's current release, the system python3, the present-only package
 managers, and the per-repo declared-versus-installed TypeScript, plus an absent
 tool landing as an absent fact rather than an error.
 """
@@ -11,7 +11,8 @@ from __future__ import annotations
 import fixtures
 from fakes import FakeMachine
 
-from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
+from wkx_ecosystem_localhost.collectors.toolchains import UV_PYTHON_LIST_ARGV, collect_toolchains
+from wkx_ecosystem_localhost.machine import CommandResult
 from wkx_ecosystem_localhost.models import ToolchainsSection
 
 
@@ -29,20 +30,22 @@ def test_uv_interpreters_are_installed_only_deduped_and_relativised() -> None:
     assert section.python.interpreters[0].path == "~/.local/bin/python3.14"
 
 
-def test_each_interpreter_reports_the_newest_stable_release_on_offer() -> None:
+def test_each_interpreter_reports_the_current_release_on_offer() -> None:
     section = _section()
 
-    latest = {i.version: i.latest for i in section.python.interpreters}
+    current = {i.version: i.current for i in section.python.interpreters}
     # 3.14.7 is on offer: newer than both, stable, and a default (not free-threaded) build.
-    assert latest == {"3.14.4": "3.14.7", "3.13.13": "3.14.7"}
+    assert current == {"3.14.4": "3.14.7", "3.13.13": "3.14.7"}
 
 
-def test_global_and_per_repo_pins_are_reported() -> None:
-    section = _section()
+def test_an_interpreter_with_nothing_newer_on_offer_is_its_own_current() -> None:
+    uv_list = "cpython-3.14.7-macos-aarch64-none    /home/.local/bin/python3.14\n"
+    machine = FakeMachine(commands={(None, UV_PYTHON_LIST_ARGV): CommandResult(0, uv_list, "")})
 
-    assert section.python.global_pin == "3.14.4"
-    pins = {pin.repo: pin.version for pin in section.python.repo_pins}
-    assert pins == {"~/dev/acme/web": "3.14.4", "~/dev/acme/api": "3.13.13"}
+    section = collect_toolchains(machine, [], home=fixtures.HOME)
+
+    (interpreter,) = section.python.interpreters
+    assert interpreter.current == interpreter.version == "3.14.7"
 
 
 def test_system_python3_is_reported_as_present() -> None:
@@ -100,8 +103,6 @@ def test_an_empty_machine_yields_absent_facts_not_errors() -> None:
     section = collect_toolchains(FakeMachine(), [], home=fixtures.HOME)
 
     assert section.python.interpreters == []
-    assert section.python.global_pin is None
-    assert section.python.repo_pins == []
     assert section.python.system.present is False
     assert section.node.node.present is False
     assert section.node.package_managers == []
