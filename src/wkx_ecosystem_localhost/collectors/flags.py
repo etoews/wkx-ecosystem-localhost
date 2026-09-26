@@ -409,16 +409,16 @@ def _homebrew_flags(homebrew: HomebrewSection) -> list[Flag]:
 
 
 def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
-    """One Flag per uv-managed interpreter whose current release is newer.
+    """One Flag per uv-managed interpreter, global or a repo's venv, with a newer release.
 
     The Python sibling of ``brew-outdated``: ``current`` is set by the Collector from
     what ``uv python list`` offers, so the Flag reads straight off the model. Only a
     uv-managed interpreter is flagged, because only uv can upgrade it: Homebrew's
     is already a ``brew-outdated`` Flag and the OS's cannot be upgraded. A repo's
-    venv is not flagged either; it runs on a global interpreter whose row already
-    carries the Flag, and ``uv python upgrade`` updates the venv with it.
+    venv built on a uv-managed interpreter is flagged on its own row, so each repo
+    still on an older release shows it.
     """
-    return [
+    flags = [
         Flag(
             section=Section.TOOLCHAINS,
             target=f"python:{interpreter.implementation}-{interpreter.version}",
@@ -429,6 +429,18 @@ def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
         for interpreter in toolchains.python.interpreters
         if interpreter.source == SOURCE_UV and interpreter.current != interpreter.version
     ]
+    flags += [
+        Flag(
+            section=Section.TOOLCHAINS,
+            target=f"venv:{repo.repo}",
+            level=ATTENTION,
+            category="python-outdated",
+            message="update available",
+        )
+        for repo in toolchains.python.repos
+        if repo.source == SOURCE_UV and repo.current != repo.version
+    ]
+    return flags
 
 
 def _docker_flags(docker: DockerSection) -> list[Flag]:

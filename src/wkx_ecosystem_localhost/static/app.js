@@ -875,7 +875,7 @@ window.wkxFlags = (function () {
     "no-upstream": "Publish and track the branch: git push -u origin <branch>.",
     "behind-remote": "Catch up to the remote: git pull --ff-only (or git pull --rebase).",
     "brew-outdated": "Upgrade it: brew upgrade <name>, or brew upgrade to update everything.",
-    "python-outdated": "Install the newer release: uv python install <version>, or uv python upgrade for a newer patch.",
+    "python-outdated": "Install the newer release: uv python install <version>, or uv python upgrade for a newer patch. For a repo on a new minor, also run uv python pin <version> and uv sync.",
     "tool-version-drift": "Reinstall TypeScript to the intended version (npm install) so it matches across the repos.",
     "submodule-tags-behind": "Bump it: git -C <path> fetch --tags, check out the latest tag, then commit the pointer.",
     "docker-unreachable": "Start Docker (Docker Desktop, or colima start / systemctl start docker), then reload.",
@@ -893,7 +893,7 @@ window.wkxFlags = (function () {
     "view-not-parsed": "The View file on disk does not parse as TOML, so the board is showing its defaults. Fix the file's syntax, or delete it to reset.",
     "view-unknown-key": "The View file names a key, panel, or Category the board does not know; the board dropped it. Check the file for a typo or a stale name.",
   };
-  const TARGET_PREFIX = /^(formula|cask|python|ts|skill|plugin|mcp):/;
+  const TARGET_PREFIX = /^(formula|cask|python|venv|ts|skill|plugin|mcp):/;
 
   // The board's own View-file self-diagnostics: these are never mutable from the UI,
   // because silencing "your View will not save" (or "does not parse", or "names an
@@ -2641,7 +2641,7 @@ window.wkxFilter = (function () {
 // ---------- toolchains ----------
 // Four subtables. The two Python tables, the global interpreters and each repo's
 // .venv interpreter, read like the Homebrew tables: Installed | Current, with an
-// update badge on a uv-managed interpreter whose Current is newer. The Node tools
+// update badge on each uv-managed row whose Current is newer. The Node tools
 // and per-repo TypeScript share one shape: Name | Version | Detail | State, laid
 // out fixed so their columns align. The Flags rail carries the badges.
 (function () {
@@ -2725,7 +2725,7 @@ window.wkxFilter = (function () {
           U.td(U.quiet(SOURCE_LABEL[repo.source] || repo.source)),
           installedCell(repo.version, repo.path),
           U.td(U.el("span", "to", repo.current || "—")),
-          U.flagCell(),
+          U.flagCell(repo.source === "uv" ? "toolchains:venv:" + repo.repo : null),
         ]),
       );
     });

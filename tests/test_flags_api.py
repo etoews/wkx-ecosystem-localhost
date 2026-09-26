@@ -45,6 +45,8 @@ def test_flags_endpoint_returns_every_at_rest_flag(flags_client: TestClient) -> 
     assert index[("homebrew", "cask:firefox")] == {"brew-outdated"}
     assert index[("toolchains", "python:cpython-3.14.4")] == {"python-outdated"}
     assert index[("toolchains", "python:cpython-3.13.13")] == {"python-outdated"}
+    assert index[("toolchains", "venv:~/dev/acme/web")] == {"python-outdated"}
+    assert ("toolchains", "venv:~/dev/acme/api") not in index
     assert index[("docker", "daemon")] == {"docker-unreachable"}
     assert index[("claude", "plugin:sketch")] == {"plugin-disabled"}
     assert index[("claude", "mcp:cloud-mcp")] == {"mcp-needs-auth"}

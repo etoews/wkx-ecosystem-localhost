@@ -315,27 +315,46 @@ def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
     assert outdated[0].message == "update available"
 
 
-def test_python_outdated_skips_interpreters_uv_cannot_upgrade_and_repo_venvs() -> None:
+def test_python_outdated_skips_interpreters_uv_cannot_upgrade() -> None:
     toolchains = _toolchains(
         interpreters=[
             _uv_python("3.14.6", current="3.14.7", source="homebrew"),
             _uv_python("3.9.6", current="3.14.7", source="macos"),
             _uv_python("3.12.1", current="3.14.7", source="other"),
         ],
-        python_repos=[
-            RepoPython(
-                repo="~/dev/acme/web",
-                version="3.13.13",
-                source="uv",
-                path="~/dev/acme/web/.venv/bin/python",
-                current="3.14.7",
-            )
-        ],
     )
 
     flags = _derive(toolchains=toolchains)
 
     assert [f for f in flags if f.category == "python-outdated"] == []
+
+
+def _repo_python(repo: str, version: str, *, current: str, source: str = "uv") -> RepoPython:
+    return RepoPython(
+        repo=repo,
+        version=version,
+        source=source,
+        path=f"{repo}/.venv/bin/python",
+        current=current,
+    )
+
+
+def test_python_outdated_flags_each_uv_repo_venv_with_a_newer_release() -> None:
+    toolchains = _toolchains(
+        python_repos=[
+            _repo_python("~/dev/acme/web", "3.13.13", current="3.14.7"),
+            _repo_python("~/dev/acme/api", "3.14.7", current="3.14.7"),
+            _repo_python("~/dev/acme/cli", "3.12.1", current="3.14.7", source="homebrew"),
+        ],
+    )
+
+    flags = _derive(toolchains=toolchains)
+
+    outdated = [f for f in flags if f.category == "python-outdated"]
+    # web is behind on uv; api is current; cli's venv sits on Homebrew's Python.
+    assert [f.target for f in outdated] == ["venv:~/dev/acme/web"]
+    assert outdated[0].section == "toolchains"
+    assert outdated[0].message == "update available"
 
 
 # ------------------------- cross-item drift (multi-repo) -------------------------

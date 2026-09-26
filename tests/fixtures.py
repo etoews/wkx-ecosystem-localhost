@@ -865,9 +865,10 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
 
     Three repos under ``~/dev/acme``: ``web`` is dirty on a tracked branch,
     ``api`` is detached, and ``cli`` is on a branch with no upstream. Both uv-managed
-    interpreters have a newer stable release on offer (Python update); ``web`` has TypeScript
-    5.3.3 installed and ``cli`` has 5.4.5 (version drift). One configured tool
-    (``ty``) is missing. The Claude environment carries a disabled plugin (whose
+    interpreters, and ``web``'s uv-built .venv, have a newer stable release on
+    offer (Python update; ``api``'s .venv is on Homebrew's Python, so it is not);
+    ``web`` has TypeScript 5.3.3 installed and ``cli`` has 5.4.5 (version drift).
+    One configured tool (``ty``) is missing. The Claude environment carries a disabled plugin (whose
     skills stay enabled on their own), a user skill set off in skillOverrides (the
     lone skill-disabled trigger), an MCP server that needs auth, a user skill whose
     name shadows a plugin skill across Origins, and an MCP configured under both a
@@ -891,7 +892,9 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
         },
         repos={WEB, API, CLI},
         files={
-            # toolchain manifests
+            # toolchain venvs and manifests
+            WEB / ".venv" / "pyvenv.cfg": WEB_PYVENV_CFG,
+            API / ".venv" / "pyvenv.cfg": API_PYVENV_CFG,
             WEB / "package.json": WEB_PACKAGE_JSON,
             WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
             CLI / "package.json": FLAGS_CLI_PACKAGE_JSON,

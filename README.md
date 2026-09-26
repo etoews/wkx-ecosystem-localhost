@@ -41,11 +41,11 @@ find a Section. Press `Enter` to go to it.
   and Current, the same as the Homebrew tables. The global interpreters table
   shows every interpreter that uv finds, from uv, Homebrew, or macOS. The
   per-repo interpreters table shows the interpreter in each repo's `.venv`.
-  Current is the latest stable Python release. A uv-managed interpreter with a
-  newer Current gets a Flag. Hover an Installed version to see the path to that
-  interpreter. `uv python list` supplies the latest release, so the board makes
-  no network request. The Node tools and per-repo TypeScript share one shape
-  (name · version · detail · state) so the columns align.
+  Current is the latest stable Python release. In both tables, a uv-managed row
+  with a newer Current gets a Flag. Hover an Installed version to see the path
+  to that interpreter. `uv python list` supplies the latest release, so the
+  board makes no network request. The Node tools and per-repo TypeScript share
+  one shape (name · version · detail · state) so the columns align.
 - **Claude**: plugins with a count of the skills each ships (expand a plugin row
   to reveal them), your own skills in their own table, and MCP servers, each with
   its Origin. Each skill shows its own state. A plugin skill has no switch of its
