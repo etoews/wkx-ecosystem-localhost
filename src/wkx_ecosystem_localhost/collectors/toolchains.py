@@ -1,13 +1,14 @@
 """The toolchains Collector: the whole language story as facts.
 
 Reports the Python and the Node/TypeScript toolchains side by side. Python: the
-interpreters uv manages, each with the current release uv offers for it, and the
-system ``python3``. Node/TypeScript: the global ``node``, ``npm``, and ``tsc``, the
-alternative package managers only when present, and per repo the declared versus
-installed TypeScript so drift is visible.
+interpreters uv finds, uv-managed or not, and each repo's ``.venv`` interpreter,
+each with the current release uv offers for it, and the system ``python3``.
+Node/TypeScript: the global ``node``, ``npm``, and ``tsc``, the alternative
+package managers only when present, and per repo the declared versus installed
+TypeScript so drift is visible.
 
 Everything reaches the host only through the ``Machine`` seam: version probes run
-fixed argv lists, and the pins and manifests are read as files. The parsing
+fixed argv lists, and the venv configs and manifests are read as files. The parsing
 functions are pure so their edge cases pin directly against synthetic fixtures.
 Facts only; anomaly judgement is the separate M6 Flag layer.
 """
@@ -24,11 +25,12 @@ from wkx_ecosystem_localhost.collectors import loads_or_none
 from wkx_ecosystem_localhost.machine import Machine
 from wkx_ecosystem_localhost.models import (
     NodeToolchain,
+    PythonInterpreter,
     PythonToolchain,
+    RepoPython,
     RepoTypeScript,
     Tool,
     ToolchainsSection,
-    UvPython,
 )
 from wkx_ecosystem_localhost.redaction import relativise
 
@@ -36,7 +38,10 @@ logger = logging.getLogger(__name__)
 
 # The exact, fixed argument lists each probe runs. Named constants so tests wire
 # their fake against the same argv the Collector emits, never a guess at it.
-UV_PYTHON_LIST_ARGV = ("uv", "python", "list")
+# --python-preference managed lists every interpreter uv can find, uv-managed or
+# not, overriding an operator's uv.toml that sets only-managed (which would hide
+# Homebrew's and the OS's interpreters from the board).
+UV_PYTHON_LIST_ARGV = ("uv", "python", "list", "--python-preference", "managed")
 PYTHON3_VERSION_ARGV = ("python3", "--version")
 NODE_VERSION_ARGV = ("node", "--version")
 NPM_VERSION_ARGV = ("npm", "--version")
@@ -51,6 +56,20 @@ PROBE_TIMEOUT_S = 5.0
 # Per-repo files read through the seam.
 _PACKAGE_JSON = "package.json"
 _INSTALLED_TS_REL = Path("node_modules") / "typescript" / "package.json"
+_PYVENV_CFG_REL = Path(".venv") / "pyvenv.cfg"
+_VENV_PYTHON_REL = Path(".venv") / "bin" / "python"
+
+# What installed an interpreter, read off its path (or its symlink target).
+SOURCE_UV = "uv"
+SOURCE_HOMEBREW = "homebrew"
+SOURCE_MACOS = "macos"
+SOURCE_OTHER = "other"
+_UV_PYTHON_DIR = "/uv/python/"
+_HOMEBREW_MARKERS = ("/opt/homebrew/", "/Cellar/", "Cellar/")
+_MACOS_PREFIXES = ("/usr/bin/", "/System/", "/Library/Developer/", "/Applications/Xcode")
+# The release at the head of a pyvenv.cfg version: uv writes version_info = 3.14.4,
+# virtualenv 3.12.1.final.0, and the stdlib venv version = 3.12.1.
+_VENV_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?")
 
 # uv colours its output even when captured; strip the escape sequences so the
 # parser sees clean text regardless of how uv decides to render.
@@ -73,13 +92,15 @@ class UvPythonEntry:
 
     ``installed`` is False for a line uv only offers to download. ``path`` is the
     raw (not yet relativised) path uv reports, or None for a download-available
-    line; the Collector relativises it before it reaches a model.
+    line; the Collector relativises it before it reaches a model. ``target`` is the
+    right side when uv reports a symlink as ``A -> B``, else None.
     """
 
     implementation: str
     version: str
     installed: bool
     path: str | None
+    target: str | None = None
 
 
 def strip_ansi(text: str) -> str:
@@ -94,7 +115,7 @@ def parse_uv_python_list(text: str) -> list[UvPythonEntry]:
     (the interpreter is installed) or ``<download available>`` (it is not). A
     line whose key does not parse as ``<impl>-<version>-<platform>`` is skipped
     rather than half-reported. When uv reports a symlink as ``A -> B``, the
-    user-facing left side is kept as the path.
+    user-facing left side is kept as the path and the right side as the target.
 
     Args:
         text: The stdout of ``uv python list``.
@@ -112,13 +133,60 @@ def parse_uv_python_list(text: str) -> list[UvPythonEntry]:
         if match is None:
             continue
         rest = rest.strip()
+        target: str | None = None
         if not rest or rest == _DOWNLOAD_AVAILABLE:
             installed, path = False, None
         else:
             installed = True
-            path = rest.split(" -> ", 1)[0].strip()
-        entries.append(UvPythonEntry(match.group("impl"), match.group("version"), installed, path))
+            path, arrow, right = rest.partition(" -> ")
+            path = path.strip()
+            target = right.strip() if arrow else None
+        entries.append(
+            UvPythonEntry(match.group("impl"), match.group("version"), installed, path, target)
+        )
     return entries
+
+
+def interpreter_source(path: str, target: str | None = None) -> str:
+    """Say what installed an interpreter, from its raw path and symlink target.
+
+    uv's own interpreters live under a ``uv/python`` directory (a ``~/.local/bin``
+    shim links into it); Homebrew's live under ``/opt/homebrew`` or link into a
+    ``Cellar``; the OS and its developer tools ship theirs under ``/usr/bin``,
+    ``/System``, ``/Library/Developer``, or Xcode. Anything else is ``other``.
+    """
+    places = (path, target or "")
+    if any(_UV_PYTHON_DIR in place for place in places):
+        return SOURCE_UV
+    if any(marker in place for place in places for marker in _HOMEBREW_MARKERS):
+        return SOURCE_HOMEBREW
+    if path.startswith(_MACOS_PREFIXES):
+        return SOURCE_MACOS
+    return SOURCE_OTHER
+
+
+def parse_pyvenv_cfg(text: str) -> tuple[str, str, str] | None:
+    """Read a venv's ``pyvenv.cfg`` into its implementation, version, and home.
+
+    ``version_info`` (uv, virtualenv) is preferred over ``version`` (the stdlib
+    venv), and trimmed to its release (``3.12.1.final.0`` reads as ``3.12.1``).
+    ``implementation`` defaults to ``cpython`` when the file does not name one.
+
+    Returns:
+        ``(implementation, version, home)`` lower-casing the implementation, or
+        None when the file names no parseable version.
+    """
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            values[key.strip().lower()] = value.strip()
+    raw = values.get("version_info") or values.get("version") or ""
+    match = _VENV_VERSION_RE.match(raw)
+    if match is None:
+        return None
+    implementation = values.get("implementation", "cpython").lower()
+    return implementation, match.group(0), values.get("home", "")
 
 
 def _stable_key(version: str) -> tuple[tuple[int, int, int], str] | None:
@@ -239,32 +307,54 @@ def _tool(machine: Machine, name: str, argv: Sequence[str], *, timeout: float) -
     return Tool(name=name, version=version, present=version is not None)
 
 
-def _collect_python(machine: Machine, *, home: Path, timeout: float) -> PythonToolchain:
-    """Assemble the Python side: uv interpreters and the system python3."""
+def _collect_python(
+    machine: Machine, repo_paths: Sequence[Path], *, home: Path, timeout: float
+) -> PythonToolchain:
+    """Assemble the Python side: every interpreter, each repo's venv, and python3."""
     list_result = machine.run(UV_PYTHON_LIST_ARGV, timeout=timeout)
-    interpreters: list[UvPython] = []
-    if list_result.ok:
-        entries = parse_uv_python_list(list_result.stdout)
-        seen: set[tuple[str, str]] = set()
-        for entry in entries:
-            if not entry.installed:
-                continue
-            key = (entry.implementation, entry.version)
-            if key in seen:
-                continue
-            seen.add(key)
-            interpreters.append(
-                UvPython(
-                    implementation=entry.implementation,
-                    version=entry.version,
-                    installed=True,
-                    path=relativise(Path(entry.path), home) if entry.path else None,
-                    current=newer_stable(entry, entries) or entry.version,
-                )
+    entries = parse_uv_python_list(list_result.stdout) if list_result.ok else []
+    interpreters: list[PythonInterpreter] = []
+    seen: set[tuple[str, str, str]] = set()
+    for entry in entries:
+        if not entry.installed or entry.path is None:
+            continue
+        source = interpreter_source(entry.path, entry.target)
+        # uv lists an interpreter once per link to it (a bin shim and its target,
+        # Homebrew's python3 and python3.14); one row per interpreter is enough.
+        key = (entry.implementation, entry.version, source)
+        if key in seen:
+            continue
+        seen.add(key)
+        interpreters.append(
+            PythonInterpreter(
+                implementation=entry.implementation,
+                version=entry.version,
+                source=source,
+                path=relativise(Path(entry.path), home),
+                current=newer_stable(entry, entries) or entry.version,
             )
+        )
+
+    repos: list[RepoPython] = []
+    for repo_path in repo_paths:
+        cfg = machine.read_file(repo_path / _PYVENV_CFG_REL)
+        parsed = parse_pyvenv_cfg(cfg) if cfg else None
+        if parsed is None:
+            continue
+        implementation, version, venv_home = parsed
+        venv = UvPythonEntry(implementation, version, True, None)
+        repos.append(
+            RepoPython(
+                repo=relativise(repo_path, home),
+                version=version,
+                source=interpreter_source(venv_home.rstrip("/") + "/"),
+                path=relativise(repo_path / _VENV_PYTHON_REL, home),
+                current=newer_stable(venv, entries) or version,
+            )
+        )
 
     system = _tool(machine, "python3", PYTHON3_VERSION_ARGV, timeout=timeout)
-    return PythonToolchain(interpreters=interpreters, system=system)
+    return PythonToolchain(interpreters=interpreters, repos=repos, system=system)
 
 
 def _collect_node(
@@ -331,7 +421,7 @@ def collect_toolchains(
     Args:
         machine: The seam every probe and read runs through.
         repo_paths: The repos discovered for the workspace Section, reused here
-            for per-repo TypeScript.
+            for each repo's ``.venv`` interpreter and per-repo TypeScript.
         home: Home directory, for relativising displayed paths.
         timeout: Per-probe wall-clock ceiling in seconds.
 
@@ -339,6 +429,6 @@ def collect_toolchains(
         The Section model: the Python toolchain and the Node/TypeScript toolchain.
     """
     return ToolchainsSection(
-        python=_collect_python(machine, home=home, timeout=timeout),
+        python=_collect_python(machine, repo_paths, home=home, timeout=timeout),
         node=_collect_node(machine, repo_paths, home=home, timeout=timeout),
     )

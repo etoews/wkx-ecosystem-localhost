@@ -16,8 +16,15 @@ def test_toolchains_reports_uv_interpreters_installed_and_current(
 ) -> None:
     python = toolchains_client.get("/api/toolchains").json()["python"]
 
-    rows = [(i["implementation"], i["version"], i["current"]) for i in python["interpreters"]]
-    assert rows == [("cpython", "3.14.4", "3.14.7"), ("cpython", "3.13.13", "3.14.7")]
+    rows = [(i["version"], i["source"], i["current"]) for i in python["interpreters"]]
+    assert rows == [
+        ("3.14.7", "homebrew", "3.14.7"),
+        ("3.14.4", "uv", "3.14.7"),
+        ("3.13.13", "uv", "3.14.7"),
+        ("3.9.6", "macos", "3.14.7"),
+    ]
+    repos = {r["repo"]: (r["version"], r["current"]) for r in python["repos"]}
+    assert repos == {"~/dev/acme/web": ("3.14.4", "3.14.7"), "~/dev/acme/api": ("3.12.1", "3.14.7")}
     # The per-repo and global pins are no longer part of the Section.
     assert "repo_pins" not in python
     assert "global_pin" not in python
@@ -63,7 +70,12 @@ def test_toolchains_paths_are_all_home_relative(toolchains_client: TestClient) -
     body = toolchains_client.get("/api/toolchains").json()
 
     for interpreter in body["python"]["interpreters"]:
-        assert interpreter["path"] is None or interpreter["path"].startswith("~")
+        # uv-managed interpreters live under home; Homebrew's and the OS's do not.
+        if interpreter["source"] == "uv":
+            assert interpreter["path"].startswith("~")
+    for repo in body["python"]["repos"]:
+        assert repo["repo"].startswith("~")
+        assert repo["path"].startswith("~")
     for repo in body["node"]["repos"]:
         assert repo["repo"].startswith("~")
 

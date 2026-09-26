@@ -261,15 +261,20 @@ CLI = DEV / "acme" / "cli"
 
 # uv python list output: a download-available pre-release and a newer stable
 # 3.14.7 and free-threaded 3.14.9 (all excluded as interpreters; 3.14.7 is the
-# update both installed interpreters report, and the free-threaded 3.14.9 is not),
-# the installed 3.14.4 listed twice as uv does (a bin symlink and its target,
-# de-duplicated to one), an installed 3.13.13, and a download-available pypy
-# (excluded). The
-# home-prefixed paths exercise relativisation and the "A -> B" symlink split.
+# update the older interpreters report, and the free-threaded 3.14.9 is not);
+# Homebrew's 3.14.7 listed twice as uv does (python3.14 and python3, both linking
+# into the Cellar, de-duplicated to one); uv's installed 3.14.4 listed twice (a bin
+# symlink and its target, de-duplicated to one); uv's 3.13.13; the macOS 3.9.6;
+# and a download-available pypy (excluded). The home-prefixed paths exercise
+# relativisation and the "A -> B" symlink split.
 UV_PYTHON_LIST = (
     "cpython-3.15.0a8-macos-aarch64-none    <download available>\n"
     "cpython-3.14.9+freethreaded-macos-aarch64-none    <download available>\n"
     "cpython-3.14.7-macos-aarch64-none      <download available>\n"
+    "cpython-3.14.7-macos-aarch64-none      "
+    "/opt/homebrew/bin/python3.14 -> ../Cellar/python@3.14/3.14.7/bin/python3.14\n"
+    "cpython-3.14.7-macos-aarch64-none      "
+    "/opt/homebrew/bin/python3 -> ../Cellar/python@3.14/3.14.7/bin/python3\n"
     "cpython-3.14.4-macos-aarch64-none      "
     "/home/.local/bin/python3.14 -> "
     "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14\n"
@@ -277,7 +282,23 @@ UV_PYTHON_LIST = (
     "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14\n"
     "cpython-3.13.13-macos-aarch64-none     "
     "/home/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13\n"
+    "cpython-3.9.6-macos-aarch64-none       /usr/bin/python3\n"
     "pypy-3.11.11-macos-aarch64-none        <download available>\n"
+)
+
+# Per-repo venv configs. web's .venv is uv-built on uv's 3.14.4 (version_info);
+# api's is a stdlib venv (version) on Homebrew's 3.12; cli has no .venv.
+WEB_PYVENV_CFG = (
+    "home = /home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin\n"
+    "implementation = CPython\n"
+    "uv = 0.12.0\n"
+    "version_info = 3.14.4\n"
+    "include-system-site-packages = false\n"
+)
+API_PYVENV_CFG = (
+    "home = /opt/homebrew/opt/python@3.12/bin\n"
+    "include-system-site-packages = false\n"
+    "version = 3.12.1\n"
 )
 
 # Per-repo package.json manifests. web declares TypeScript ^5.4.0 but has 5.3.3
@@ -295,11 +316,13 @@ CLI_PACKAGE_JSON = '{\n  "name": "cli",\n  "dependencies": {\n    "chalk": "^5.3
 def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
     """Build a fake machine exercising the toolchains Collector.
 
-    uv manages two installed interpreters (3.14.4 and 3.13.13) with the download
-    lines excluded. Three repos under ``~/dev/acme``: ``web`` declares TypeScript
-    ^5.4.0 with 5.3.3 installed (drift), ``api`` declares ~5.2.0 with nothing
-    installed, and ``cli`` carries a manifest without TypeScript so it drops from
-    the TypeScript rows. Globally node and npm
+    uv finds four installed interpreters (Homebrew's 3.14.7, uv's 3.14.4 and
+    3.13.13, and the macOS 3.9.6) with the download lines excluded. Three repos
+    under ``~/dev/acme``: ``web`` has a uv-built .venv on 3.14.4 and declares
+    TypeScript ^5.4.0 with 5.3.3 installed (drift), ``api`` has a stdlib .venv on
+    Homebrew's 3.12.1 and declares ~5.2.0 with nothing installed, and ``cli`` has no
+    .venv and carries a manifest without TypeScript so it drops from the
+    per-repo Python and TypeScript rows. Globally node and npm
     are present, pnpm is present, and tsc and bun are absent, so an absent tool
     lands as an absent fact. Returns the machine plus the home and roots.
     """
@@ -307,6 +330,8 @@ def build_toolchains_workspace() -> tuple[FakeMachine, Path, list[Path]]:
         dirs={DEV, DEV / "acme", WEB, API, CLI},
         repos={WEB, API, CLI},
         files={
+            WEB / ".venv" / "pyvenv.cfg": WEB_PYVENV_CFG,
+            API / ".venv" / "pyvenv.cfg": API_PYVENV_CFG,
             WEB / "package.json": WEB_PACKAGE_JSON,
             WEB / "node_modules" / "typescript" / "package.json": WEB_INSTALLED_TS,
             API / "package.json": API_PACKAGE_JSON,

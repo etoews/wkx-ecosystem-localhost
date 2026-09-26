@@ -24,15 +24,16 @@ from wkx_ecosystem_localhost.models import (
     NodeToolchain,
     OutdatedPackage,
     Plugin,
+    PythonInterpreter,
     PythonToolchain,
     Repo,
+    RepoPython,
     RepoTypeScript,
     Section,
     Skill,
     SystemToolsSection,
     Tool,
     ToolchainsSection,
-    UvPython,
     WorkspaceSection,
 )
 
@@ -69,19 +70,27 @@ def _system(*tools: Tool) -> SystemToolsSection:
     return SystemToolsSection(tools=list(tools))
 
 
+def _uv_python(version: str, *, current: str, source: str = "uv") -> PythonInterpreter:
+    return PythonInterpreter(
+        implementation="cpython", version=version, source=source, current=current
+    )
+
+
 def _toolchains(
     *,
-    interpreters: list[UvPython] | None = None,
+    interpreters: list[PythonInterpreter] | None = None,
+    python_repos: list[RepoPython] | None = None,
     ts_repos: list[RepoTypeScript] | None = None,
 ) -> ToolchainsSection:
     return ToolchainsSection(
         python=PythonToolchain(
             interpreters=interpreters
             or [
-                UvPython(
-                    implementation="cpython", version="3.14.4", installed=True, current="3.14.4"
+                PythonInterpreter(
+                    implementation="cpython", version="3.14.4", source="uv", current="3.14.4"
                 )
             ],
+            repos=python_repos or [],
             system=Tool(name="python3", version="3.14.4", present=True),
         ),
         node=NodeToolchain(
@@ -292,8 +301,8 @@ def test_mcp_needs_auth_is_a_problem_flag() -> None:
 def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
     toolchains = _toolchains(
         interpreters=[
-            UvPython(implementation="cpython", version="3.14.4", installed=True, current="3.14.7"),
-            UvPython(implementation="cpython", version="3.14.7", installed=True, current="3.14.7"),
+            _uv_python("3.14.4", current="3.14.7"),
+            _uv_python("3.14.7", current="3.14.7"),
         ]
     )
 
@@ -304,6 +313,29 @@ def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
     assert outdated[0].section == "toolchains"
     assert outdated[0].level == ATTENTION
     assert outdated[0].message == "update available"
+
+
+def test_python_outdated_skips_interpreters_uv_cannot_upgrade_and_repo_venvs() -> None:
+    toolchains = _toolchains(
+        interpreters=[
+            _uv_python("3.14.6", current="3.14.7", source="homebrew"),
+            _uv_python("3.9.6", current="3.14.7", source="macos"),
+            _uv_python("3.12.1", current="3.14.7", source="other"),
+        ],
+        python_repos=[
+            RepoPython(
+                repo="~/dev/acme/web",
+                version="3.13.13",
+                source="uv",
+                path="~/dev/acme/web/.venv/bin/python",
+                current="3.14.7",
+            )
+        ],
+    )
+
+    flags = _derive(toolchains=toolchains)
+
+    assert [f for f in flags if f.category == "python-outdated"] == []
 
 
 # ------------------------- cross-item drift (multi-repo) -------------------------
@@ -510,9 +542,7 @@ def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
     # Drift and shadowing share one cross-item pass, so an Off toolchains must not
     # silence the claude shadow the same pass derives.
     toolchains = _toolchains(
-        interpreters=[
-            UvPython(implementation="cpython", version="3.14.4", installed=True, current="3.14.7")
-        ],
+        interpreters=[_uv_python("3.14.4", current="3.14.7")],
         ts_repos=[
             RepoTypeScript(repo="~/dev/acme/web", declared="^5.4.0", installed="5.3.3"),
             RepoTypeScript(repo="~/dev/acme/app", declared="^5.4.0", installed="5.4.5"),
@@ -544,8 +574,8 @@ def test_no_flag_message_uses_the_status_words() -> None:
         workspace=_workspace(repo),
         toolchains=_toolchains(
             interpreters=[
-                UvPython(
-                    implementation="cpython", version="3.14.4", installed=True, current="3.14.7"
+                PythonInterpreter(
+                    implementation="cpython", version="3.14.4", source="uv", current="3.14.7"
                 )
             ]
         ),
@@ -610,8 +640,8 @@ def test_every_derived_category_is_registered() -> None:
         workspace=_workspace(repo),
         toolchains=_toolchains(
             interpreters=[
-                UvPython(
-                    implementation="cpython", version="3.14.4", installed=True, current="3.14.7"
+                PythonInterpreter(
+                    implementation="cpython", version="3.14.4", source="uv", current="3.14.7"
                 )
             ]
         ),

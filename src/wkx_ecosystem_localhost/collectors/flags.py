@@ -25,7 +25,7 @@ from wkx_ecosystem_localhost.collectors.docker import collect_docker
 from wkx_ecosystem_localhost.collectors.git_config import collect_git_config
 from wkx_ecosystem_localhost.collectors.homebrew import collect_homebrew
 from wkx_ecosystem_localhost.collectors.system import collect_system_tools
-from wkx_ecosystem_localhost.collectors.toolchains import collect_toolchains
+from wkx_ecosystem_localhost.collectors.toolchains import SOURCE_UV, collect_toolchains
 from wkx_ecosystem_localhost.collectors.workspace import (
     DiscoveryCache,
     collect_workspace,
@@ -154,6 +154,17 @@ TABLES: dict[str, BoardTable] = {
         section="toolchains",
         columns=_cols(
             ("name", _L),
+            ("source", _H),
+            ("installed", _H),
+            ("current", _H),
+            ("flags", _L),
+        ),
+    ),
+    "toolchains-python-repos": BoardTable(
+        section="toolchains",
+        columns=_cols(
+            ("repo", _L),
+            ("source", _H),
             ("installed", _H),
             ("current", _H),
             ("flags", _L),
@@ -401,7 +412,11 @@ def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
     """One Flag per uv-managed interpreter whose current release is newer.
 
     The Python sibling of ``brew-outdated``: ``current`` is set by the Collector from
-    what ``uv python list`` offers, so the Flag reads straight off the model.
+    what ``uv python list`` offers, so the Flag reads straight off the model. Only a
+    uv-managed interpreter is flagged, because only uv can upgrade it: Homebrew's
+    is already a ``brew-outdated`` Flag and the OS's cannot be upgraded. A repo's
+    venv is not flagged either; it runs on a global interpreter whose row already
+    carries the Flag, and ``uv python upgrade`` updates the venv with it.
     """
     return [
         Flag(
@@ -412,7 +427,7 @@ def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
             message="update available",
         )
         for interpreter in toolchains.python.interpreters
-        if interpreter.current != interpreter.version
+        if interpreter.source == SOURCE_UV and interpreter.current != interpreter.version
     ]
 
 
@@ -654,7 +669,7 @@ def _empty_toolchains() -> ToolchainsSection:
     """
     absent = Tool(name="", present=False)
     return ToolchainsSection(
-        python=PythonToolchain(interpreters=[], system=absent),
+        python=PythonToolchain(interpreters=[], repos=[], system=absent),
         node=NodeToolchain(node=absent, npm=absent, tsc=absent, package_managers=[], repos=[]),
     )
 

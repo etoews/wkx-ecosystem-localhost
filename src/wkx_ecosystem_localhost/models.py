@@ -166,22 +166,38 @@ class SubmoduleEvent(BaseModel):
     github_release: str | None = None
 
 
-class UvPython(BaseModel):
-    """One interpreter uv knows about, from ``uv python list``.
+class PythonInterpreter(BaseModel):
+    """One Python interpreter installed on this machine, uv-managed or not.
 
-    ``installed`` distinguishes an interpreter present on this machine from one uv
-    merely offers to download; only installed interpreters reach the board.
-    ``path`` is the home-relative path uv reports for it, or None when uv gives no
-    path. ``current`` is the newest stable release of the same implementation and
-    build variant that uv offers (a new minor counts as well as a new patch), the
-    way Homebrew's ``current`` is the version it would upgrade to; it equals
+    ``source`` says what installed it: ``uv``, ``homebrew``, ``macos`` (the
+    interpreter the OS or its developer tools ship), or ``other``. ``path`` is the
+    home-relative path uv reports for it, or None when uv gives no path.
+    ``current`` is the newest stable release of the same implementation and build
+    variant that uv offers (a new minor counts as well as a new patch), the way
+    Homebrew's ``current`` is the version it would upgrade to; it equals
     ``version`` when this interpreter is already the newest.
     """
 
     implementation: str
     version: str
-    installed: bool
+    source: str
     path: str | None = None
+    current: str
+
+
+class RepoPython(BaseModel):
+    """The interpreter one repo runs: its ``.venv``, read from ``pyvenv.cfg``.
+
+    ``repo`` is the home-relative repo path and ``path`` the home-relative
+    ``.venv/bin/python``. ``source`` is what installed the base interpreter the
+    venv was built from, in the same terms as ``PythonInterpreter.source``, and
+    ``current`` is read the same way.
+    """
+
+    repo: str
+    version: str
+    source: str
+    path: str
     current: str
 
 
@@ -228,11 +244,13 @@ class RepoTypeScript(BaseModel):
 class PythonToolchain(BaseModel):
     """The Python side of the toolchains Section, all facts side by side.
 
-    ``interpreters`` are the installed interpreters uv manages and ``system`` is
-    the ``python3`` found on the path.
+    ``interpreters`` are the installed interpreters uv finds, uv-managed or not,
+    ``repos`` the interpreter of each discovered repo that has a ``.venv``, and
+    ``system`` the ``python3`` found on the path.
     """
 
-    interpreters: list[UvPython]
+    interpreters: list[PythonInterpreter]
+    repos: list[RepoPython]
     system: Tool
 
 

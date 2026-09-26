@@ -21,21 +21,45 @@ def _section() -> ToolchainsSection:
     return collect_toolchains(machine, [fixtures.WEB, fixtures.API, fixtures.CLI], home=home)
 
 
-def test_uv_interpreters_are_installed_only_deduped_and_relativised() -> None:
+def test_every_installed_interpreter_is_listed_once_with_its_source() -> None:
     section = _section()
 
-    versions = [(i.implementation, i.version) for i in section.python.interpreters]
-    # Only installed lines, and the doubly-listed 3.14.4 collapses to one.
-    assert versions == [("cpython", "3.14.4"), ("cpython", "3.13.13")]
-    assert section.python.interpreters[0].path == "~/.local/bin/python3.14"
+    rows = [(i.version, i.source, i.path) for i in section.python.interpreters]
+    # Only installed lines, uv-managed or not; each doubly-listed one collapses to one.
+    assert rows == [
+        ("3.14.7", "homebrew", "/opt/homebrew/bin/python3.14"),
+        ("3.14.4", "uv", "~/.local/bin/python3.14"),
+        (
+            "3.13.13",
+            "uv",
+            "~/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13",
+        ),
+        ("3.9.6", "macos", "/usr/bin/python3"),
+    ]
 
 
 def test_each_interpreter_reports_the_current_release_on_offer() -> None:
     section = _section()
 
     current = {i.version: i.current for i in section.python.interpreters}
-    # 3.14.7 is on offer: newer than both, stable, and a default (not free-threaded) build.
-    assert current == {"3.14.4": "3.14.7", "3.13.13": "3.14.7"}
+    # 3.14.7 is the newest stable default (not free-threaded) build on offer.
+    assert current == {
+        "3.14.7": "3.14.7",
+        "3.14.4": "3.14.7",
+        "3.13.13": "3.14.7",
+        "3.9.6": "3.14.7",
+    }
+
+
+def test_each_repo_with_a_venv_reports_its_interpreter() -> None:
+    section = _section()
+
+    rows = [(r.repo, r.version, r.source, r.path, r.current) for r in section.python.repos]
+    # cli has no .venv, so it is not a row.
+    assert rows == [
+        ("~/dev/acme/web", "3.14.4", "uv", "~/dev/acme/web/.venv/bin/python", "3.14.7"),
+        ("~/dev/acme/api", "3.12.1", "homebrew", "~/dev/acme/api/.venv/bin/python", "3.14.7"),
+    ]
 
 
 def test_an_interpreter_with_nothing_newer_on_offer_is_its_own_current() -> None:
@@ -103,6 +127,7 @@ def test_an_empty_machine_yields_absent_facts_not_errors() -> None:
     section = collect_toolchains(FakeMachine(), [], home=fixtures.HOME)
 
     assert section.python.interpreters == []
+    assert section.python.repos == []
     assert section.python.system.present is False
     assert section.node.node.present is False
     assert section.node.package_managers == []

@@ -12,9 +12,11 @@ import pytest
 
 from wkx_ecosystem_localhost.collectors.toolchains import (
     UvPythonEntry,
+    interpreter_source,
     newer_stable,
     parse_declared_typescript,
     parse_installed_typescript,
+    parse_pyvenv_cfg,
     parse_uv_python_list,
     parse_version,
     strip_ansi,
@@ -26,7 +28,7 @@ def test_parse_uv_python_list_reads_installed_and_available_lines() -> None:
 
     # One entry per line, including the duplicate 3.14.4; de-duplication is the
     # Collector's job, not the parser's.
-    assert len(entries) == 7
+    assert len(entries) == 10
     assert UvPythonEntry("cpython", "3.15.0a8", False, None) in entries
     assert UvPythonEntry("pypy", "3.11.11", False, None) in entries
 
@@ -37,6 +39,61 @@ def test_parse_uv_python_list_keeps_the_bin_side_of_a_symlink() -> None:
     symlinked = next(e for e in entries if e.path == "/home/.local/bin/python3.14")
     assert symlinked.installed is True
     assert symlinked.path == "/home/.local/bin/python3.14"
+    assert symlinked.target == (
+        "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14"
+    )
+
+
+@pytest.mark.parametrize(
+    "path,target,expected",
+    [
+        # uv's own interpreter, directly and through its ~/.local/bin shim.
+        ("/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14", None, "uv"),
+        (
+            "/home/.local/bin/python3.14",
+            "/home/.local/share/uv/python/cpython-3.14/bin/python3",
+            "uv",
+        ),
+        # Homebrew's, by its prefix or by a link into the Cellar.
+        ("/opt/homebrew/bin/python3", "../Cellar/python@3.14/3.14.7/bin/python3", "homebrew"),
+        ("/usr/local/bin/python3", "../Cellar/python@3.13/3.13.1/bin/python3", "homebrew"),
+        # The OS and its developer tools.
+        ("/usr/bin/python3", None, "macos"),
+        ("/Library/Developer/CommandLineTools/usr/bin/python3", None, "macos"),
+        # Anything else.
+        ("/home/.pyenv/versions/3.12.1/bin/python3", None, "other"),
+    ],
+)
+def test_interpreter_source(path: str, target: str | None, expected: str) -> None:
+    assert interpreter_source(path, target) == expected
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # uv writes version_info and names the implementation.
+        (
+            "home = /h/uv/python/bin\nimplementation = CPython\nversion_info = 3.14.4\n",
+            ("cpython", "3.14.4", "/h/uv/python/bin"),
+        ),
+        # The stdlib venv writes version and no implementation.
+        (
+            "home = /opt/homebrew/bin\nversion = 3.12.1\n",
+            ("cpython", "3.12.1", "/opt/homebrew/bin"),
+        ),
+        # virtualenv's version_info carries a release level, trimmed to the release.
+        (
+            "home = /x\nimplementation = PyPy\nversion_info = 3.10.14.final.0\n",
+            ("pypy", "3.10.14", "/x"),
+        ),
+        # A pre-release keeps its suffix.
+        ("home = /x\nversion_info = 3.15.0rc2\n", ("cpython", "3.15.0rc2", "/x")),
+        # No version at all.
+        ("home = /x\ninclude-system-site-packages = false\n", None),
+    ],
+)
+def test_parse_pyvenv_cfg(text: str, expected: tuple[str, str, str] | None) -> None:
+    assert parse_pyvenv_cfg(text) == expected
 
 
 def test_parse_uv_python_list_strips_ansi_colour() -> None:

@@ -1806,7 +1806,8 @@ window.wkxTables = (function () {
   // is pinned to CATEGORIES, so the client and the write-side validation agree.
   const TABLE_COLUMNS = {
     "workspace": ["repo", "branch", "upstream", "ahead", "behind", "working-tree", "stash", "roadmap", "flags"],
-    "toolchains-python": ["name", "installed", "current", "flags"],
+    "toolchains-python": ["name", "source", "installed", "current", "flags"],
+    "toolchains-python-repos": ["repo", "source", "installed", "current", "flags"],
     "toolchains": ["name", "version", "detail", "state", "flags"],
     "claude-plugins": ["plugin", "marketplace", "repo", "version", "state", "skills", "flags"],
     "claude-skills": ["skill", "origin", "state", "description", "flags"],
@@ -1830,6 +1831,7 @@ window.wkxTables = (function () {
   const TABLE_SECTION = {
     "workspace": "workspace",
     "toolchains-python": "toolchains",
+    "toolchains-python-repos": "toolchains",
     "toolchains": "toolchains",
     "claude-plugins": "claude",
     "claude-skills": "claude",
@@ -2637,8 +2639,9 @@ window.wkxFilter = (function () {
 })();
 
 // ---------- toolchains ----------
-// Three subtables. The Python interpreters read like the Homebrew tables: Name |
-// Installed | Current, with an update badge when Current is newer. The Node tools
+// Four subtables. The two Python tables, the global interpreters and each repo's
+// .venv interpreter, read like the Homebrew tables: Installed | Current, with an
+// update badge on a uv-managed interpreter whose Current is newer. The Node tools
 // and per-repo TypeScript share one shape: Name | Version | Detail | State, laid
 // out fixed so their columns align. The Flags rail carries the badges.
 (function () {
@@ -2672,22 +2675,57 @@ window.wkxFilter = (function () {
     return U.td(text ? U.token("version", text, "ver") : U.dash());
   }
 
+  // What installed an interpreter, as the Source column shows it.
+  const SOURCE_LABEL = { uv: "uv", homebrew: "Homebrew", macos: "macOS", other: "other" };
+
+  // The Installed cell: the version, and on hover the path to that interpreter.
+  function installedCell(version, path) {
+    const installed = U.el("span", "from", version);
+    if (path) installed.title = path;
+    return U.td(installed);
+  }
+
   function interpreterTable(python) {
     const built = window.wkxTables.mount(
-      [{ label: "Name" }, { label: "Installed" }, { label: "Current" }],
+      [{ label: "Name" }, { label: "Source" }, { label: "Installed" }, { label: "Current" }],
       "toolchains-python",
-      "Python · per-repo interpreters (uv-managed)",
+      "Python · global interpreters",
     );
     python.interpreters.forEach(function (interp) {
-      const installed = U.el("span", "from", interp.version);
-      // Hovering the installed version names the interpreter it resolves to.
-      if (interp.path) installed.title = interp.path;
+      // Only a uv-managed interpreter carries the update Flag, so only its row
+      // gets a Flag key.
+      const flagKey =
+        interp.source === "uv"
+          ? "toolchains:python:" + interp.implementation + "-" + interp.version
+          : null;
       built.tbody.append(
         U.tr([
           nameCell(interp.implementation, "tool"),
-          U.td(installed),
+          U.td(U.quiet(SOURCE_LABEL[interp.source] || interp.source)),
+          installedCell(interp.version, interp.path),
           U.td(U.el("span", "to", interp.current || "—")),
-          U.flagCell("toolchains:python:" + interp.implementation + "-" + interp.version),
+          U.flagCell(flagKey),
+        ]),
+      );
+    });
+    built.equip();
+    return built.wrap;
+  }
+
+  function repoInterpreterTable(python) {
+    const built = window.wkxTables.mount(
+      [{ label: "Repo" }, { label: "Source" }, { label: "Installed" }, { label: "Current" }],
+      "toolchains-python-repos",
+      "Python · per-repo interpreters",
+    );
+    python.repos.forEach(function (repo) {
+      built.tbody.append(
+        U.tr([
+          nameCell(base(repo.repo), "repo"),
+          U.td(U.quiet(SOURCE_LABEL[repo.source] || repo.source)),
+          installedCell(repo.version, repo.path),
+          U.td(U.el("span", "to", repo.current || "—")),
+          U.flagCell(),
         ]),
       );
     });
@@ -2760,11 +2798,15 @@ window.wkxFilter = (function () {
     const nodes = [
       U.tiles([
         { value: py.interpreters.length, label: "Interpreters" },
+        { value: py.repos.length, label: "Python repos" },
         { value: 3 + node.package_managers.length, label: "Node tools" },
         { value: node.repos.length, label: "TS repos" },
       ]),
       interpreterTable(py),
     ];
+    if (py.repos.length > 0) {
+      nodes.push(repoInterpreterTable(py));
+    }
     nodes.push(nodeToolTable(node));
     if (node.repos.length > 0) {
       nodes.push(tsTable(node));
