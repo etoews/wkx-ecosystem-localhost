@@ -152,8 +152,8 @@ The tracer bullet: one Collector wired end-to-end (Collector → pydantic model 
 ## M6: Flag layer
 
 **Deliverables**
-- [x] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
-- [x] Cross-item flags: tool version drift across repos, `.python-version` drift, skill-name shadowing across Origins, MCP configured in two scopes.
+- [x] Per-item flags: dirty tree, detached HEAD, no upstream, behind remote, submodule tags behind, brew outdated, Python update available (a uv-managed interpreter with a newer stable release on offer), docker down, missing configured tool, MCP auth needed, installed-but-disabled skill/plugin.
+- [x] Cross-item flags: tool version drift across repos, skill-name shadowing across Origins, MCP configured in two scopes.
 - [x] Inline amber (attention) / red (problem) badges on affected rows, reusing `--chg` / `--del` colours but not the `Status` words.
 - [x] Needs attention summary panel with tally tiles (total, attention, problems) and a per-category breakdown. Originally scoped as a single masthead tally; shipped as a panel instead.
 

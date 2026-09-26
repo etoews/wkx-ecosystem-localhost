@@ -29,6 +29,14 @@ def test_uv_interpreters_are_installed_only_deduped_and_relativised() -> None:
     assert section.python.interpreters[0].path == "~/.local/bin/python3.14"
 
 
+def test_each_interpreter_reports_the_newest_stable_release_on_offer() -> None:
+    section = _section()
+
+    latest = {i.version: i.latest for i in section.python.interpreters}
+    # 3.14.7 is on offer: newer than both, stable, and a default (not free-threaded) build.
+    assert latest == {"3.14.4": "3.14.7", "3.13.13": "3.14.7"}
+
+
 def test_global_and_per_repo_pins_are_reported() -> None:
     section = _section()
 

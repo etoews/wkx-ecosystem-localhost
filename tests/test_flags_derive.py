@@ -72,12 +72,14 @@ def _system(*tools: Tool) -> SystemToolsSection:
 
 def _toolchains(
     *,
+    interpreters: list[UvPython] | None = None,
     repo_pins: list[RepoPin] | None = None,
     ts_repos: list[RepoTypeScript] | None = None,
 ) -> ToolchainsSection:
     return ToolchainsSection(
         python=PythonToolchain(
-            interpreters=[UvPython(implementation="cpython", version="3.14.4", installed=True)],
+            interpreters=interpreters
+            or [UvPython(implementation="cpython", version="3.14.4", installed=True)],
             global_pin="3.14.4",
             repo_pins=repo_pins or [],
             system=Tool(name="python3", version="3.14.4", present=True),
@@ -287,30 +289,37 @@ def test_mcp_needs_auth_is_a_problem_flag() -> None:
     assert flags[0].level == PROBLEM
 
 
-# ------------------------- cross-item drift (multi-repo) -------------------------
+def test_python_outdated_flags_each_interpreter_with_a_newer_release() -> None:
+    toolchains = _toolchains(
+        interpreters=[
+            UvPython(implementation="cpython", version="3.14.4", installed=True, latest="3.14.7"),
+            UvPython(implementation="cpython", version="3.14.7", installed=True),
+        ]
+    )
+
+    flags = _derive(toolchains=toolchains)
+
+    outdated = [f for f in flags if f.category == "python-outdated"]
+    assert [f.target for f in outdated] == ["python:cpython-3.14.4"]
+    assert outdated[0].section == "toolchains"
+    assert outdated[0].level == ATTENTION
+    assert outdated[0].message == "update available"
 
 
-def test_python_pin_drift_flags_every_repo_pin() -> None:
+def test_differing_repo_pins_raise_no_flag() -> None:
     toolchains = _toolchains(
         repo_pins=[
             RepoPin(repo="~/dev/acme/web", version="3.14.4"),
             RepoPin(repo="~/dev/acme/api", version="3.13.13"),
         ]
     )
+
     flags = _derive(toolchains=toolchains)
-    drift = [f for f in flags if f.category == "python-pin-drift"]
-    assert {f.target for f in drift} == {"pin:~/dev/acme/web", "pin:~/dev/acme/api"}
-    assert all(f.section == "toolchains" and f.level == ATTENTION for f in drift)
+
+    assert [f for f in flags if f.section == "toolchains"] == []
 
 
-def test_no_python_pin_drift_when_all_repos_agree() -> None:
-    toolchains = _toolchains(
-        repo_pins=[
-            RepoPin(repo="~/dev/acme/web", version="3.14.4"),
-            RepoPin(repo="~/dev/acme/api", version="3.14.4"),
-        ]
-    )
-    assert [f for f in _derive(toolchains=toolchains) if f.category == "python-pin-drift"] == []
+# ------------------------- cross-item drift (multi-repo) -------------------------
 
 
 def test_typescript_version_drift_flags_repos_with_an_installed_version() -> None:
@@ -514,10 +523,13 @@ def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
     # Drift and shadowing share one cross-item pass, so an Off toolchains must not
     # silence the claude shadow the same pass derives.
     toolchains = _toolchains(
-        repo_pins=[
-            RepoPin(repo="~/dev/acme/web", version="3.14.4"),
-            RepoPin(repo="~/dev/acme/api", version="3.13.13"),
-        ]
+        interpreters=[
+            UvPython(implementation="cpython", version="3.14.4", installed=True, latest="3.14.7")
+        ],
+        ts_repos=[
+            RepoTypeScript(repo="~/dev/acme/web", declared="^5.4.0", installed="5.3.3"),
+            RepoTypeScript(repo="~/dev/acme/app", declared="^5.4.0", installed="5.4.5"),
+        ],
     )
     claude = _claude(
         skills=[
@@ -529,7 +541,8 @@ def test_off_toolchains_leaves_the_claude_shadow_flag() -> None:
     flags = _derive(toolchains=toolchains, claude=claude, off={Section.TOOLCHAINS})
     categories = {f.category for f in flags}
 
-    assert "python-pin-drift" not in categories
+    assert "python-outdated" not in categories
+    assert "tool-version-drift" not in categories
     assert "skill-shadow" in categories
 
 

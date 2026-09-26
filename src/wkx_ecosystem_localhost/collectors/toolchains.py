@@ -1,10 +1,11 @@
 """The toolchains Collector: the whole language story as facts.
 
 Reports the Python and the Node/TypeScript toolchains side by side. Python: the
-interpreters uv manages, the uv global pin, each repo's ``.python-version`` pin,
-and the system ``python3``. Node/TypeScript: the global ``node``, ``npm``, and
-``tsc``, the alternative package managers only when present, and per repo the
-declared versus installed TypeScript so drift is visible.
+interpreters uv manages, each with the newest stable release uv offers above it,
+the uv global pin, each repo's ``.python-version`` pin, and the system
+``python3``. Node/TypeScript: the global ``node``, ``npm``, and ``tsc``, the
+alternative package managers only when present, and per repo the declared versus
+installed TypeScript so drift is visible.
 
 Everything reaches the host only through the ``Machine`` seam: version probes run
 fixed argv lists, and the pins and manifests are read as files. The parsing
@@ -67,6 +68,10 @@ _DOWNLOAD_AVAILABLE = "<download available>"
 # A key splits as <impl>-<version>-<platform-triple>; impl and version are the
 # first two dash-separated parts (version may carry a "+freethreaded" suffix).
 _UV_KEY_RE = re.compile(r"^(?P<impl>[a-z]+)-(?P<version>[^-\s]+)-")
+# A stable release as uv lists it: major.minor.patch with an optional build
+# variant such as "+freethreaded". A pre-release ("3.15.0a8", "3.15.0rc2") does
+# not match, so it is never offered as an update.
+_STABLE_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(\+[0-9a-z]+)?$")
 
 
 @dataclass(frozen=True)
@@ -121,6 +126,48 @@ def parse_uv_python_list(text: str) -> list[UvPythonEntry]:
             path = rest.split(" -> ", 1)[0].strip()
         entries.append(UvPythonEntry(match.group("impl"), match.group("version"), installed, path))
     return entries
+
+
+def _stable_key(version: str) -> tuple[tuple[int, int, int], str] | None:
+    """Split a stable uv version into its release tuple and variant, else None."""
+    match = _STABLE_RE.match(version)
+    if match is None:
+        return None
+    release = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return release, match.group(4) or ""
+
+
+def newer_stable(entry: UvPythonEntry, entries: Sequence[UvPythonEntry]) -> str | None:
+    """Return the newest stable release uv offers above ``entry``, or None.
+
+    The candidates are every line of ``uv python list``, installed or not, of the
+    same implementation and the same build variant: a free-threaded build is never
+    the update for a default build. Any newer stable release counts, a new minor
+    as well as a new patch. A pre-release is never a candidate, and an ``entry``
+    that is itself a pre-release gets None.
+
+    Args:
+        entry: The installed interpreter to check.
+        entries: Every parsed line of ``uv python list``.
+
+    Returns:
+        The newest stable version above ``entry`` as uv lists it, or None when
+        ``entry`` is already the newest stable release on offer.
+    """
+    own = _stable_key(entry.version)
+    if own is None:
+        return None
+    own_release, own_variant = own
+    newest: tuple[tuple[int, int, int], str] | None = None
+    for candidate in entries:
+        if candidate.implementation != entry.implementation:
+            continue
+        key = _stable_key(candidate.version)
+        if key is None or key[1] != own_variant or key[0] <= own_release:
+            continue
+        if newest is None or key[0] > newest[0]:
+            newest = (key[0], candidate.version)
+    return newest[1] if newest is not None else None
 
 
 def parse_version(text: str) -> str | None:
@@ -206,8 +253,9 @@ def _collect_python(
     list_result = machine.run(UV_PYTHON_LIST_ARGV, timeout=timeout)
     interpreters: list[UvPython] = []
     if list_result.ok:
+        entries = parse_uv_python_list(list_result.stdout)
         seen: set[tuple[str, str]] = set()
-        for entry in parse_uv_python_list(list_result.stdout):
+        for entry in entries:
             if not entry.installed:
                 continue
             key = (entry.implementation, entry.version)
@@ -220,6 +268,7 @@ def _collect_python(
                     version=entry.version,
                     installed=True,
                     path=relativise(Path(entry.path), home) if entry.path else None,
+                    latest=newer_stable(entry, entries),
                 )
             )
 

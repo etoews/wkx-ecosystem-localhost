@@ -335,7 +335,7 @@ def test_a_whole_category_mute_is_distinct_from_a_targeted_one(tmp_path: Path) -
 def test_unmuting_a_rule_that_is_not_set_is_a_noop() -> None:
     view = View(mute=[MuteRule(category="brew-outdated", target="formula:git")])
 
-    merged = merge(view, MutePreference(category="python-pin-drift", target=None, on=False))
+    merged = merge(view, MutePreference(category="python-outdated", target=None, on=False))
 
     assert merged.mute == [MuteRule(category="brew-outdated", target="formula:git")]
 

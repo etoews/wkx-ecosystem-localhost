@@ -72,7 +72,7 @@ CATEGORIES: frozenset[str] = frozenset(
         "no-upstream",
         "behind-remote",
         "brew-outdated",
-        "python-pin-drift",
+        "python-outdated",
         "tool-version-drift",
         "submodule-tags-behind",
         "docker-unreachable",
@@ -301,7 +301,7 @@ def derive_flags(
 
     Args:
         workspace: The workspace Section (per-repo tree state).
-        toolchains: The toolchains Section (Python pins and per-repo TypeScript).
+        toolchains: The toolchains Section (uv interpreters and per-repo TypeScript).
         system: The system Section (configured developer CLIs).
         claude: The claude Section (skills, plugins, MCP servers).
         homebrew: The homebrew Section (outdated formulae and casks).
@@ -318,6 +318,8 @@ def derive_flags(
         flags += _workspace_flags(workspace)
     if Section.HOMEBREW not in off:
         flags += _homebrew_flags(homebrew)
+    if Section.TOOLCHAINS not in off:
+        flags += _toolchains_flags(toolchains)
     if Section.DOCKER not in off:
         flags += _docker_flags(docker)
     if Section.SYSTEM not in off:
@@ -384,6 +386,25 @@ def _homebrew_flags(homebrew: HomebrewSection) -> list[Flag]:
                 )
             )
     return flags
+
+
+def _toolchains_flags(toolchains: ToolchainsSection) -> list[Flag]:
+    """One Flag per uv-managed interpreter with a newer stable release on offer.
+
+    The Python sibling of ``brew-outdated``: ``latest`` is set by the Collector from
+    what ``uv python list`` offers, so the Flag reads straight off the model.
+    """
+    return [
+        Flag(
+            section=Section.TOOLCHAINS,
+            target=f"python:{interpreter.implementation}-{interpreter.version}",
+            level=ATTENTION,
+            category="python-outdated",
+            message="update available",
+        )
+        for interpreter in toolchains.python.interpreters
+        if interpreter.latest is not None
+    ]
 
 
 def _docker_flags(docker: DockerSection) -> list[Flag]:
@@ -541,30 +562,17 @@ def _drift_flags(
 ) -> list[Flag]:
     """Cross-item Flags: drift and shadowing evident only across several rows.
 
-    Python pin drift and TypeScript version drift read across repos; skill-name
-    shadowing reads across Origins; an MCP configured in two scopes reads across
-    scopes. Each fires only when the divergence is real (more than one distinct
-    value, or more than one Origin or scope) and then badges every row that takes
-    part, so the drift is legible on each side of it. The toolchains drift and the
+    TypeScript version drift reads across repos; skill-name shadowing reads across
+    Origins; an MCP configured in two scopes reads across scopes. Each fires only
+    when the divergence is real (more than one distinct value, or more than one
+    Origin or scope) and then badges every row that takes part, so the drift is
+    legible on each side of it. The toolchains drift and the
     claude shadowing are gated on their own Section, so turning one off leaves the
     other's Flags untouched.
     """
     flags: list[Flag] = []
 
     if Section.TOOLCHAINS not in off:
-        pins = toolchains.python.repo_pins
-        if len({pin.version for pin in pins}) > 1:
-            for pin in pins:
-                flags.append(
-                    Flag(
-                        section=Section.TOOLCHAINS,
-                        target=f"pin:{pin.repo}",
-                        level=ATTENTION,
-                        category="python-pin-drift",
-                        message="pin differs across repos",
-                    )
-                )
-
         ts_repos = toolchains.node.repos
         installed = {repo.installed for repo in ts_repos if repo.installed is not None}
         if len(installed) > 1:

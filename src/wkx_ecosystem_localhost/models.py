@@ -172,13 +172,16 @@ class UvPython(BaseModel):
     ``installed`` distinguishes an interpreter present on this machine from one uv
     merely offers to download; only installed interpreters reach the board.
     ``path`` is the home-relative path uv reports for it, or None when uv gives no
-    path.
+    path. ``latest`` is the newest stable release of the same implementation and
+    build variant that uv offers above ``version`` (a new minor counts as well as
+    a new patch), or None when this interpreter is already the newest.
     """
 
     implementation: str
     version: str
     installed: bool
     path: str | None = None
+    latest: str | None = None
 
 
 class RepoPin(BaseModel):

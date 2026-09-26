@@ -38,7 +38,11 @@ find a Section. Press `Enter` to go to it.
   progress as "ticked / total" with a thin meter; each submodule nested beneath
   its repo as "pinned · latest · releases-behind".
 - **Toolchains**: Python and TypeScript/Node, global and per repo, every subtable
-  in one shape (name · version · detail · state) so the columns align.
+  in one shape (name · version · detail · state) so the columns align. A
+  uv-managed interpreter shows the latest stable Python release when a newer one
+  is available, and gets a Flag, the same as an outdated Homebrew package.
+  `uv python list` supplies the latest release, so the board makes no network
+  request.
 - **Claude**: plugins with a count of the skills each ships (expand a plugin row
   to reveal them), your own skills in their own table, and MCP servers, each with
   its Origin. Each skill shows its own state. A plugin skill has no switch of its

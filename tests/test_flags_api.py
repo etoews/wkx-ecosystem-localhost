@@ -43,6 +43,8 @@ def test_flags_endpoint_returns_every_at_rest_flag(flags_client: TestClient) -> 
     assert index[("system", "ty")] == {"tool-missing"}
     assert index[("homebrew", "formula:wget")] == {"brew-outdated"}
     assert index[("homebrew", "cask:firefox")] == {"brew-outdated"}
+    assert index[("toolchains", "python:cpython-3.14.4")] == {"python-outdated"}
+    assert index[("toolchains", "python:cpython-3.13.13")] == {"python-outdated"}
     assert index[("docker", "daemon")] == {"docker-unreachable"}
     assert index[("claude", "plugin:sketch")] == {"plugin-disabled"}
     assert index[("claude", "mcp:cloud-mcp")] == {"mcp-needs-auth"}
@@ -57,10 +59,6 @@ def test_flags_endpoint_returns_every_at_rest_flag(flags_client: TestClient) -> 
 def test_flags_endpoint_derives_cross_item_drift(flags_client: TestClient) -> None:
     flags = flags_client.get("/api/flags").json()["flags"]
     index = _flag_index(flags)
-
-    # Python pin drift badges both pinned repos.
-    assert "python-pin-drift" in index[("toolchains", "pin:~/dev/acme/web")]
-    assert "python-pin-drift" in index[("toolchains", "pin:~/dev/acme/api")]
 
     # TypeScript version drift badges the two repos with an installed version.
     assert "tool-version-drift" in index[("toolchains", "ts:~/dev/acme/web")]

@@ -849,7 +849,7 @@ window.wkxFlags = (function () {
     "no-upstream": "No upstream",
     "behind-remote": "Behind remote",
     "brew-outdated": "Homebrew updates",
-    "python-pin-drift": "Python pin drift",
+    "python-outdated": "Python updates",
     "tool-version-drift": "TypeScript version drift",
     "submodule-tags-behind": "Submodules behind",
     "docker-unreachable": "Docker daemon down",
@@ -875,7 +875,7 @@ window.wkxFlags = (function () {
     "no-upstream": "Publish and track the branch: git push -u origin <branch>.",
     "behind-remote": "Catch up to the remote: git pull --ff-only (or git pull --rebase).",
     "brew-outdated": "Upgrade it: brew upgrade <name>, or brew upgrade to update everything.",
-    "python-pin-drift": "Align the repos on one interpreter, or set each repo's intended one with uv python pin <X>.",
+    "python-outdated": "Install the newer release: uv python install <version>, or uv python upgrade for a newer patch.",
     "tool-version-drift": "Reinstall TypeScript to the intended version (npm install) so it matches across the repos.",
     "submodule-tags-behind": "Bump it: git -C <path> fetch --tags, check out the latest tag, then commit the pointer.",
     "docker-unreachable": "Start Docker (Docker Desktop, or colima start / systemctl start docker), then reload.",
@@ -893,7 +893,7 @@ window.wkxFlags = (function () {
     "view-not-parsed": "The View file on disk does not parse as TOML, so the board is showing its defaults. Fix the file's syntax, or delete it to reset.",
     "view-unknown-key": "The View file names a key, panel, or Category the board does not know; the board dropped it. Check the file for a typo or a stale name.",
   };
-  const TARGET_PREFIX = /^(formula|cask|pin|ts|skill|plugin|mcp):/;
+  const TARGET_PREFIX = /^(formula|cask|python|ts|skill|plugin|mcp):/;
 
   // The board's own View-file self-diagnostics: these are never mutable from the UI,
   // because silencing "your View will not save" (or "does not parse", or "names an
@@ -2637,8 +2637,8 @@ window.wkxFilter = (function () {
 // ---------- toolchains ----------
 // Four subtables — Python interpreters, per-repo pins, Node tools, per-repo
 // TypeScript — share one shape: Name | Version | Detail | State, laid out fixed so
-// the columns align down the Section. State carries the status word and hosts the
-// M6 drift badges.
+// the columns align down the Section. State carries the status word; the Flags
+// rail carries the update and drift badges.
 (function () {
   "use strict";
 
@@ -2673,13 +2673,14 @@ window.wkxFilter = (function () {
   function interpreterTable(python) {
     const built = window.wkxTables.mount(COLUMNS, "toolchains", "Python · interpreters (uv-managed)");
     python.interpreters.forEach(function (interp) {
+      const detail = interp.latest ? "latest " + interp.latest : "uv-managed";
       built.tbody.append(
         U.tr([
           nameCell(interp.implementation, "tool"),
           verCell(interp.version),
-          U.td(U.quiet("uv-managed")),
+          U.td(U.quiet(detail)),
           U.td(interp.installed ? U.ok("installed") : U.quiet("not installed")),
-          U.flagCell(),
+          U.flagCell("toolchains:python:" + interp.implementation + "-" + interp.version),
         ]),
       );
     });
@@ -2702,7 +2703,7 @@ window.wkxFilter = (function () {
           verCell(pin.version),
           U.td(U.quiet("global " + (python.global_pin || "unset"))),
           state,
-          U.flagCell("toolchains:pin:" + pin.repo),
+          U.flagCell(),
         ]),
       );
     });

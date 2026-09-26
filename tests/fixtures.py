@@ -259,12 +259,17 @@ def build_submodule_workspace() -> tuple[FakeMachine, Path, list[Path]]:
 
 CLI = DEV / "acme" / "cli"
 
-# uv python list output: a download-available line (excluded), the installed
-# 3.14.4 listed twice as uv does (a bin symlink and its target, de-duplicated to
-# one), an installed 3.13.13, and a download-available pypy (excluded). The
+# uv python list output: a download-available pre-release and a newer stable
+# 3.14.7 and free-threaded 3.14.9 (all excluded as interpreters; 3.14.7 is the
+# update both installed interpreters report, and the free-threaded 3.14.9 is not),
+# the installed 3.14.4 listed twice as uv does (a bin symlink and its target,
+# de-duplicated to one), an installed 3.13.13, and a download-available pypy
+# (excluded). The
 # home-prefixed paths exercise relativisation and the "A -> B" symlink split.
 UV_PYTHON_LIST = (
     "cpython-3.15.0a8-macos-aarch64-none    <download available>\n"
+    "cpython-3.14.9+freethreaded-macos-aarch64-none    <download available>\n"
+    "cpython-3.14.7-macos-aarch64-none      <download available>\n"
     "cpython-3.14.4-macos-aarch64-none      "
     "/home/.local/bin/python3.14 -> "
     "/home/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14\n"
@@ -844,7 +849,8 @@ def build_flags_workspace() -> tuple[FakeMachine, Path, list[Path], list[ToolSpe
 
     Three repos under ``~/dev/acme``: ``web`` is dirty on a tracked branch,
     ``api`` is detached, and ``cli`` is on a branch with no upstream. ``web`` pins
-    Python 3.14.4 and ``api`` pins 3.13.13 (pin drift); ``web`` has TypeScript
+    Python 3.14.4 and ``api`` pins 3.13.13; both uv-managed interpreters have a newer stable
+    release on offer (Python update); ``web`` has TypeScript
     5.3.3 installed and ``cli`` has 5.4.5 (version drift). One configured tool
     (``ty``) is missing. The Claude environment carries a disabled plugin (whose
     skills stay enabled on their own), a user skill set off in skillOverrides (the

@@ -155,11 +155,11 @@ def test_workspace_off_still_discovers_repos_for_toolchains() -> None:
     client = _off_client(Section.WORKSPACE)
 
     # The workspace route is gone, but discovery still runs, so toolchains reads the
-    # per-repo pins and their drift Flag is still derived.
+    # per-repo pins and TypeScript, and the TypeScript drift Flag is still derived.
     assert client.get("/api/workspace").status_code == 404
     toolchains = client.get("/api/toolchains")
     assert toolchains.status_code == 200
     assert toolchains.json()["python"]["repo_pins"], "discovery should still find the repos"
 
     categories = {flag["category"] for flag in client.get("/api/flags").json()["flags"]}
-    assert "python-pin-drift" in categories
+    assert "tool-version-drift" in categories
