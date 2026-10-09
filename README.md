@@ -15,7 +15,7 @@ system tools, Homebrew, and Docker. It shows facts, lights up data-evident
 anomalies inline, and never changes the machine.
 
 The board is built end to end, from the workspace slice to the flag layer.
-[CONTEXT.md](CONTEXT.md) is the ubiquitous domain language,
+[GLOSSARY.md](GLOSSARY.md) is the ubiquitous domain language,
 [ARCHITECTURE.md](ARCHITECTURE.md) is how it is put together, and
 [ROADMAP.md](ROADMAP.md) is the build order.
 
@@ -245,7 +245,7 @@ commit, and Dependabot on the lock file and the workflow. See
 [Before you commit](#before-you-commit).
 
 The look and feel is borrowed from the `wkx-namespace` design system; its
-status vocabulary is deliberately not (see [CONTEXT.md](CONTEXT.md)).
+status vocabulary is deliberately not (see [GLOSSARY.md](GLOSSARY.md)).
 
 ### Development
 

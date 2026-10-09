@@ -3,7 +3,7 @@
 Build order, deliverables, and a hands-on artefact at every milestone for the
 localhost board that inventories this dev machine's ecosystem.
 
-The ubiquitous language lives in [CONTEXT.md](CONTEXT.md). The principles below
+The ubiquitous language lives in [GLOSSARY.md](GLOSSARY.md). The principles below
 are the cross-cutting decisions every milestone inherits.
 
 ## Principles
@@ -21,7 +21,7 @@ are the cross-cutting decisions every milestone inherits.
   and the UI relativises paths and redacts remotes by default.
 - **`wkx-namespace` for look only.** Palette, typography, theme toggle, panels,
   and fluid grid are borrowed; its `Status` vocabulary and `/wkx/<service>/<env>`
-  addressing are not (see [CONTEXT.md](CONTEXT.md), _Flag_).
+  addressing are not (see [GLOSSARY.md](GLOSSARY.md), _Flag_).
 - **Stack per the standards.** uv, ruff, ty, pytest, stdlib logging,
   pydantic-settings, Typer, `src/` layout. FastAPI + a static HTML/JS frontend;
   htmx unused. The standards ride along as a submodule at `standards/python/`
@@ -187,7 +187,7 @@ Section; no new Section.
 The `wkx-namespace` signature interaction, repurposed for the board: hover or
 keyboard-focus a recurring value and every other occurrence lights up, so a repo,
 a tool, or a version reads across the whole board at a glance. A pure UI
-interaction, with no Collector, no new API, and no CONTEXT.md term.
+interaction, with no Collector, no new API, and no GLOSSARY.md term.
 
 **Deliverables**
 - [x] Tokens are curated: a repo name, a tool name, or a version string. Incidental strings (branches, origins, paths) are not tokens.
@@ -217,7 +217,7 @@ request is a bounded read.
 - [x] Submodule "latest release", token-free: a bounded `curl` through the Machine seam reads the redirect of `https://github.com/<owner>/<repo>/releases/latest` to learn the release tag GitHub blesses. No token, no `SecretStr`, no authenticated API.
 - [x] The tag-based "latest" and the "N behind" count stay as they are, from `git ls-remote`. The GitHub release augments them only when it differs from the highest semver tag, shown labelled so both the tag and the release are legible. Usually they agree; the mismatch is the uncommon case worth surfacing.
 - [x] The release fetch rides the existing submodule SSE probe and degrades gracefully: an unreachable, rate-limited, or release-less repo falls back to the tag-based latest, never an error. Non-GitHub submodules stay tag-based.
-- [x] The tag and the release are distinct model fields (`latest` and `github_release`) with clear UI labels; no CONTEXT.md term.
+- [x] The tag and the release are distinct model fields (`latest` and `github_release`) with clear UI labels; no GLOSSARY.md term.
 - [x] Collectors and parsers stay pure over synthetic fixtures in tests (the fake seam returns a canned redirect); no captured machine data.
 
 **Hands-on artefact**
@@ -236,7 +236,7 @@ which Sections appear, which paths discovery skips, and which Flags are muted.
 Configuration is a TOML file; `.env` carries secrets only. The board reads
 configuration and shows it, but never writes it, so it remains an observer with
 no auth and no write path. The vocabulary (Off, Hidden, Exclude, Category, Mute)
-is in [CONTEXT.md](CONTEXT.md).
+is in [GLOSSARY.md](GLOSSARY.md).
 
 **Deliverables**
 - [x] Configuration file: `wkx-ecosystem-localhost.toml` in the working directory, gitignored, read by the existing `pydantic-settings` model through `TomlConfigSettingsSource`. A committed `wkx-ecosystem-localhost.example.toml` documents every key, commented out, with placeholders. Keys are flat and map one to one onto `Settings` fields; paths accept `~`. A missing file is not an error, because every value has a computed default. The env-only `WKX_ECO_LOCAL_CONFIG_FILE` overrides the path.
@@ -271,7 +271,7 @@ the Workspace Section, backed by one read-only Collector, and a correction to
 how the claude Section counts a disabled skill. There is no new Section and no
 new route. No refinement writes server config; the collapse choice persists in
 `localStorage`, the way the theme toggle does. The vocabulary (Collapsed) is in
-[CONTEXT.md](CONTEXT.md). Table search and hideable columns, once part of this
+[GLOSSARY.md](GLOSSARY.md). Table search and hideable columns, once part of this
 milestone, are [M13](#m13-table-search-and-hideable-columns).
 
 **Deliverables**
@@ -291,7 +291,7 @@ milestone, are [M13](#m13-table-search-and-hideable-columns).
 
 ## M12: The View lives in its own file
 
-Every view preference leaves the browser. The View ([CONTEXT.md](CONTEXT.md):
+Every view preference leaves the browser. The View ([GLOSSARY.md](GLOSSARY.md):
 the theme, which panels are Hidden or Collapsed, and the Mutes; M13 adds the
 Filters, sorts, and Hidden columns) moves into `wkx-ecosystem-localhost.view.toml`,
 a file beside the configuration that the board owns, writes on every change,
@@ -310,7 +310,7 @@ and the foundation M13 persists through. No Collector and no new Section.
 - [x] Write path: `PATCH /api/view` takes one preference per call. The server validates it against the board's own catalogue (panel ids, Categories), merges it under a process-level lock, writes the file atomically (temporary file, then rename), and returns the effective View. When the file on disk does not parse, the write is refused and the board never regenerates the file from memory. A write is accepted only with `Content-Type: application/json`, a `Host` that is the bound host and port, and either a same-origin `Origin` or `Sec-Fetch-Site`, or no `Origin` at all (a non-browser client); anything else is `403`.
 - [x] Every open tab converges: a successful write is pushed as a `view` event on the existing SSE stream, and each tab applies it, so no tab holds a stale View.
 - [x] Two Flags in the config Section, both data-evident: `view-not-saved` (red) when a write fails, and `view-unknown-key` (amber) when the View names a panel, Category, table, or column the board does not know. An unknown View key is dropped with a warning log, never a startup failure, because the board must not refuse to start on a file it wrote itself. The configuration keeps fail-fast.
-- [x] Docs corrected: README (the board writes its View file, and only that), ARCHITECTURE.md (the View file is the only store), the example TOML, and `.gitignore`. [ADR 0004](docs/adr/0004-the-board-writes-its-view-to-a-file-of-its-own.md) and the CONTEXT.md entries for View, Filter, Hidden, Collapsed, and Mute are already in.
+- [x] Docs corrected: README (the board writes its View file, and only that), ARCHITECTURE.md (the View file is the only store), the example TOML, and `.gitignore`. [ADR 0004](docs/adr/0004-the-board-writes-its-view-to-a-file-of-its-own.md) and the GLOSSARY.md entries for View, Filter, Hidden, Collapsed, and Mute are already in.
 - [x] Tests over `tmp_path`, never a real file: the View round trip, overrides-only writing, the parse-failure refusal, the lock, the `403` cases, and the drop-and-warn path with its Flag. The client-side code keeps the `app.js` render smoke-clean, because the suite does not run it.
 
 **Hands-on artefact**
@@ -330,7 +330,7 @@ a Filter per Section, a columns menu per table, and a sort that can be cleared.
 Each choice persists through the View file from M12. The design was settled in
 a prototype and a design session: the Filter takes the header-native treatment,
 the columns menu takes the toolbar treatment, and the vocabulary (Filter, and
-Hidden widened to a column) is in [CONTEXT.md](CONTEXT.md). No Collector and no
+Hidden widened to a column) is in [GLOSSARY.md](GLOSSARY.md). No Collector and no
 new Section.
 
 **Deliverables**
@@ -369,7 +369,7 @@ System Section goes on showing it missing, as it does `ruff` and `ty`.
 - [x] The CI workflow checks every branch and runs the hook set: `on: push` for all branches except `dependabot/**`, which `pull_request` already covers, with `pull_request` kept for Dependabot and outside contributors. `permissions: contents: read` at the top, a `concurrency` group per ref with `cancel-in-progress`, and `timeout-minutes` on the job. Each action is pinned to a full commit SHA with its version tag in a trailing comment (`actions/checkout` and `astral-sh/setup-uv`, each at its current major), the form Dependabot keeps current. The steps are three: `uv sync --locked`, `pre-commit run --all-files --show-diff-on-failure` in place of separate ruff and ty steps, and `pytest --cov`. The `commit-msg` stage is the one check CI cannot run, because it needs a message, not a tree.
 - [x] Dependabot watches the lock file and the workflow: `.github/dependabot.yml` with the `uv` ecosystem and the `github-actions` ecosystem, each weekly, each grouped into one PR, each with a `commit-message.prefix` of `chore` and the scope included, so the log stays Conventional. The `commit-msg` hook never sees a Dependabot commit: GitHub writes it, and hooks do not run on a rebase or a fast-forward. The `gitsubmodule` ecosystem is deliberately absent: `standards/python` is pinned to a release on purpose, and Dependabot tracks a branch head, not a tag. Four repo switches, once, by `gh api`: vulnerability alerts on, automated security fixes on, rebase merge as the only merge method, and delete branch on merge. A Dependabot PR then lands the way any branch does: CI runs on it through the `pull_request` trigger, and it is rebase-merged in GitHub or pulled and ff-merged locally; either way, no merge commit.
 - [x] Badges: one row directly under the README's title, plain Markdown images with alt text and a link each: the CI workflow status on `main` (GitHub's own badge endpoint); Python 3.14, pre-commit, and the MIT licence (static shields.io); uv, ruff, and ty (Astral's own badge endpoints, rendered by shields.io). No coverage service is added.
-- [x] README's Stack section names the gates beside the tools, and its Security posture section gains one bullet for the supply-chain gates: read-only workflow token, SHA-pinned actions, Dependabot, vulnerability alerts. CLAUDE.md gains one line under a Git heading: commit subjects follow Conventional Commits, and the `commit-msg` hook refuses any other. ARCHITECTURE.md and CONTEXT.md are untouched, because nothing in the service or its vocabulary changes.
+- [x] README's Stack section names the gates beside the tools, and its Security posture section gains one bullet for the supply-chain gates: read-only workflow token, SHA-pinned actions, Dependabot, vulnerability alerts. CLAUDE.md gains one line under a Git heading: commit subjects follow Conventional Commits, and the `commit-msg` hook refuses any other. ARCHITECTURE.md and GLOSSARY.md are untouched, because nothing in the service or its vocabulary changes.
 
 **Hands-on artefact**
 - [x] Stage a file with a formatting fault and commit; the hook reformats it and refuses the commit. Stage the fix; the commit lands. Commit with the first line `update stuff`; the `commit-msg` hook refuses it. `feat(board): add thing` and `fix!: break thing` are accepted.

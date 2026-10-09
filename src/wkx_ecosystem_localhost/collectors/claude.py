@@ -49,7 +49,7 @@ _SETTINGS_LOCAL = "settings.local.json"
 _USER_CONFIG = ".claude.json"
 _PLUGIN_MCP = ".mcp.json"
 
-# The Origin words for a Claude asset, matching CONTEXT.md exactly.
+# The Origin words for a Claude asset, matching GLOSSARY.md exactly.
 _ORIGIN_USER = "user"
 _ORIGIN_PROJECT = "project"
 

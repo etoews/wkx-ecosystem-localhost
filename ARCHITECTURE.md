@@ -7,7 +7,7 @@ flow down through one narrow seam, facts flow back up as typed models, and
 colour appears only when the data raises a Flag.
 
 The vocabulary used here (Collector, Section, Origin, Flag) is defined in
-[CONTEXT.md](CONTEXT.md).
+[GLOSSARY.md](GLOSSARY.md).
 
 ![Simplified architecture, five layers from the board down to the dev machine](docs/images/architecture.svg)
 

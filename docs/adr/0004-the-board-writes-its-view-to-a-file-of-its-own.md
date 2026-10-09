@@ -2,7 +2,7 @@
 
 Until M11 every view preference (theme, Hidden, Collapsed) lived in the browser's
 `localStorage`, and the board wrote nothing but a background `git fetch`. From
-M12 the View (CONTEXT.md) lives in `wkx-ecosystem-localhost.view.toml`, a TOML
+M12 the View (GLOSSARY.md) lives in `wkx-ecosystem-localhost.view.toml`, a TOML
 file beside the configuration that the board owns and writes on every change,
 reads live on every request, and creates on first use; the operator never needs
 to edit it. The configuration file, `wkx-ecosystem-localhost.toml`, is untouched:

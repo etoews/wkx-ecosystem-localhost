@@ -3,7 +3,7 @@
 ``derive_flags`` is a pure function over the Section models, so every per-item and
 cross-item Flag is pinned here against hand-written synthetic Sections, with no
 machine and no HTTP in the way. The cross-item drift Flags are driven from
-multi-repo Sections, exactly as CONTEXT.md defines them.
+multi-repo Sections, exactly as GLOSSARY.md defines them.
 """
 
 from __future__ import annotations

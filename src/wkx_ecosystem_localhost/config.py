@@ -249,7 +249,7 @@ class Settings(BaseSettings):
         ``/api/config`` is the board's own effective-configuration view, which the
         client boots from to learn what is Off in the first place, so it is served
         unconditionally. Turning it Off would leave that route up while the panel
-        vanished, a half-off state CONTEXT.md's Off rules out. Like needs attention,
+        vanished, a half-off state GLOSSARY.md's Off rules out. Like needs attention,
         the config Section can be Hidden from the ``sections`` menu, but never Off.
 
         Raises:

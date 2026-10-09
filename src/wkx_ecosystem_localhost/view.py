@@ -1,6 +1,6 @@
 """The View: how the operator arranges the board, in a file the board owns.
 
-The View (CONTEXT.md) is the theme, the Hidden and Collapsed panels, and the
+The View (GLOSSARY.md) is the theme, the Hidden and Collapsed panels, and the
 Mutes. Unlike the configuration, which the operator writes and the board reads
 once at startup, the View is the board's own file: written on every change
 through ``PATCH /api/view``, read live on every request, and created on first

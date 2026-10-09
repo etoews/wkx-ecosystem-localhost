@@ -2,7 +2,7 @@
 
 The one cross-cutting layer. It gathers no new facts of its own: every Flag is
 derived purely from what the other Collectors already reported, with no external
-ruleset, exactly as CONTEXT.md defines a Flag. ``derive_flags`` is a pure function
+ruleset, exactly as GLOSSARY.md defines a Flag. ``derive_flags`` is a pure function
 over the Section models, so every per-item and cross-item Flag pins directly
 against synthetic models; ``collect_flags`` wires it to the seam by running the
 Collectors it depends on and handing their Sections to the pure derivation.
@@ -49,7 +49,7 @@ from wkx_ecosystem_localhost.models import (
     WorkspaceSection,
 )
 
-# The two levels from CONTEXT.md: amber (attention) and red (problem). Strings,
+# The two levels from GLOSSARY.md: amber (attention) and red (problem). Strings,
 # not the Status words, so the wire and the board never inherit up/stabilising/down.
 ATTENTION = "attention"
 PROBLEM = "problem"

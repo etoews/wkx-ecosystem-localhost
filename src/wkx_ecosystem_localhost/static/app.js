@@ -1454,7 +1454,7 @@ window.wkxFlags = (function () {
 // independent, and an Off panel's stale id is inert because its mount is gone.
 //
 // A Collapsed panel stays on the board and is still fetched, so its Flags still
-// count (CONTEXT.md): collapse is a reading convenience, not a Mute. Hiding the
+// count (GLOSSARY.md): collapse is a reading convenience, not a Mute. Hiding the
 // body keeps the mount in the DOM (the `hidden` attribute, never a display class
 // on a table element), so the Flag layer still badges its rows and the tally still
 // reads them. While collapsed, and only then because the tiles carry these when

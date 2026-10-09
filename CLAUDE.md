@@ -3,7 +3,7 @@
 Guidance for Claude Code when working in this repository.
 
 What this is, the build order, and the glossary live in README.md, ROADMAP.md,
-and CONTEXT.md. Read CONTEXT.md before naming things: this context has its own
+and GLOSSARY.md. Read GLOSSARY.md before naming things: this context has its own
 vocabulary (Collector, Origin, Flag, Section) and deliberately does not inherit
 the wkx-platform Status vocabulary.
 
@@ -19,7 +19,7 @@ The five canonical roles, each label string equal to its name. See `docs/agents/
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` at the repo root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` at the repo root, ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 
 ## Git
 
