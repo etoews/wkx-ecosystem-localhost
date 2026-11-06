@@ -307,8 +307,16 @@ uv run pre-commit run --all-files
 `git commit -n` skips the gate. CI runs the same hook set on every push, so CI
 stays the enforcer. `uv run pre-commit autoupdate` bumps the one third-party
 hook repo, `pre-commit-hooks`; Dependabot bumps everything else through
-`uv.lock`. A Dependabot PR lands without a merge commit: rebase-merge it in
-GitHub, or pull it and ff-merge it locally.
+`uv.lock`. A Dependabot PR merges itself: the Dependabot auto-merge workflow
+turns on GitHub auto-merge with the rebase method, and the
+`dependabot-auto-merge` ruleset on `main` makes CI's `test` check required, so
+GitHub rebase-merges the PR once that check passes. A red check leaves the PR
+open for the owner. The ruleset does not require a branch to be up to date
+with `main`, so a second Dependabot PR does not stall behind the first, and
+the repository admin role bypasses it, so a local ff-merge and `git push` of
+`main` still land. GitHub starts no workflow from a merge made with the
+workflow token, so the PR's own run is the only CI run on an auto-merged
+commit.
 
 `.github/CODEOWNERS` names the owner for every path. GitHub requests the
 owner's review on each Dependabot PR, so the owner gets a notification without
@@ -341,6 +349,9 @@ the planned change to the standard.
 - The repo's supply chain is gated: the CI workflow token is read-only, each
   action is pinned to a full commit SHA, Dependabot watches the lock file and
   the workflow, and vulnerability alerts and automated security fixes are on.
+  The auto-merge workflow is the one job with a write token; it runs only on
+  a PR whose author is Dependabot, checks out nothing, and only calls
+  `gh pr merge --auto`.
 
 ## License
 
